@@ -18,7 +18,9 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.google.errorprone.annotations.CheckReturnValue;
 import com.google.errorprone.annotations.CompatibleWith;
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
@@ -36,6 +38,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Charles Fry
  * @since 10.0
  */
+@DoNotMock("Use CacheBuilder.newBuilder().build()")
 @GwtCompatible
 public interface Cache<K, V> {
 
@@ -139,6 +142,7 @@ public interface Cache<K, V> {
   void invalidateAll();
 
   /** Returns the approximate number of entries in this cache. */
+  @CheckReturnValue
   long size();
 
   /**
@@ -152,6 +156,7 @@ public interface Cache<K, V> {
    * all values is returned.
    *
    */
+  @CheckReturnValue
   CacheStats stats();
 
   /**
@@ -162,6 +167,7 @@ public interface Cache<K, V> {
    * concurrent use, but if the cache is modified (including by eviction) after the iterator is
    * created, it is undefined which of the changes (if any) will be reflected in that iterator.
    */
+  @CheckReturnValue
   ConcurrentMap<K, V> asMap();
 
   /**

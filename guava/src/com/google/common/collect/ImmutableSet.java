@@ -69,6 +69,8 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
   /**
    * Returns the empty immutable set. Preferred over {@link Collections#emptySet} for code
    * consistency, and because the return type conveys the immutability guarantee.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
    */
   @SuppressWarnings({"unchecked"}) // fully variant implementation (never actually produces any Es)
   public static <E> ImmutableSet<E> of() {
@@ -310,7 +312,8 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
   public boolean equals(@Nullable Object object) {
     if (object == this) {
       return true;
-    } else if (object instanceof ImmutableSet
+    }
+    if (object instanceof ImmutableSet
         && isHashCodeFast()
         && ((ImmutableSet<?>) object).isHashCodeFast()
         && hashCode() != object.hashCode()) {
@@ -520,7 +523,6 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
       return this;
     }
 
-    @Override
     /**
      * Adds each element of {@code elements} to the {@code ImmutableSet}, ignoring duplicate
      * elements (only the first duplicate element is added).
@@ -529,6 +531,7 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
      * @return this {@code Builder} object
      * @throws NullPointerException if {@code elements} is null or contains a null element
      */
+    @Override
     @CanIgnoreReturnValue
     public Builder<E> addAll(Iterable<? extends E> elements) {
       super.addAll(elements);
@@ -813,6 +816,8 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
       int targetTableSize = chooseTableSize(distinct);
       if (targetTableSize * 2 < hashTable.length) {
         hashTable = rebuildHashTable(targetTableSize, dedupedElements, distinct);
+        maxRunBeforeFallback = maxRunBeforeFallback(targetTableSize);
+        expandTableThreshold = (int) (DESIRED_LOAD_FACTOR * targetTableSize);
       }
       return hashFloodingDetected(hashTable) ? new JdkBackedSetBuilderImpl<E>(this) : this;
     }

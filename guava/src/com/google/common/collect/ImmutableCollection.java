@@ -20,10 +20,13 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
+import com.google.errorprone.annotations.DoNotMock;
 import java.io.Serializable;
 import java.util.AbstractCollection;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Spliterator;
@@ -156,6 +159,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * @since 2.0
  */
+@DoNotMock("Use ImmutableList.of or another implementation")
 @GwtCompatible(emulated = true)
 @SuppressWarnings("serial") // we're overriding default serialization
 // TODO(kevinb): I think we should push everything down to "BaseImmutableCollection" or something,
@@ -207,8 +211,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   }
 
   /** If this collection is backed by an array of its elements in insertion order, returns it. */
-  @Nullable
-  Object[] internalArray() {
+  Object @Nullable [] internalArray() {
     return null;
   }
 
@@ -240,6 +243,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean add(E e) {
     throw new UnsupportedOperationException();
   }
@@ -253,6 +257,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean remove(Object object) {
     throw new UnsupportedOperationException();
   }
@@ -266,6 +271,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean addAll(Collection<? extends E> newElements) {
     throw new UnsupportedOperationException();
   }
@@ -279,6 +285,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean removeAll(Collection<?> oldElements) {
     throw new UnsupportedOperationException();
   }
@@ -292,6 +299,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean removeIf(Predicate<? super E> filter) {
     throw new UnsupportedOperationException();
   }
@@ -304,6 +312,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean retainAll(Collection<?> elementsToKeep) {
     throw new UnsupportedOperationException();
   }
@@ -316,6 +325,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final void clear() {
     throw new UnsupportedOperationException();
   }
@@ -371,6 +381,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    *
    * @since 10.0
    */
+  @DoNotMock
   public abstract static class Builder<E> {
     static final int DEFAULT_INITIAL_CAPACITY = 4;
 

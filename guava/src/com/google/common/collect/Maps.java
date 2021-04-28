@@ -68,7 +68,6 @@ import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 import java.util.stream.Collector;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
@@ -172,37 +171,6 @@ public final class Maps {
     return ImmutableEnumMap.asImmutable(enumMap);
   }
 
-  private static class Accumulator<K extends Enum<K>, V> {
-    private final BinaryOperator<V> mergeFunction;
-    private EnumMap<K, V> map = null;
-
-    Accumulator(BinaryOperator<V> mergeFunction) {
-      this.mergeFunction = mergeFunction;
-    }
-
-    void put(K key, V value) {
-      if (map == null) {
-        map = new EnumMap<>(key.getDeclaringClass());
-      }
-      map.merge(key, value, mergeFunction);
-    }
-
-    Accumulator<K, V> combine(Accumulator<K, V> other) {
-      if (this.map == null) {
-        return other;
-      } else if (other.map == null) {
-        return this;
-      } else {
-        other.map.forEach(this::put);
-        return this;
-      }
-    }
-
-    ImmutableMap<K, V> toImmutableMap() {
-      return (map == null) ? ImmutableMap.<K, V>of() : ImmutableEnumMap.asImmutable(map);
-    }
-  }
-
   /**
    * Returns a {@link Collector} that accumulates elements into an {@code ImmutableMap} whose keys
    * and values are the result of applying the provided mapping functions to the input elements. The
@@ -220,22 +188,7 @@ public final class Maps {
   public static <T, K extends Enum<K>, V> Collector<T, ?, ImmutableMap<K, V>> toImmutableEnumMap(
       java.util.function.Function<? super T, ? extends K> keyFunction,
       java.util.function.Function<? super T, ? extends V> valueFunction) {
-    checkNotNull(keyFunction);
-    checkNotNull(valueFunction);
-    return Collector.of(
-        () ->
-            new Accumulator<K, V>(
-                (v1, v2) -> {
-                  throw new IllegalArgumentException("Multiple values for key: " + v1 + ", " + v2);
-                }),
-        (accum, t) -> {
-          K key = checkNotNull(keyFunction.apply(t), "Null key for input %s", t);
-          V newValue = checkNotNull(valueFunction.apply(t), "Null value for input %s", t);
-          accum.put(key, newValue);
-        },
-        Accumulator::combine,
-        Accumulator::toImmutableMap,
-        Collector.Characteristics.UNORDERED);
+    return CollectCollectors.toImmutableEnumMap(keyFunction, valueFunction);
   }
 
   /**
@@ -253,19 +206,7 @@ public final class Maps {
       java.util.function.Function<? super T, ? extends K> keyFunction,
       java.util.function.Function<? super T, ? extends V> valueFunction,
       BinaryOperator<V> mergeFunction) {
-    checkNotNull(keyFunction);
-    checkNotNull(valueFunction);
-    checkNotNull(mergeFunction);
-    // not UNORDERED because we don't know if mergeFunction is commutative
-    return Collector.of(
-        () -> new Accumulator<K, V>(mergeFunction),
-        (accum, t) -> {
-          K key = checkNotNull(keyFunction.apply(t), "Null key for input %s", t);
-          V newValue = checkNotNull(valueFunction.apply(t), "Null value for input %s", t);
-          accum.put(key, newValue);
-        },
-        Accumulator::combine,
-        Accumulator::toImmutableMap);
+    return CollectCollectors.toImmutableEnumMap(keyFunction, valueFunction, mergeFunction);
   }
 
   /**
@@ -1594,8 +1535,8 @@ public final class Maps {
       implements BiMap<K, V>, Serializable {
     final Map<K, V> unmodifiableMap;
     final BiMap<? extends K, ? extends V> delegate;
-    @MonotonicNonNull @RetainedWith BiMap<V, K> inverse;
-    @MonotonicNonNull transient Set<V> values;
+    @RetainedWith @Nullable BiMap<V, K> inverse;
+    transient @Nullable Set<V> values;
 
     UnmodifiableBiMap(BiMap<? extends K, ? extends V> delegate, @Nullable BiMap<V, K> inverse) {
       unmodifiableMap = Collections.unmodifiableMap(delegate);
@@ -3268,7 +3209,7 @@ public final class Maps {
     checkNotNull(map);
     if (map instanceof UnmodifiableNavigableMap) {
       @SuppressWarnings("unchecked") // covariant
-      NavigableMap<K, V> result = (NavigableMap) map;
+      NavigableMap<K, V> result = (NavigableMap<K, V>) map;
       return result;
     } else {
       return new UnmodifiableNavigableMap<>(map);
@@ -3360,7 +3301,7 @@ public final class Maps {
       throw new UnsupportedOperationException();
     }
 
-    private transient @MonotonicNonNull UnmodifiableNavigableMap<K, V> descendingMap;
+    private transient @Nullable UnmodifiableNavigableMap<K, V> descendingMap;
 
     @Override
     public NavigableMap<K, V> descendingMap() {
@@ -3485,7 +3426,7 @@ public final class Maps {
      */
     abstract Set<Entry<K, V>> createEntrySet();
 
-    private transient @MonotonicNonNull Set<Entry<K, V>> entrySet;
+    private transient @Nullable Set<Entry<K, V>> entrySet;
 
     @Override
     public Set<Entry<K, V>> entrySet() {
@@ -3493,7 +3434,7 @@ public final class Maps {
       return (result == null) ? entrySet = createEntrySet() : result;
     }
 
-    private transient @MonotonicNonNull Set<K> keySet;
+    private transient @Nullable Set<K> keySet;
 
     @Override
     public Set<K> keySet() {
@@ -3505,7 +3446,7 @@ public final class Maps {
       return new KeySet<>(this);
     }
 
-    private transient @MonotonicNonNull Collection<V> values;
+    private transient @Nullable Collection<V> values;
 
     @Override
     public Collection<V> values() {
@@ -4033,7 +3974,7 @@ public final class Maps {
       return forward();
     }
 
-    private transient @MonotonicNonNull Comparator<? super K> comparator;
+    private transient @Nullable Comparator<? super K> comparator;
 
     @SuppressWarnings("unchecked")
     @Override
@@ -4129,7 +4070,7 @@ public final class Maps {
       return forward();
     }
 
-    private transient @MonotonicNonNull Set<Entry<K, V>> entrySet;
+    private transient @Nullable Set<Entry<K, V>> entrySet;
 
     @Override
     public Set<Entry<K, V>> entrySet() {
@@ -4160,7 +4101,7 @@ public final class Maps {
       return navigableKeySet();
     }
 
-    private transient @MonotonicNonNull NavigableSet<K> navigableKeySet;
+    private transient @Nullable NavigableSet<K> navigableKeySet;
 
     @Override
     public NavigableSet<K> navigableKeySet() {

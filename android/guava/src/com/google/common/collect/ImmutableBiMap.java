@@ -22,6 +22,7 @@ import static com.google.common.collect.CollectPreconditions.checkNonnegative;
 import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Map;
@@ -36,7 +37,11 @@ import java.util.Map;
 @GwtCompatible(serializable = true, emulated = true)
 public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements BiMap<K, V> {
 
-  /** Returns the empty bimap. */
+  /**
+   * Returns the empty bimap.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
+   */
   // Casting to any type is safe because the set will never hold any elements.
   @SuppressWarnings("unchecked")
   public static <K, V> ImmutableBiMap<K, V> of() {
@@ -240,6 +245,13 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
       return this;
     }
 
+    @Override
+    @CanIgnoreReturnValue
+    Builder<K, V> combine(ImmutableMap.Builder<K, V> builder) {
+      super.combine(builder);
+      return this;
+    }
+
     /**
      * Returns a newly-created immutable bimap. The iteration order of the returned bimap is the
      * order in which entries were inserted into the builder, unless {@link #orderEntriesByValue}
@@ -339,7 +351,8 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
   @CanIgnoreReturnValue
   @Deprecated
   @Override
-  public V forcePut(K key, V value) {
+  @DoNotCall("Always throws UnsupportedOperationException")
+  public final V forcePut(K key, V value) {
     throw new UnsupportedOperationException();
   }
 
@@ -351,15 +364,14 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
    * <p>Since the bimap is immutable, ImmutableBiMap doesn't require special logic for keeping the
    * bimap and its inverse in sync during serialization, the way AbstractBiMap does.
    */
-  private static class SerializedForm extends ImmutableMap.SerializedForm {
-    SerializedForm(ImmutableBiMap<?, ?> bimap) {
+  private static class SerializedForm<K, V> extends ImmutableMap.SerializedForm<K, V> {
+    SerializedForm(ImmutableBiMap<K, V> bimap) {
       super(bimap);
     }
 
     @Override
-    Object readResolve() {
-      Builder<Object, Object> builder = new Builder<>();
-      return createMap(builder);
+    Builder<K, V> makeBuilder(int size) {
+      return new Builder<>(size);
     }
 
     private static final long serialVersionUID = 0;
@@ -367,6 +379,6 @@ public abstract class ImmutableBiMap<K, V> extends ImmutableMap<K, V> implements
 
   @Override
   Object writeReplace() {
-    return new SerializedForm(this);
+    return new SerializedForm<>(this);
   }
 }

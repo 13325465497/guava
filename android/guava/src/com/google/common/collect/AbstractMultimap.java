@@ -20,6 +20,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.WeakOuter;
 import java.util.AbstractCollection;
 import java.util.Collection;
@@ -27,7 +28,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.MonotonicNonNullDecl;
 import org.checkerframework.checker.nullness.compatqual.NullableDecl;
 
 /**
@@ -106,7 +106,7 @@ abstract class AbstractMultimap<K, V> implements Multimap<K, V> {
     return result;
   }
 
-  @MonotonicNonNullDecl private transient Collection<Entry<K, V>> entries;
+  @LazyInit @NullableDecl private transient Collection<Entry<K, V>> entries;
 
   @Override
   public Collection<Entry<K, V>> entries() {
@@ -144,7 +144,7 @@ abstract class AbstractMultimap<K, V> implements Multimap<K, V> {
 
   abstract Iterator<Entry<K, V>> entryIterator();
 
-  @MonotonicNonNullDecl private transient Set<K> keySet;
+  @LazyInit @NullableDecl private transient Set<K> keySet;
 
   @Override
   public Set<K> keySet() {
@@ -154,7 +154,7 @@ abstract class AbstractMultimap<K, V> implements Multimap<K, V> {
 
   abstract Set<K> createKeySet();
 
-  @MonotonicNonNullDecl private transient Multiset<K> keys;
+  @LazyInit @NullableDecl private transient Multiset<K> keys;
 
   @Override
   public Multiset<K> keys() {
@@ -164,7 +164,7 @@ abstract class AbstractMultimap<K, V> implements Multimap<K, V> {
 
   abstract Multiset<K> createKeys();
 
-  @MonotonicNonNullDecl private transient Collection<V> values;
+  @LazyInit @NullableDecl private transient Collection<V> values;
 
   @Override
   public Collection<V> values() {
@@ -201,7 +201,7 @@ abstract class AbstractMultimap<K, V> implements Multimap<K, V> {
     return Maps.valueIterator(entries().iterator());
   }
 
-  @MonotonicNonNullDecl private transient Map<K, Collection<V>> asMap;
+  @LazyInit @NullableDecl private transient Map<K, Collection<V>> asMap;
 
   @Override
   public Map<K, Collection<V>> asMap() {

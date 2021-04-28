@@ -28,6 +28,7 @@ import static com.google.common.collect.RegularImmutableList.EMPTY;
 import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
@@ -60,6 +61,8 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
    * Returns the empty immutable list. This list behaves and performs comparably to {@link
    * Collections#emptyList}, and is preferable mainly for consistency and maintainability of your
    * code.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
    */
   // Casting to any type is safe because the list will never hold any elements.
   @SuppressWarnings("unchecked")
@@ -69,7 +72,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
 
   /**
    * Returns an immutable list containing a single element. This list behaves and performs
-   * comparably to {@link Collections#singleton}, but will not accept a null element. It is
+   * comparably to {@link Collections#singletonList}, but will not accept a null element. It is
    * preferable mainly for consistency and maintainability of your code.
    *
    * @throws NullPointerException if {@code element} is null
@@ -485,6 +488,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean addAll(int index, Collection<? extends E> newElements) {
     throw new UnsupportedOperationException();
   }
@@ -498,6 +502,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final E set(int index, E element) {
     throw new UnsupportedOperationException();
   }
@@ -510,6 +515,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final void add(int index, E element) {
     throw new UnsupportedOperationException();
   }
@@ -523,6 +529,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final E remove(int index) {
     throw new UnsupportedOperationException();
   }
@@ -531,7 +538,9 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
    * Returns this list instance.
    *
    * @since 2.0
+   * @deprecated There is no reason to use this; it always returns {@code this}.
    */
+  @Deprecated
   @Override
   public final ImmutableList<E> asList() {
     return this;
@@ -767,7 +776,7 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
     /**
      * Adds each element of {@code elements} to the {@code ImmutableList}.
      *
-     * @param elements the {@code Iterable} to add to the {@code ImmutableList}
+     * @param elements the {@code Iterator} to add to the {@code ImmutableList}
      * @return this {@code Builder} object
      * @throws NullPointerException if {@code elements} is null or contains a null element
      */
@@ -775,6 +784,12 @@ public abstract class ImmutableList<E> extends ImmutableCollection<E>
     @Override
     public Builder<E> addAll(Iterator<? extends E> elements) {
       super.addAll(elements);
+      return this;
+    }
+
+    @CanIgnoreReturnValue
+    Builder<E> combine(Builder<E> other) {
+      addAll(other.contents, other.size);
       return this;
     }
 

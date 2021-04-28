@@ -23,6 +23,7 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.base.MoreObjects;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.RetainedWith;
 import com.google.j2objc.annotations.Weak;
@@ -35,12 +36,15 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.checkerframework.checker.nullness.compatqual.MonotonicNonNullDecl;
 import org.checkerframework.checker.nullness.compatqual.NullableDecl;
 
 /**
  * A {@link SetMultimap} whose contents will never change, with many other important properties
  * detailed at {@link ImmutableCollection}.
+ *
+ * <p><b>Warning:</b> As in all {@link SetMultimap}s, do not modify either a key <i>or a value</i>
+ * of a {@code ImmutableSetMultimap} in a way that affects its {@link Object#equals} behavior.
+ * Undefined behavior and bugs will result.
  *
  * <p>See the Guava User Guide article on <a href=
  * "https://github.com/google/guava/wiki/ImmutableCollectionsExplained"> immutable collections</a>.
@@ -52,7 +56,11 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
 public class ImmutableSetMultimap<K, V> extends ImmutableMultimap<K, V>
     implements SetMultimap<K, V> {
 
-  /** Returns the empty multimap. */
+  /**
+   * Returns the empty multimap.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
+   */
   // Casting is safe because the multimap will never hold any elements.
   @SuppressWarnings("unchecked")
   public static <K, V> ImmutableSetMultimap<K, V> of() {
@@ -214,6 +222,13 @@ public class ImmutableSetMultimap<K, V> extends ImmutableMultimap<K, V>
       return this;
     }
 
+    @CanIgnoreReturnValue
+    @Override
+    Builder<K, V> combine(ImmutableMultimap.Builder<K, V> other) {
+      super.combine(other);
+      return this;
+    }
+
     /**
      * {@inheritDoc}
      *
@@ -357,8 +372,7 @@ public class ImmutableSetMultimap<K, V> extends ImmutableMultimap<K, V>
     return MoreObjects.firstNonNull(set, emptySet);
   }
 
-  @LazyInit @MonotonicNonNullDecl @RetainedWith
-  private transient ImmutableSetMultimap<V, K> inverse;
+  @LazyInit @RetainedWith @NullableDecl private transient ImmutableSetMultimap<V, K> inverse;
 
   /**
    * {@inheritDoc}
@@ -392,7 +406,8 @@ public class ImmutableSetMultimap<K, V> extends ImmutableMultimap<K, V>
   @CanIgnoreReturnValue
   @Deprecated
   @Override
-  public ImmutableSet<V> removeAll(Object key) {
+  @DoNotCall("Always throws UnsupportedOperationException")
+  public final ImmutableSet<V> removeAll(Object key) {
     throw new UnsupportedOperationException();
   }
 
@@ -405,11 +420,12 @@ public class ImmutableSetMultimap<K, V> extends ImmutableMultimap<K, V>
   @CanIgnoreReturnValue
   @Deprecated
   @Override
-  public ImmutableSet<V> replaceValues(K key, Iterable<? extends V> values) {
+  @DoNotCall("Always throws UnsupportedOperationException")
+  public final ImmutableSet<V> replaceValues(K key, Iterable<? extends V> values) {
     throw new UnsupportedOperationException();
   }
 
-  @MonotonicNonNullDecl private transient ImmutableSet<Entry<K, V>> entries;
+  @LazyInit @RetainedWith @NullableDecl private transient ImmutableSet<Entry<K, V>> entries;
 
   /**
    * Returns an immutable collection of all key-value pairs in the multimap. Its iterator traverses

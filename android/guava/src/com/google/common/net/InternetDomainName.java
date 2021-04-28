@@ -30,7 +30,7 @@ import com.google.errorprone.annotations.Immutable;
 import com.google.thirdparty.publicsuffix.PublicSuffixPatterns;
 import com.google.thirdparty.publicsuffix.PublicSuffixType;
 import java.util.List;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import javax.annotation.CheckForNull;
 
 /**
  * An immutable well-formed internet domain name, such as {@code com} or {@code foo.co.uk}. Only
@@ -72,8 +72,9 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @since 5.0
  */
 @Beta
-@GwtCompatible
+@GwtCompatible(emulated = true)
 @Immutable
+// TODO(b/147136275): After adding @CheckForNull below, add @ElementTypesAreNonnullByDefault.
 public final class InternetDomainName {
 
   private static final CharMatcher DOTS_MATCHER = CharMatcher.anyOf(".\u3002\uFF0E\uFF61");
@@ -200,7 +201,6 @@ public final class InternetDomainName {
    *       href="https://tools.ietf.org/html/rfc1123#section-2">RFC 1123</a>.
    * </ul>
    *
-   *
    * @param domain A domain name (not IP address)
    * @throws IllegalArgumentException if {@code domain} is not syntactically valid according to
    *     {@link #isValid}
@@ -237,8 +237,13 @@ public final class InternetDomainName {
 
   private static final CharMatcher DASH_MATCHER = CharMatcher.anyOf("-_");
 
+  private static final CharMatcher DIGIT_MATCHER = CharMatcher.inRange('0', '9');
+
+  private static final CharMatcher LETTER_MATCHER =
+      CharMatcher.inRange('a', 'z').or(CharMatcher.inRange('A', 'Z'));
+
   private static final CharMatcher PART_CHAR_MATCHER =
-      CharMatcher.javaLetterOrDigit().or(DASH_MATCHER);
+      DIGIT_MATCHER.or(LETTER_MATCHER).or(DASH_MATCHER);
 
   /**
    * Helper method for {@link #validateSyntax(List)}. Validates that one part of a domain name is
@@ -287,7 +292,7 @@ public final class InternetDomainName {
      * address like 127.0.0.1 from looking like a valid domain name.
      */
 
-    if (isFinalPart && CharMatcher.digit().matches(part.charAt(0))) {
+    if (isFinalPart && DIGIT_MATCHER.matches(part.charAt(0))) {
       return false;
     }
 
@@ -349,6 +354,8 @@ public final class InternetDomainName {
    *
    * @since 6.0
    */
+  // TODO(b/147136275): After updating callers, add @CheckForNull, and remove @SuppressWarnings.
+  @SuppressWarnings("nullness")
   public InternetDomainName publicSuffix() {
     return hasPublicSuffix() ? ancestor(publicSuffixIndex) : null;
   }
@@ -457,6 +464,8 @@ public final class InternetDomainName {
    *
    * @since 23.3
    */
+  // TODO(b/147136275): After updating callers, add @CheckForNull, and remove @SuppressWarnings.
+  @SuppressWarnings("nullness")
   public InternetDomainName registrySuffix() {
     return hasRegistrySuffix() ? ancestor(registrySuffixIndex) : null;
   }
@@ -617,7 +626,7 @@ public final class InternetDomainName {
    * version of the same domain name would not be considered equal.
    */
   @Override
-  public boolean equals(@NullableDecl Object object) {
+  public boolean equals(@CheckForNull Object object) {
     if (object == this) {
       return true;
     }

@@ -14,7 +14,8 @@
 
 package com.google.common.util.concurrent;
 
-import static com.google.common.util.concurrent.Internal.saturatedToNanos;
+import static com.google.common.base.Verify.verify;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import com.google.common.annotations.Beta;
@@ -27,11 +28,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 
 /**
  * Utilities for treating interruptible operations as uninterruptible. In all cases, if a thread is
@@ -77,7 +80,7 @@ public final class Uninterruptibles {
   @GwtIncompatible // concurrency
   @Beta
   public static boolean awaitUninterruptibly(CountDownLatch latch, Duration timeout) {
-    return awaitUninterruptibly(latch, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return awaitUninterruptibly(latch, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -118,7 +121,7 @@ public final class Uninterruptibles {
   @GwtIncompatible // concurrency
   @Beta
   public static boolean awaitUninterruptibly(Condition condition, Duration timeout) {
-    return awaitUninterruptibly(condition, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return awaitUninterruptibly(condition, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -179,7 +182,7 @@ public final class Uninterruptibles {
   @GwtIncompatible // concurrency
   @Beta
   public static void joinUninterruptibly(Thread toJoin, Duration timeout) {
-    joinUninterruptibly(toJoin, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    joinUninterruptibly(toJoin, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -270,7 +273,7 @@ public final class Uninterruptibles {
   @Beta
   public static <V> V getUninterruptibly(Future<V> future, Duration timeout)
       throws ExecutionException, TimeoutException {
-    return getUninterruptibly(future, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return getUninterruptibly(future, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -372,7 +375,7 @@ public final class Uninterruptibles {
   @GwtIncompatible // concurrency
   @Beta
   public static void sleepUninterruptibly(Duration sleepFor) {
-    sleepUninterruptibly(saturatedToNanos(sleepFor), TimeUnit.NANOSECONDS);
+    sleepUninterruptibly(toNanosSaturated(sleepFor), TimeUnit.NANOSECONDS);
   }
 
   // TODO(user): Support Sleeper somehow (wrapper or interface method)?
@@ -410,7 +413,7 @@ public final class Uninterruptibles {
   @GwtIncompatible // concurrency
   @Beta
   public static boolean tryAcquireUninterruptibly(Semaphore semaphore, Duration timeout) {
-    return tryAcquireUninterruptibly(semaphore, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return tryAcquireUninterruptibly(semaphore, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -437,7 +440,7 @@ public final class Uninterruptibles {
   public static boolean tryAcquireUninterruptibly(
       Semaphore semaphore, int permits, Duration timeout) {
     return tryAcquireUninterruptibly(
-        semaphore, permits, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+        semaphore, permits, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
   }
 
   /**
@@ -459,6 +462,104 @@ public final class Uninterruptibles {
         try {
           // Semaphore treats negative timeouts just like zero.
           return semaphore.tryAcquire(permits, remainingNanos, NANOSECONDS);
+        } catch (InterruptedException e) {
+          interrupted = true;
+          remainingNanos = end - System.nanoTime();
+        }
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  /**
+   * Invokes {@code lock.}{@link Lock#tryLock(long, TimeUnit) tryLock(timeout, unit)}
+   * uninterruptibly.
+   *
+   * @since 30.0
+   */
+  @GwtIncompatible // concurrency
+  @Beta
+  public static boolean tryLockUninterruptibly(Lock lock, Duration timeout) {
+    return tryLockUninterruptibly(lock, toNanosSaturated(timeout), TimeUnit.NANOSECONDS);
+  }
+
+  /**
+   * Invokes {@code lock.}{@link Lock#tryLock(long, TimeUnit) tryLock(timeout, unit)}
+   * uninterruptibly.
+   *
+   * @since 30.0
+   */
+  @GwtIncompatible // concurrency
+  @SuppressWarnings("GoodTime") // should accept a java.time.Duration
+  public static boolean tryLockUninterruptibly(Lock lock, long timeout, TimeUnit unit) {
+    boolean interrupted = false;
+    try {
+      long remainingNanos = unit.toNanos(timeout);
+      long end = System.nanoTime() + remainingNanos;
+
+      while (true) {
+        try {
+          return lock.tryLock(remainingNanos, NANOSECONDS);
+        } catch (InterruptedException e) {
+          interrupted = true;
+          remainingNanos = end - System.nanoTime();
+        }
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  /**
+   * Invokes {@code executor.}{@link ExecutorService#awaitTermination(long, TimeUnit)
+   * awaitTermination(long, TimeUnit)} uninterruptibly with no timeout.
+   *
+   * @since 30.0
+   */
+  @Beta
+  @GwtIncompatible // concurrency
+  public static void awaitTerminationUninterruptibly(ExecutorService executor) {
+    // TODO(cpovirk): We could optimize this to avoid calling nanoTime() at all.
+    verify(awaitTerminationUninterruptibly(executor, Long.MAX_VALUE, NANOSECONDS));
+  }
+
+  /**
+   * Invokes {@code executor.}{@link ExecutorService#awaitTermination(long, TimeUnit)
+   * awaitTermination(long, TimeUnit)} uninterruptibly.
+   *
+   * @since 30.0
+   */
+  @Beta
+  @GwtIncompatible // concurrency
+  public static boolean awaitTerminationUninterruptibly(
+      ExecutorService executor, Duration timeout) {
+    return awaitTerminationUninterruptibly(executor, toNanosSaturated(timeout), NANOSECONDS);
+  }
+
+  /**
+   * Invokes {@code executor.}{@link ExecutorService#awaitTermination(long, TimeUnit)
+   * awaitTermination(long, TimeUnit)} uninterruptibly.
+   *
+   * @since 30.0
+   */
+  @Beta
+  @GwtIncompatible // concurrency
+  @SuppressWarnings("GoodTime")
+  public static boolean awaitTerminationUninterruptibly(
+      ExecutorService executor, long timeout, TimeUnit unit) {
+    boolean interrupted = false;
+    try {
+      long remainingNanos = unit.toNanos(timeout);
+      long end = System.nanoTime() + remainingNanos;
+
+      while (true) {
+        try {
+          return executor.awaitTermination(remainingNanos, NANOSECONDS);
         } catch (InterruptedException e) {
           interrupted = true;
           remainingNanos = end - System.nanoTime();

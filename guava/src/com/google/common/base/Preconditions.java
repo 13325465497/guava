@@ -159,7 +159,7 @@ public final class Preconditions {
   public static void checkArgument(
       boolean expression,
       @Nullable String errorMessageTemplate,
-      Object @Nullable ... errorMessageArgs) {
+      @Nullable Object @Nullable ... errorMessageArgs) {
     if (!expression) {
       throw new IllegalArgumentException(lenientFormat(errorMessageTemplate, errorMessageArgs));
     }
@@ -916,7 +916,9 @@ public final class Preconditions {
    */
   @CanIgnoreReturnValue
   public static <T extends @NonNull Object> T checkNotNull(
-      T reference, @Nullable String errorMessageTemplate, Object @Nullable ... errorMessageArgs) {
+      T reference,
+      @Nullable String errorMessageTemplate,
+      @Nullable Object @Nullable ... errorMessageArgs) {
     if (reference == null) {
       throw new NullPointerException(lenientFormat(errorMessageTemplate, errorMessageArgs));
     }
@@ -1406,7 +1408,7 @@ public final class Preconditions {
    * size}, inclusive.
    *
    * @param start a user-supplied index identifying a starting position in an array, list or string
-   * @param end a user-supplied index identifying a ending position in an array, list or string
+   * @param end a user-supplied index identifying an ending position in an array, list or string
    * @param size the size of that array, list or string
    * @throws IndexOutOfBoundsException if either index is negative or is greater than {@code size},
    *     or if {@code end} is less than {@code start}

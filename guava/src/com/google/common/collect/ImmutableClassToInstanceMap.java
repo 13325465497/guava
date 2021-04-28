@@ -21,6 +21,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.primitives.Primitives;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import com.google.errorprone.annotations.Immutable;
 import java.io.Serializable;
 import java.util.Map;
@@ -43,6 +44,8 @@ public final class ImmutableClassToInstanceMap<B> extends ForwardingMap<Class<? 
 
   /**
    * Returns an empty {@code ImmutableClassToInstanceMap}.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
    *
    * @since 19.0
    */
@@ -151,8 +154,7 @@ public final class ImmutableClassToInstanceMap<B> extends ForwardingMap<Class<? 
       Map<? extends Class<? extends S>, ? extends S> map) {
     if (map instanceof ImmutableClassToInstanceMap) {
       @SuppressWarnings("unchecked") // covariant casts safe (unmodifiable)
-      // Eclipse won't compile if we cast to the parameterized type.
-      ImmutableClassToInstanceMap<B> cast = (ImmutableClassToInstanceMap) map;
+      ImmutableClassToInstanceMap<B> cast = (ImmutableClassToInstanceMap<B>) map;
       return cast;
     }
     return new Builder<B>().putAll(map).build();
@@ -184,6 +186,7 @@ public final class ImmutableClassToInstanceMap<B> extends ForwardingMap<Class<? 
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public <T extends B> T putInstance(Class<T> type, T value) {
     throw new UnsupportedOperationException();
   }

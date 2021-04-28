@@ -22,6 +22,7 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.WeakOuter;
 import java.io.Serializable;
@@ -33,7 +34,6 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collector;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
@@ -64,7 +64,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
    * @since 21.0
    */
   public static <E> Collector<E, ?, ImmutableMultiset<E>> toImmutableMultiset() {
-    return toImmutableMultiset(Function.identity(), e -> 1);
+    return CollectCollectors.toImmutableMultiset(Function.identity(), e -> 1);
   }
 
   /**
@@ -80,20 +80,14 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
    */
   public static <T, E> Collector<T, ?, ImmutableMultiset<E>> toImmutableMultiset(
       Function<? super T, ? extends E> elementFunction, ToIntFunction<? super T> countFunction) {
-    checkNotNull(elementFunction);
-    checkNotNull(countFunction);
-    return Collector.of(
-        LinkedHashMultiset::create,
-        (multiset, t) ->
-            multiset.add(checkNotNull(elementFunction.apply(t)), countFunction.applyAsInt(t)),
-        (multiset1, multiset2) -> {
-          multiset1.addAll(multiset2);
-          return multiset1;
-        },
-        (Multiset<E> multiset) -> copyFromEntries(multiset.entrySet()));
+    return CollectCollectors.toImmutableMultiset(elementFunction, countFunction);
   }
 
-  /** Returns the empty immutable multiset. */
+  /**
+   * Returns the empty immutable multiset.
+   *
+   * <p><b>Performance note:</b> the instance returned is a singleton.
+   */
   @SuppressWarnings("unchecked") // all supported methods are covariant
   public static <E> ImmutableMultiset<E> of() {
     return (ImmutableMultiset<E>) RegularImmutableMultiset.EMPTY;
@@ -237,7 +231,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
     final Iterator<Entry<E>> entryIterator = entrySet().iterator();
     return new UnmodifiableIterator<E>() {
       int remaining;
-      @MonotonicNonNull E element;
+      @Nullable E element;
 
       @Override
       public boolean hasNext() {
@@ -279,6 +273,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final int add(E element, int occurrences) {
     throw new UnsupportedOperationException();
   }
@@ -292,6 +287,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final int remove(Object element, int occurrences) {
     throw new UnsupportedOperationException();
   }
@@ -305,6 +301,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final int setCount(E element, int count) {
     throw new UnsupportedOperationException();
   }
@@ -318,6 +315,7 @@ public abstract class ImmutableMultiset<E> extends ImmutableMultisetGwtSerializa
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean setCount(E element, int oldCount, int newCount) {
     throw new UnsupportedOperationException();
   }

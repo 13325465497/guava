@@ -29,6 +29,7 @@ import com.google.common.base.Predicates;
 import com.google.common.base.Supplier;
 import com.google.common.collect.Maps.EntryTransformer;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.Weak;
 import com.google.j2objc.annotations.WeakOuter;
 import java.io.IOException;
@@ -49,10 +50,10 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.Spliterator;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
@@ -102,23 +103,17 @@ public final class Multimaps {
    * }
    * }</pre>
    *
+   * <p>To collect to an {@link ImmutableMultimap}, use either {@link
+   * ImmutableSetMultimap#toImmutableSetMultimap} or {@link
+   * ImmutableListMultimap#toImmutableListMultimap}.
+   *
    * @since 21.0
    */
-  @Beta
   public static <T, K, V, M extends Multimap<K, V>> Collector<T, ?, M> toMultimap(
       java.util.function.Function<? super T, ? extends K> keyFunction,
       java.util.function.Function<? super T, ? extends V> valueFunction,
       java.util.function.Supplier<M> multimapSupplier) {
-    checkNotNull(keyFunction);
-    checkNotNull(valueFunction);
-    checkNotNull(multimapSupplier);
-    return Collector.of(
-        multimapSupplier,
-        (multimap, input) -> multimap.put(keyFunction.apply(input), valueFunction.apply(input)),
-        (multimap1, multimap2) -> {
-          multimap1.putAll(multimap2);
-          return multimap1;
-        });
+    return CollectCollectors.toMultimap(keyFunction, valueFunction, multimapSupplier);
   }
 
   /**
@@ -159,20 +154,7 @@ public final class Multimaps {
       java.util.function.Function<? super T, ? extends K> keyFunction,
       java.util.function.Function<? super T, ? extends Stream<? extends V>> valueFunction,
       java.util.function.Supplier<M> multimapSupplier) {
-    checkNotNull(keyFunction);
-    checkNotNull(valueFunction);
-    checkNotNull(multimapSupplier);
-    return Collector.of(
-        multimapSupplier,
-        (multimap, input) -> {
-          K key = keyFunction.apply(input);
-          Collection<V> valuesForKey = multimap.get(key);
-          valueFunction.apply(input).forEachOrdered(valuesForKey::add);
-        },
-        (multimap1, multimap2) -> {
-          multimap1.putAll(multimap2);
-          return multimap1;
-        });
+    return CollectCollectors.flatteningToMultimap(keyFunction, valueFunction, multimapSupplier);
   }
 
   /**
@@ -647,11 +629,11 @@ public final class Multimaps {
   private static class UnmodifiableMultimap<K, V> extends ForwardingMultimap<K, V>
       implements Serializable {
     final Multimap<K, V> delegate;
-    @MonotonicNonNull transient Collection<Entry<K, V>> entries;
-    @MonotonicNonNull transient Multiset<K> keys;
-    @MonotonicNonNull transient Set<K> keySet;
-    @MonotonicNonNull transient Collection<V> values;
-    @MonotonicNonNull transient Map<K, Collection<V>> map;
+    @LazyInit transient @Nullable Collection<Entry<K, V>> entries;
+    @LazyInit transient @Nullable Multiset<K> keys;
+    @LazyInit transient @Nullable Set<K> keySet;
+    @LazyInit transient @Nullable Collection<V> values;
+    @LazyInit transient @Nullable Map<K, Collection<V>> map;
 
     UnmodifiableMultimap(final Multimap<K, V> delegate) {
       this.delegate = checkNotNull(delegate);
@@ -693,6 +675,11 @@ public final class Multimaps {
         entries = result = unmodifiableEntries(delegate.entries());
       }
       return result;
+    }
+
+    @Override
+    public void forEach(BiConsumer<? super K, ? super V> consumer) {
+      delegate.forEach(checkNotNull(consumer));
     }
 
     @Override

@@ -69,7 +69,6 @@ public final class Callables {
    * Wraps the given callable such that for the duration of {@link Callable#call} the thread that is
    * running will have the given name.
    *
-   *
    * @param callable The callable to wrap
    * @param nameSupplier The supplier of thread names, {@link Supplier#get get} will be called once
    *     for each invocation of the wrapped callable.
@@ -100,7 +99,6 @@ public final class Callables {
    * Wraps the given runnable such that for the duration of {@link Runnable#run} the thread that is
    * running with have the given name.
    *
-   *
    * @param task The Runnable to wrap
    * @param nameSupplier The supplier of thread names, {@link Supplier#get get} will be called once
    *     for each invocation of the wrapped callable.
@@ -129,9 +127,10 @@ public final class Callables {
   /** Tries to set name of the given {@link Thread}, returns true if successful. */
   @GwtIncompatible // threads
   private static boolean trySetName(final String threadName, Thread currentThread) {
-    // In AppEngine, this will always fail. Should we test for that explicitly using
-    // MoreExecutors.isAppEngine? More generally, is there a way to see if we have the modifyThread
-    // permission without catching an exception?
+    /*
+     * setName should usually succeed, but the security manager can prohibit it. Is there a way to
+     * see if we have the modifyThread permission without catching an exception?
+     */
     try {
       currentThread.setName(threadName);
       return true;

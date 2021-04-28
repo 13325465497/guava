@@ -24,6 +24,7 @@ import java.util.Set;
  * @author James Sexton
  * @param <N> Node parameter type
  */
+@ElementTypesAreNonnullByDefault
 interface BaseGraph<N> extends SuccessorsFunction<N>, PredecessorsFunction<N> {
   //
   // Graph-level accessors
@@ -55,6 +56,15 @@ interface BaseGraph<N> extends SuccessorsFunction<N>, PredecessorsFunction<N> {
 
   /** Returns the order of iteration for the elements of {@link #nodes()}. */
   ElementOrder<N> nodeOrder();
+
+  /**
+   * Returns an {@link ElementOrder} that specifies the order of iteration for the elements of
+   * {@link #edges()}, {@link #adjacentNodes(Object)}, {@link #predecessors(Object)}, {@link
+   * #successors(Object)} and {@link #incidentEdges(Object)}.
+   *
+   * @since 29.0
+   */
+  ElementOrder<N> incidentEdgeOrder();
 
   //
   // Element-level accessors

@@ -37,6 +37,7 @@ import com.google.common.annotations.GwtCompatible;
  * @since 7.0
  */
 @GwtCompatible
+@ElementTypesAreNonnullByDefault
 public final class Ascii {
 
   private Ascii() {}
@@ -541,7 +542,6 @@ public final class Ascii {
    *   <li>the appropriate truncation indicator may be locale-dependent
    *   <li>it is safe to use non-ASCII characters in the truncation indicator
    * </ul>
-   *
    *
    * @throws IllegalArgumentException if {@code maxLength} is less than the length of {@code
    *     truncationIndicator}
