@@ -16,12 +16,24 @@
 
 package com.google.common.base;
 
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableMap;
-import java.util.Arrays;
+import java.nio.CharBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link MoreObjects#toStringHelper(Object)}.
@@ -29,12 +41,13 @@ import junit.framework.TestCase;
  * @author Jason Lee
  */
 @GwtCompatible
+@NullUnmarked
 public class ToStringHelperTest extends TestCase {
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testConstructor_instance() {
     String toTest = MoreObjects.toStringHelper(this).toString();
-    assertEquals("ToStringHelperTest{}", toTest);
+    assertThat(toTest).isEqualTo("ToStringHelperTest{}");
   }
 
   public void testConstructorLenient_instance() {
@@ -45,7 +58,7 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testConstructor_innerClass() {
     String toTest = MoreObjects.toStringHelper(new TestClass()).toString();
-    assertEquals("TestClass{}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{}");
   }
 
   public void testConstructorLenient_innerClass() {
@@ -56,7 +69,7 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testConstructor_anonymousClass() {
     String toTest = MoreObjects.toStringHelper(new Object() {}).toString();
-    assertEquals("{}", toTest);
+    assertThat(toTest).isEqualTo("{}");
   }
 
   public void testConstructorLenient_anonymousClass() {
@@ -67,7 +80,7 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testConstructor_classObject() {
     String toTest = MoreObjects.toStringHelper(TestClass.class).toString();
-    assertEquals("TestClass{}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{}");
   }
 
   public void testConstructorLenient_classObject() {
@@ -77,7 +90,7 @@ public class ToStringHelperTest extends TestCase {
 
   public void testConstructor_stringObject() {
     String toTest = MoreObjects.toStringHelper("FooBar").toString();
-    assertEquals("FooBar{}", toTest);
+    assertThat(toTest).isEqualTo("FooBar{}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -85,7 +98,7 @@ public class ToStringHelperTest extends TestCase {
     // Local inner classes have names ending like "Outer.$1Inner"
     class LocalInnerClass {}
     String toTest = MoreObjects.toStringHelper(new LocalInnerClass()).toString();
-    assertEquals("LocalInnerClass{}", toTest);
+    assertThat(toTest).isEqualTo("LocalInnerClass{}");
   }
 
   public void testToStringHelperLenient_localInnerClass() {
@@ -97,15 +110,17 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToStringHelper_localInnerNestedClass() {
     class LocalInnerClass {
+      @SuppressWarnings("ClassCanBeStatic") // We want to test an inner class.
       class LocalInnerNestedClass {}
     }
     String toTest =
         MoreObjects.toStringHelper(new LocalInnerClass().new LocalInnerNestedClass()).toString();
-    assertEquals("LocalInnerNestedClass{}", toTest);
+    assertThat(toTest).isEqualTo("LocalInnerNestedClass{}");
   }
 
   public void testToStringHelperLenient_localInnerNestedClass() {
     class LocalInnerClass {
+      @SuppressWarnings("ClassCanBeStatic") // We want to test an inner class.
       class LocalInnerNestedClass {}
     }
     String toTest =
@@ -116,31 +131,31 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToStringHelper_moreThanNineAnonymousClasses() {
     // The nth anonymous class has a name ending like "Outer.$n"
-    Object o1 = new Object() {};
-    Object o2 = new Object() {};
-    Object o3 = new Object() {};
-    Object o4 = new Object() {};
-    Object o5 = new Object() {};
-    Object o6 = new Object() {};
-    Object o7 = new Object() {};
-    Object o8 = new Object() {};
-    Object o9 = new Object() {};
+    Object unused1 = new Object() {};
+    Object unused2 = new Object() {};
+    Object unused3 = new Object() {};
+    Object unused4 = new Object() {};
+    Object unused5 = new Object() {};
+    Object unused6 = new Object() {};
+    Object unused7 = new Object() {};
+    Object unused8 = new Object() {};
+    Object unused9 = new Object() {};
     Object o10 = new Object() {};
     String toTest = MoreObjects.toStringHelper(o10).toString();
-    assertEquals("{}", toTest);
+    assertThat(toTest).isEqualTo("{}");
   }
 
   public void testToStringHelperLenient_moreThanNineAnonymousClasses() {
     // The nth anonymous class has a name ending like "Outer.$n"
-    Object o1 = new Object() {};
-    Object o2 = new Object() {};
-    Object o3 = new Object() {};
-    Object o4 = new Object() {};
-    Object o5 = new Object() {};
-    Object o6 = new Object() {};
-    Object o7 = new Object() {};
-    Object o8 = new Object() {};
-    Object o9 = new Object() {};
+    Object unused1 = new Object() {};
+    Object unused2 = new Object() {};
+    Object unused3 = new Object() {};
+    Object unused4 = new Object() {};
+    Object unused5 = new Object() {};
+    Object unused6 = new Object() {};
+    Object unused7 = new Object() {};
+    Object unused8 = new Object() {};
+    Object unused9 = new Object() {};
     Object o10 = new Object() {};
     String toTest = MoreObjects.toStringHelper(o10).toString();
     assertTrue(toTest, toTest.matches(".*\\{\\}"));
@@ -150,21 +165,21 @@ public class ToStringHelperTest extends TestCase {
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_oneField() {
     String toTest = MoreObjects.toStringHelper(new TestClass()).add("field1", "Hello").toString();
-    assertEquals("TestClass{field1=Hello}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_oneIntegerField() {
     String toTest =
-        MoreObjects.toStringHelper(new TestClass()).add("field1", new Integer(42)).toString();
-    assertEquals("TestClass{field1=42}", toTest);
+        MoreObjects.toStringHelper(new TestClass()).add("field1", Integer.valueOf(42)).toString();
+    assertThat(toTest).isEqualTo("TestClass{field1=42}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_nullInteger() {
     String toTest =
         MoreObjects.toStringHelper(new TestClass()).add("field1", (Integer) null).toString();
-    assertEquals("TestClass{field1=null}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field1=null}");
   }
 
   public void testToStringLenient_oneField() {
@@ -174,7 +189,7 @@ public class ToStringHelperTest extends TestCase {
 
   public void testToStringLenient_oneIntegerField() {
     String toTest =
-        MoreObjects.toStringHelper(new TestClass()).add("field1", new Integer(42)).toString();
+        MoreObjects.toStringHelper(new TestClass()).add("field1", Integer.valueOf(42)).toString();
     assertTrue(toTest, toTest.matches(".*\\{field1\\=42\\}"));
   }
 
@@ -186,33 +201,31 @@ public class ToStringHelperTest extends TestCase {
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_complexFields() {
-
     Map<String, Integer> map =
         ImmutableMap.<String, Integer>builder().put("abc", 1).put("def", 2).put("ghi", 3).build();
     String toTest =
         MoreObjects.toStringHelper(new TestClass())
             .add("field1", "This is string.")
-            .add("field2", Arrays.asList("abc", "def", "ghi"))
+            .add("field2", asList("abc", "def", "ghi"))
             .add("field3", map)
             .toString();
-    final String expected =
+    String expected =
         "TestClass{"
             + "field1=This is string., field2=[abc, def, ghi], field3={abc=1, def=2, ghi=3}}";
 
-    assertEquals(expected, toTest);
+    assertThat(toTest).isEqualTo(expected);
   }
 
   public void testToStringLenient_complexFields() {
-
     Map<String, Integer> map =
         ImmutableMap.<String, Integer>builder().put("abc", 1).put("def", 2).put("ghi", 3).build();
     String toTest =
         MoreObjects.toStringHelper(new TestClass())
             .add("field1", "This is string.")
-            .add("field2", Arrays.asList("abc", "def", "ghi"))
+            .add("field2", asList("abc", "def", "ghi"))
             .add("field3", map)
             .toString();
-    final String expectedRegex =
+    String expectedRegex =
         ".*\\{"
             + "field1\\=This is string\\., "
             + "field2\\=\\[abc, def, ghi\\], "
@@ -221,44 +234,41 @@ public class ToStringHelperTest extends TestCase {
     assertTrue(toTest, toTest.matches(expectedRegex));
   }
 
+  @SuppressWarnings("nullness") // test of a bogus call
   public void testToString_addWithNullName() {
     MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(new TestClass());
-    try {
-      helper.add(null, "Hello");
-      fail("No exception was thrown.");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> helper.add(null, "Hello"));
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_addWithNullValue() {
-    final String result = MoreObjects.toStringHelper(new TestClass()).add("Hello", null).toString();
+    String result = MoreObjects.toStringHelper(new TestClass()).add("Hello", null).toString();
 
-    assertEquals("TestClass{Hello=null}", result);
+    assertThat(result).isEqualTo("TestClass{Hello=null}");
   }
 
   public void testToStringLenient_addWithNullValue() {
-    final String result = MoreObjects.toStringHelper(new TestClass()).add("Hello", null).toString();
+    String result = MoreObjects.toStringHelper(new TestClass()).add("Hello", null).toString();
     assertTrue(result, result.matches(".*\\{Hello\\=null\\}"));
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
-  public void testToString_ToStringTwice() {
+  public void testToString_toStringTwice() {
     MoreObjects.ToStringHelper helper =
         MoreObjects.toStringHelper(new TestClass())
             .add("field1", 1)
             .addValue("value1")
             .add("field2", "value2");
-    final String expected = "TestClass{field1=1, value1, field2=value2}";
+    String expected = "TestClass{field1=1, value1, field2=value2}";
 
-    assertEquals(expected, helper.toString());
+    assertThat(helper.toString()).isEqualTo(expected);
     // Call toString again
-    assertEquals(expected, helper.toString());
+    assertThat(helper.toString()).isEqualTo(expected);
 
     // Make sure the cached value is reset when we modify the helper at all
-    final String expected2 = "TestClass{field1=1, value1, field2=value2, 2}";
+    String expected2 = "TestClass{field1=1, value1, field2=value2, 2}";
     helper.addValue(2);
-    assertEquals(expected2, helper.toString());
+    assertThat(helper.toString()).isEqualTo(expected2);
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -270,9 +280,9 @@ public class ToStringHelperTest extends TestCase {
             .add("field2", "value2")
             .addValue(2)
             .toString();
-    final String expected = "TestClass{field1=1, value1, field2=value2, 2}";
+    String expected = "TestClass{field1=1, value1, field2=value2, 2}";
 
-    assertEquals(expected, toTest);
+    assertThat(toTest).isEqualTo(expected);
   }
 
   public void testToStringLenient_addValue() {
@@ -283,32 +293,32 @@ public class ToStringHelperTest extends TestCase {
             .add("field2", "value2")
             .addValue(2)
             .toString();
-    final String expected = ".*\\{field1\\=1, value1, field2\\=value2, 2\\}";
+    String expected = ".*\\{field1\\=1, value1, field2\\=value2, 2\\}";
 
     assertTrue(toTest, toTest.matches(expected));
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToString_addValueWithNullValue() {
-    final String result =
+    String result =
         MoreObjects.toStringHelper(new TestClass())
             .addValue(null)
             .addValue("Hello")
             .addValue(null)
             .toString();
-    final String expected = "TestClass{null, Hello, null}";
+    String expected = "TestClass{null, Hello, null}";
 
-    assertEquals(expected, result);
+    assertThat(result).isEqualTo(expected);
   }
 
   public void testToStringLenient_addValueWithNullValue() {
-    final String result =
+    String result =
         MoreObjects.toStringHelper(new TestClass())
             .addValue(null)
             .addValue("Hello")
             .addValue(null)
             .toString();
-    final String expected = ".*\\{null, Hello, null\\}";
+    String expected = ".*\\{null, Hello, null\\}";
 
     assertTrue(result, result.matches(expected));
   }
@@ -317,7 +327,14 @@ public class ToStringHelperTest extends TestCase {
   public void testToStringOmitNullValues_oneField() {
     String toTest =
         MoreObjects.toStringHelper(new TestClass()).omitNullValues().add("field1", null).toString();
-    assertEquals("TestClass{}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_oneField() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass()).omitEmptyValues().add("field1", "").toString();
+    assertThat(toTest).isEqualTo("TestClass{}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -329,7 +346,19 @@ public class ToStringHelperTest extends TestCase {
             .add("field2", "Googley")
             .add("field3", "World")
             .toString();
-    assertEquals("TestClass{field2=Googley, field3=World}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field2=Googley, field3=World}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_manyFieldsFirstEmpty() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .add("field1", "")
+            .add("field2", "Googley")
+            .add("field3", "World")
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{field2=Googley, field3=World}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -341,7 +370,19 @@ public class ToStringHelperTest extends TestCase {
             .add("field3", "World")
             .omitNullValues()
             .toString();
-    assertEquals("TestClass{field2=Googley, field3=World}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field2=Googley, field3=World}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_manyFieldsOmitAfterEmpty() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .add("field1", "")
+            .add("field2", "Googley")
+            .add("field3", "World")
+            .omitEmptyValues()
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{field2=Googley, field3=World}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -353,14 +394,33 @@ public class ToStringHelperTest extends TestCase {
             .add("field2", "Googley")
             .add("field3", null)
             .toString();
-    assertEquals("TestClass{field1=Hello, field2=Googley}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello, field2=Googley}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_manyFieldsLastEmpty() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .add("field1", "Hello")
+            .add("field2", "Googley")
+            .add("field3", "")
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello, field2=Googley}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
   public void testToStringOmitNullValues_oneValue() {
     String toTest =
+        MoreObjects.toStringHelper(new TestClass()).omitEmptyValues().addValue("").toString();
+    assertThat(toTest).isEqualTo("TestClass{}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_oneValue() {
+    String toTest =
         MoreObjects.toStringHelper(new TestClass()).omitNullValues().addValue(null).toString();
-    assertEquals("TestClass{}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -372,7 +432,19 @@ public class ToStringHelperTest extends TestCase {
             .addValue("Googley")
             .addValue("World")
             .toString();
-    assertEquals("TestClass{Googley, World}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{Googley, World}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_manyValuesFirstEmpty() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .addValue("")
+            .addValue("Googley")
+            .addValue("World")
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{Googley, World}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -384,7 +456,19 @@ public class ToStringHelperTest extends TestCase {
             .addValue("Googley")
             .addValue(null)
             .toString();
-    assertEquals("TestClass{Hello, Googley}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{Hello, Googley}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_manyValuesLastEmpty() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .addValue("Hello")
+            .addValue("Googley")
+            .addValue("")
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{Hello, Googley}");
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -404,8 +488,29 @@ public class ToStringHelperTest extends TestCase {
             .omitNullValues()
             .add("field3", "World")
             .toString();
-    assertEquals(expected, toTest1);
-    assertEquals(expected, toTest2);
+    assertThat(toTest1).isEqualTo(expected);
+    assertThat(toTest2).isEqualTo(expected);
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_differentOrder() {
+    String expected = "TestClass{field1=Hello, field2=Googley, field3=World}";
+    String toTest1 =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .add("field1", "Hello")
+            .add("field2", "Googley")
+            .add("field3", "World")
+            .toString();
+    String toTest2 =
+        MoreObjects.toStringHelper(new TestClass())
+            .add("field1", "Hello")
+            .add("field2", "Googley")
+            .omitEmptyValues()
+            .add("field3", "World")
+            .toString();
+    assertThat(toTest1).isEqualTo(expected);
+    assertThat(toTest2).isEqualTo(expected);
   }
 
   @GwtIncompatible // Class names are obfuscated in GWT
@@ -420,7 +525,93 @@ public class ToStringHelperTest extends TestCase {
             .omitNullValues()
             .add("field3", "World")
             .toString();
-    assertEquals("TestClass{field1=Hello, field2=Googley, field3=World}", toTest);
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello, field2=Googley, field3=World}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_canBeCalledManyTimes() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .omitEmptyValues()
+            .add("field1", "Hello")
+            .omitEmptyValues()
+            .add("field2", "Googley")
+            .omitEmptyValues()
+            .add("field3", "World")
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello, field2=Googley, field3=World}");
+  }
+
+  @GwtIncompatible // Class names are obfuscated in GWT
+  public void testToStringOmitEmptyValues_allEmptyTypes() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            // CharSequences
+            .add("field1", "")
+            .add("field2", new StringBuilder())
+            // nio CharBuffer (implements CharSequence) is tested separately below
+            // Collections and Maps
+            .add("field11", asList("Hello"))
+            .add("field12", new ArrayList<>())
+            .add("field13", new HashMap<>())
+            // Optionals
+            .add("field21", java.util.Optional.of("Googley"))
+            .add("field22", java.util.Optional.empty())
+            .add("field23", OptionalInt.empty())
+            .add("field24", OptionalLong.empty())
+            .add("field25", OptionalDouble.empty())
+            .add("field26", Optional.of("World"))
+            .add("field27", Optional.absent())
+            // Arrays
+            .add("field31", new Object[] {"!!!"})
+            .add("field32", new boolean[0])
+            .add("field33", new byte[0])
+            .add("field34", new char[0])
+            .add("field35", new short[0])
+            .add("field36", new int[0])
+            .add("field37", new long[0])
+            .add("field38", new float[0])
+            .add("field39", new double[0])
+            .add("field40", new Object[0])
+            .toString();
+    assertThat(toTest)
+        .isEqualTo(
+            "TestClass{field11=[Hello], field21=Optional[Googley], field26=Optional.of(World),"
+                + " field31=[!!!]}");
+  }
+
+  @J2ktIncompatible // J2kt CharBuffer does not implement CharSequence so not recognized as empty
+  @GwtIncompatible // CharBuffer not available
+  public void testToStringOmitEmptyValues_charBuffer() {
+    String toTest =
+        MoreObjects.toStringHelper(new TestClass())
+            .omitEmptyValues()
+            .add("field1", "Hello")
+            .add("field2", CharBuffer.allocate(0))
+            .toString();
+    assertThat(toTest).isEqualTo("TestClass{field1=Hello}");
+  }
+
+  public void testToStringHelperWithArrays() {
+    String[] strings = {"hello", "world"};
+    int[] ints = {2, 42};
+    Object[] objects = {"obj"};
+    @Nullable String[] arrayWithNull = new @Nullable String[] {null};
+    Object[] empty = {};
+    String toTest =
+        MoreObjects.toStringHelper("TSH")
+            .add("strings", strings)
+            .add("ints", ints)
+            .add("objects", objects)
+            .add("arrayWithNull", arrayWithNull)
+            .add("empty", empty)
+            .toString();
+    assertThat(toTest)
+        .isEqualTo(
+            "TSH{strings=[hello, world], ints=[2, 42], objects=[obj], arrayWithNull=[null],"
+                + " empty=[]}");
   }
 
   /** Test class for testing formatting of inner classes. */

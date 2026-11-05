@@ -19,69 +19,71 @@ package com.google.common.collect;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.Iterator;
 
 /** An ordering that uses the reverse of the natural order of the values. */
-@GwtCompatible(serializable = true)
-@SuppressWarnings({"unchecked", "rawtypes"}) // TODO(kevinb): the right way to explain this??
-final class ReverseNaturalOrdering extends Ordering<Comparable> implements Serializable {
+@GwtCompatible
+final class ReverseNaturalOrdering extends Ordering<Comparable<?>> implements Serializable {
   static final ReverseNaturalOrdering INSTANCE = new ReverseNaturalOrdering();
 
   @Override
-  public int compare(Comparable left, Comparable right) {
+  @SuppressWarnings("unchecked") // TODO(kevinb): the right way to explain this??
+  public int compare(Comparable<?> left, Comparable<?> right) {
     checkNotNull(left); // right null is caught later
     if (left == right) {
       return 0;
     }
 
-    return right.compareTo(left);
+    return ((Comparable<Object>) right).compareTo(left);
   }
 
   @Override
-  public <S extends Comparable> Ordering<S> reverse() {
+  public <S extends Comparable<?>> Ordering<S> reverse() {
     return Ordering.natural();
   }
 
   // Override the min/max methods to "hoist" delegation outside loops
 
   @Override
-  public <E extends Comparable> E min(E a, E b) {
+  public <E extends Comparable<?>> E min(E a, E b) {
     return NaturalOrdering.INSTANCE.max(a, b);
   }
 
   @Override
-  public <E extends Comparable> E min(E a, E b, E c, E... rest) {
+  public <E extends Comparable<?>> E min(E a, E b, E c, E... rest) {
     return NaturalOrdering.INSTANCE.max(a, b, c, rest);
   }
 
   @Override
-  public <E extends Comparable> E min(Iterator<E> iterator) {
+  public <E extends Comparable<?>> E min(Iterator<E> iterator) {
     return NaturalOrdering.INSTANCE.max(iterator);
   }
 
   @Override
-  public <E extends Comparable> E min(Iterable<E> iterable) {
+  public <E extends Comparable<?>> E min(Iterable<E> iterable) {
     return NaturalOrdering.INSTANCE.max(iterable);
   }
 
   @Override
-  public <E extends Comparable> E max(E a, E b) {
+  public <E extends Comparable<?>> E max(E a, E b) {
     return NaturalOrdering.INSTANCE.min(a, b);
   }
 
   @Override
-  public <E extends Comparable> E max(E a, E b, E c, E... rest) {
+  public <E extends Comparable<?>> E max(E a, E b, E c, E... rest) {
     return NaturalOrdering.INSTANCE.min(a, b, c, rest);
   }
 
   @Override
-  public <E extends Comparable> E max(Iterator<E> iterator) {
+  public <E extends Comparable<?>> E max(Iterator<E> iterator) {
     return NaturalOrdering.INSTANCE.min(iterator);
   }
 
   @Override
-  public <E extends Comparable> E max(Iterable<E> iterable) {
+  public <E extends Comparable<?>> E max(Iterable<E> iterable) {
     return NaturalOrdering.INSTANCE.min(iterable);
   }
 
@@ -97,5 +99,5 @@ final class ReverseNaturalOrdering extends Ordering<Comparable> implements Seria
 
   private ReverseNaturalOrdering() {}
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

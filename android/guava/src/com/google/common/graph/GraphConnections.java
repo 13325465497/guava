@@ -17,8 +17,9 @@
 package com.google.common.graph;
 
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.Iterator;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An interface for representing and manipulating an origin node's adjacent nodes and edge values in
@@ -37,11 +38,17 @@ interface GraphConnections<N, V> {
   Set<N> successors();
 
   /**
+   * Returns an iterator over the incident edges.
+   *
+   * @param thisNode The node that this all of the connections in this class are connected to.
+   */
+  Iterator<EndpointPair<N>> incidentEdgeIterator(N thisNode);
+
+  /**
    * Returns the value associated with the edge connecting the origin node to {@code node}, or null
    * if there is no such edge.
    */
-  @NullableDecl
-  V value(N node);
+  @Nullable V value(N node);
 
   /** Remove {@code node} from the set of predecessors. */
   void removePredecessor(N node);
@@ -51,7 +58,7 @@ interface GraphConnections<N, V> {
    * the edge connecting the two nodes.
    */
   @CanIgnoreReturnValue
-  V removeSuccessor(N node);
+  @Nullable V removeSuccessor(N node);
 
   /**
    * Add {@code node} as a predecessor to the origin node. In the case of an undirected graph, it
@@ -65,5 +72,5 @@ interface GraphConnections<N, V> {
    * the value previously associated with the edge connecting the two nodes.
    */
   @CanIgnoreReturnValue
-  V addSuccessor(N node, V value);
+  @Nullable V addSuccessor(N node, V value);
 }

@@ -16,13 +16,17 @@
 
 package com.google.common.io;
 
+import static org.junit.Assert.assertThrows;
+
 import java.io.ByteArrayOutputStream;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link CountingOutputStream}.
  *
  * @author Chris Nokleberg
  */
+@NullUnmarked
 public class CountingOutputStreamTest extends IoTestCase {
 
   public void testCount() throws Exception {
@@ -54,11 +58,7 @@ public class CountingOutputStreamTest extends IoTestCase {
     assertEquals(written, counter.getCount());
 
     // Test that illegal arguments do not affect count
-    try {
-      counter.write(data, 0, data.length + 1);
-      fail("expected exception");
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> counter.write(data, 0, data.length + 1));
     assertEquals(written, out.size());
     assertEquals(written, counter.getCount());
   }

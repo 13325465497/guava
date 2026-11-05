@@ -25,13 +25,21 @@ import static com.google.common.cache.TestingCacheLoaders.identityLoader;
 import static com.google.common.cache.TestingRemovalListeners.countingRemovalListener;
 import static com.google.common.cache.TestingRemovalListeners.queuingRemovalListener;
 import static com.google.common.cache.TestingWeighers.constantWeigher;
-import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.testing.SerializableTester.reserialize;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
+import static java.lang.Math.max;
+import static java.lang.Thread.State.WAITING;
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Equivalence;
 import com.google.common.base.Ticker;
 import com.google.common.cache.LocalCache.EntryFactory;
@@ -47,8 +55,7 @@ import com.google.common.cache.TestingRemovalListeners.QueuingRemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.testing.ConcurrentMapTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
@@ -56,13 +63,18 @@ import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import com.google.common.testing.FakeTicker;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.SerializableTester;
 import com.google.common.testing.TestLogHandler;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.SettableFuture;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import java.io.Serializable;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -76,10 +88,18 @@ import java.util.logging.LogRecord;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
-/** @author Charles Fry */
+/**
+ * @author Charles Fry
+ */
+@GwtIncompatible
+@J2ktIncompatible
 @SuppressWarnings("GuardedBy") // TODO(b/35466881): Fix or suppress.
+@NullUnmarked
 public class LocalCacheTest extends TestCase {
+  @AndroidIncompatible
   private static class TestStringCacheGenerator extends TestStringMapGenerator {
     private final CacheBuilder<? super String, ? super String> builder;
 
@@ -97,6 +117,7 @@ public class LocalCacheTest extends TestCase {
     }
   }
 
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTestSuite(LocalCacheTest.class);
@@ -217,38 +238,51 @@ public class LocalCacheTest extends TestCase {
   TestLogHandler logHandler;
 
   @Override
-  public void setUp() throws Exception {
+  protected void setUp() throws Exception {
     super.setUp();
     logHandler = new TestLogHandler();
     LocalCache.logger.addHandler(logHandler);
   }
 
   @Override
-  public void tearDown() throws Exception {
+  protected void tearDown() throws Exception {
     super.tearDown();
     LocalCache.logger.removeHandler(logHandler);
   }
 
   private Throwable popLoggedThrowable() {
     List<LogRecord> logRecords = logHandler.getStoredLogRecords();
-    assertSame(1, logRecords.size());
+    assertThat(logRecords).hasSize(1);
     LogRecord logRecord = logRecords.get(0);
     logHandler.clear();
     return logRecord.getThrown();
   }
 
   private void checkNothingLogged() {
-    assertTrue(logHandler.getStoredLogRecords().isEmpty());
+    assertThat(logHandler.getStoredLogRecords().isEmpty()).isTrue();
   }
 
   private void checkLogged(Throwable t) {
-    assertSame(t, popLoggedThrowable());
+    assertThat(popLoggedThrowable()).isEqualTo(t);
   }
+
+  /*
+   * TODO(cpovirk): Can we replace makeLocalCache with a call to builder.build()? Some tests may
+   * need access to LocalCache APIs, but maybe we can at least make makeLocalCache use
+   * builder.build() and then cast?
+   */
 
   private static <K, V> LocalCache<K, V> makeLocalCache(
       CacheBuilder<? super K, ? super V> builder) {
     return new LocalCache<>(builder, null);
   }
+
+  private static <K, V> LocalCache<K, V> makeLocalCache(
+      CacheBuilder<? super K, ? super V> builder, CacheLoader<? super K, V> loader) {
+    return new LocalCache<>(builder, loader);
+  }
+
+  // TODO(cpovirk): Inline createCacheBuilder()?
 
   private static CacheBuilder<Object, Object> createCacheBuilder() {
     return CacheBuilder.newBuilder();
@@ -259,33 +293,33 @@ public class LocalCacheTest extends TestCase {
   public void testDefaults() {
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder());
 
-    assertSame(Strength.STRONG, map.keyStrength);
-    assertSame(Strength.STRONG, map.valueStrength);
-    assertSame(map.keyStrength.defaultEquivalence(), map.keyEquivalence);
-    assertSame(map.valueStrength.defaultEquivalence(), map.valueEquivalence);
+    assertThat(map.keyStrength).isEqualTo(Strength.STRONG);
+    assertThat(map.valueStrength).isEqualTo(Strength.STRONG);
+    assertThat(map.keyEquivalence).isSameInstanceAs(map.keyStrength.defaultEquivalence());
+    assertThat(map.valueEquivalence).isSameInstanceAs(map.valueStrength.defaultEquivalence());
 
-    assertEquals(0, map.expireAfterAccessNanos);
-    assertEquals(0, map.expireAfterWriteNanos);
-    assertEquals(0, map.refreshNanos);
-    assertEquals(CacheBuilder.UNSET_INT, map.maxWeight);
+    assertThat(map.expireAfterAccessNanos).isEqualTo(0);
+    assertThat(map.expireAfterWriteNanos).isEqualTo(0);
+    assertThat(map.refreshNanos).isEqualTo(0);
+    assertThat(map.maxWeight).isEqualTo(CacheBuilder.UNSET_INT);
 
-    assertSame(EntryFactory.STRONG, map.entryFactory);
-    assertSame(CacheBuilder.NullListener.INSTANCE, map.removalListener);
-    assertSame(DISCARDING_QUEUE, map.removalNotificationQueue);
-    assertSame(NULL_TICKER, map.ticker);
+    assertThat(map.entryFactory).isEqualTo(EntryFactory.STRONG);
+    assertThat(map.removalListener).isSameInstanceAs(CacheBuilder.NullListener.INSTANCE);
+    assertThat(map.removalNotificationQueue).isSameInstanceAs(DISCARDING_QUEUE);
+    assertThat(map.ticker).isSameInstanceAs(NULL_TICKER);
 
-    assertEquals(4, map.concurrencyLevel);
+    assertThat(map.concurrencyLevel).isEqualTo(4);
 
     // concurrency level
     assertThat(map.segments).hasLength(4);
     // initial capacity / concurrency level
-    assertEquals(16 / map.segments.length, map.segments[0].table.length());
+    assertThat(map.segments[0].table.length()).isEqualTo(16 / map.segments.length);
 
-    assertFalse(map.evictsBySize());
-    assertFalse(map.expires());
-    assertFalse(map.expiresAfterWrite());
-    assertFalse(map.expiresAfterAccess());
-    assertFalse(map.refreshes());
+    assertThat(map.evictsBySize()).isFalse();
+    assertThat(map.expires()).isFalse();
+    assertThat(map.expiresAfterWrite()).isFalse();
+    assertThat(map.expiresAfterAccess()).isFalse();
+    assertThat(map.refreshes()).isFalse();
   }
 
   public void testSetKeyEquivalence() {
@@ -304,8 +338,8 @@ public class LocalCacheTest extends TestCase {
 
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().keyEquivalence(testEquivalence));
-    assertSame(testEquivalence, map.keyEquivalence);
-    assertSame(map.valueStrength.defaultEquivalence(), map.valueEquivalence);
+    assertThat(map.keyEquivalence).isSameInstanceAs(testEquivalence);
+    assertThat(map.valueEquivalence).isSameInstanceAs(map.valueStrength.defaultEquivalence());
   }
 
   public void testSetValueEquivalence() {
@@ -324,12 +358,12 @@ public class LocalCacheTest extends TestCase {
 
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().valueEquivalence(testEquivalence));
-    assertSame(testEquivalence, map.valueEquivalence);
-    assertSame(map.keyStrength.defaultEquivalence(), map.keyEquivalence);
+    assertThat(map.valueEquivalence).isSameInstanceAs(testEquivalence);
+    assertThat(map.keyEquivalence).isSameInstanceAs(map.keyStrength.defaultEquivalence());
   }
 
   public void testSetConcurrencyLevel() {
-    // round up to nearest power of two
+    // round up to the nearest power of two
 
     checkConcurrencyLevel(1, 1);
     checkConcurrencyLevel(2, 2);
@@ -348,7 +382,7 @@ public class LocalCacheTest extends TestCase {
   }
 
   public void testSetInitialCapacity() {
-    // share capacity over each segment, then round up to nearest power of two
+    // share capacity over each segment, then round up to the nearest power of two
 
     checkInitialCapacity(1, 0, 1);
     checkInitialCapacity(1, 1, 1);
@@ -389,7 +423,7 @@ public class LocalCacheTest extends TestCase {
                 .concurrencyLevel(concurrencyLevel)
                 .initialCapacity(initialCapacity));
     for (int i = 0; i < map.segments.length; i++) {
-      assertEquals(segmentSize, map.segments[i].table.length());
+      assertThat(map.segments[i].table.length()).isEqualTo(segmentSize);
     }
   }
 
@@ -426,13 +460,15 @@ public class LocalCacheTest extends TestCase {
                 .initialCapacity(initialCapacity)
                 .maximumSize(maxSize));
     long totalCapacity = 0;
-    assertTrue(
-        "segments=" + map.segments.length + ", maxSize=" + maxSize,
-        map.segments.length <= Math.max(1, maxSize / 10));
+    assertWithMessage("segments=%s, maxSize=%s", map.segments.length, maxSize)
+        .that((long) map.segments.length)
+        .isAtMost(max(1, maxSize / 10));
     for (int i = 0; i < map.segments.length; i++) {
       totalCapacity += map.segments[i].maxSegmentWeight;
     }
-    assertTrue("totalCapacity=" + totalCapacity + ", maxSize=" + maxSize, totalCapacity == maxSize);
+    assertWithMessage("totalCapacity=%s, maxSize=%s", totalCapacity, maxSize)
+        .that(totalCapacity)
+        .isEqualTo(maxSize);
 
     map =
         makeLocalCache(
@@ -441,84 +477,132 @@ public class LocalCacheTest extends TestCase {
                 .initialCapacity(initialCapacity)
                 .maximumWeight(maxSize)
                 .weigher(constantWeigher(1)));
-    assertTrue(
-        "segments=" + map.segments.length + ", maxSize=" + maxSize,
-        map.segments.length <= Math.max(1, maxSize / 10));
+    assertWithMessage("segments=%s, maxSize=%s", map.segments.length, maxSize)
+        .that((long) map.segments.length)
+        .isAtMost(max(1, maxSize / 10));
     totalCapacity = 0;
     for (int i = 0; i < map.segments.length; i++) {
       totalCapacity += map.segments[i].maxSegmentWeight;
     }
-    assertTrue("totalCapacity=" + totalCapacity + ", maxSize=" + maxSize, totalCapacity == maxSize);
+    assertWithMessage("totalCapacity=%s, maxSize=%s", totalCapacity, maxSize)
+        .that(totalCapacity)
+        .isEqualTo(maxSize);
   }
 
   public void testSetWeigher() {
-    Weigher<Object, Object> testWeigher =
-        new Weigher<Object, Object>() {
-          @Override
-          public int weigh(Object key, Object value) {
-            return 42;
-          }
-        };
+    Weigher<Object, Object> testWeigher = (key, value) -> 42;
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().maximumWeight(1).weigher(testWeigher));
-    assertSame(testWeigher, map.weigher);
+    assertThat(map.weigher).isSameInstanceAs(testWeigher);
   }
 
   public void testSetWeakKeys() {
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().weakKeys());
     checkStrength(map, Strength.WEAK, Strength.STRONG);
-    assertSame(EntryFactory.WEAK, map.entryFactory);
+    assertThat(map.entryFactory).isEqualTo(EntryFactory.WEAK);
   }
 
   public void testSetWeakValues() {
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().weakValues());
     checkStrength(map, Strength.STRONG, Strength.WEAK);
-    assertSame(EntryFactory.STRONG, map.entryFactory);
+    assertThat(map.entryFactory).isEqualTo(EntryFactory.STRONG);
   }
 
   public void testSetSoftValues() {
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().softValues());
     checkStrength(map, Strength.STRONG, Strength.SOFT);
-    assertSame(EntryFactory.STRONG, map.entryFactory);
+    assertThat(map.entryFactory).isEqualTo(EntryFactory.STRONG);
   }
 
   private static void checkStrength(
       LocalCache<Object, Object> map, Strength keyStrength, Strength valueStrength) {
-    assertSame(keyStrength, map.keyStrength);
-    assertSame(valueStrength, map.valueStrength);
-    assertSame(keyStrength.defaultEquivalence(), map.keyEquivalence);
-    assertSame(valueStrength.defaultEquivalence(), map.valueEquivalence);
+    assertThat(map.keyStrength).isEqualTo(keyStrength);
+    assertThat(map.valueStrength).isEqualTo(valueStrength);
+    assertThat(map.keyEquivalence).isSameInstanceAs(keyStrength.defaultEquivalence());
+    assertThat(map.valueEquivalence).isSameInstanceAs(valueStrength.defaultEquivalence());
   }
 
   public void testSetExpireAfterWrite() {
     long duration = 42;
-    TimeUnit unit = TimeUnit.SECONDS;
+    TimeUnit unit = SECONDS;
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().expireAfterWrite(duration, unit));
-    assertEquals(unit.toNanos(duration), map.expireAfterWriteNanos);
+    assertThat(map.expireAfterWriteNanos).isEqualTo(unit.toNanos(duration));
   }
 
   public void testSetExpireAfterAccess() {
     long duration = 42;
-    TimeUnit unit = TimeUnit.SECONDS;
+    TimeUnit unit = SECONDS;
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().expireAfterAccess(duration, unit));
-    assertEquals(unit.toNanos(duration), map.expireAfterAccessNanos);
+    assertThat(map.expireAfterAccessNanos).isEqualTo(unit.toNanos(duration));
   }
 
   public void testSetRefresh() {
     long duration = 42;
-    TimeUnit unit = TimeUnit.SECONDS;
+    TimeUnit unit = SECONDS;
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().refreshAfterWrite(duration, unit));
-    assertEquals(unit.toNanos(duration), map.refreshNanos);
+    assertThat(map.refreshNanos).isEqualTo(unit.toNanos(duration));
+  }
+
+  public void testLongAsyncRefresh() throws Exception {
+    FakeTicker ticker = new FakeTicker();
+    CountDownLatch reloadStarted = new CountDownLatch(1);
+    SettableFuture<Thread> threadAboutToBlockForRefresh = SettableFuture.create();
+
+    ListeningExecutorService refreshExecutor = listeningDecorator(newSingleThreadExecutor());
+    try {
+      CacheBuilder<Object, Object> builder =
+          createCacheBuilder()
+              .expireAfterWrite(100, MILLISECONDS)
+              .refreshAfterWrite(5, MILLISECONDS)
+              .ticker(ticker);
+
+      CacheLoader<String, String> loader =
+          new CacheLoader<String, String>() {
+            @Override
+            public String load(String key) {
+              return key + "Load";
+            }
+
+            @Override
+            @SuppressWarnings("ThreadPriorityCheck") // TODO(b/175898629): Consider onSpinWait.
+            public ListenableFuture<String> reload(String key, String oldValue) {
+              return refreshExecutor.submit(
+                  () -> {
+                    reloadStarted.countDown();
+
+                    Thread blockingForRefresh = threadAboutToBlockForRefresh.get();
+                    while (blockingForRefresh.isAlive()
+                        && blockingForRefresh.getState() != WAITING) {
+                      Thread.yield();
+                    }
+
+                    return key + "Reload";
+                  });
+            }
+          };
+      LocalCache<String, String> cache = makeLocalCache(builder, loader);
+
+      assertThat(cache.getOrLoad("test")).isEqualTo("testLoad");
+
+      ticker.advance(10, MILLISECONDS); // so that the next call will trigger refresh
+      assertThat(cache.getOrLoad("test")).isEqualTo("testLoad");
+      reloadStarted.await();
+      ticker.advance(500, MILLISECONDS); // so that the entry expires during the reload
+      threadAboutToBlockForRefresh.set(Thread.currentThread());
+      assertThat(cache.getOrLoad("test")).isEqualTo("testReload");
+    } finally {
+      refreshExecutor.shutdown();
+    }
   }
 
   public void testSetRemovalListener() {
     RemovalListener<Object, Object> testListener = TestingRemovalListeners.nullRemovalListener();
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().removalListener(testListener));
-    assertSame(testListener, map.removalListener);
+    assertThat(map.removalListener).isSameInstanceAs(testListener);
   }
 
   public void testSetTicker() {
@@ -530,19 +614,25 @@ public class LocalCacheTest extends TestCase {
           }
         };
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().ticker(testTicker));
-    assertSame(testTicker, map.ticker);
+    assertThat(map.ticker).isSameInstanceAs(testTicker);
   }
 
   public void testEntryFactory() {
-    assertSame(EntryFactory.STRONG, EntryFactory.getFactory(Strength.STRONG, false, false));
-    assertSame(EntryFactory.STRONG_ACCESS, EntryFactory.getFactory(Strength.STRONG, true, false));
-    assertSame(EntryFactory.STRONG_WRITE, EntryFactory.getFactory(Strength.STRONG, false, true));
-    assertSame(
-        EntryFactory.STRONG_ACCESS_WRITE, EntryFactory.getFactory(Strength.STRONG, true, true));
-    assertSame(EntryFactory.WEAK, EntryFactory.getFactory(Strength.WEAK, false, false));
-    assertSame(EntryFactory.WEAK_ACCESS, EntryFactory.getFactory(Strength.WEAK, true, false));
-    assertSame(EntryFactory.WEAK_WRITE, EntryFactory.getFactory(Strength.WEAK, false, true));
-    assertSame(EntryFactory.WEAK_ACCESS_WRITE, EntryFactory.getFactory(Strength.WEAK, true, true));
+    assertThat(EntryFactory.getFactory(Strength.STRONG, false, false))
+        .isEqualTo(EntryFactory.STRONG);
+    assertThat(EntryFactory.getFactory(Strength.STRONG, true, false))
+        .isEqualTo(EntryFactory.STRONG_ACCESS);
+    assertThat(EntryFactory.getFactory(Strength.STRONG, false, true))
+        .isEqualTo(EntryFactory.STRONG_WRITE);
+    assertThat(EntryFactory.getFactory(Strength.STRONG, true, true))
+        .isEqualTo(EntryFactory.STRONG_ACCESS_WRITE);
+    assertThat(EntryFactory.getFactory(Strength.WEAK, false, false)).isEqualTo(EntryFactory.WEAK);
+    assertThat(EntryFactory.getFactory(Strength.WEAK, true, false))
+        .isEqualTo(EntryFactory.WEAK_ACCESS);
+    assertThat(EntryFactory.getFactory(Strength.WEAK, false, true))
+        .isEqualTo(EntryFactory.WEAK_WRITE);
+    assertThat(EntryFactory.getFactory(Strength.WEAK, true, true))
+        .isEqualTo(EntryFactory.WEAK_ACCESS_WRITE);
   }
 
   // computation tests
@@ -550,13 +640,13 @@ public class LocalCacheTest extends TestCase {
   public void testCompute() throws ExecutionException {
     CountingLoader loader = new CountingLoader();
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder());
-    assertEquals(0, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(0);
 
     Object key = new Object();
     Object value = map.get(key, loader);
-    assertEquals(1, loader.getCount());
-    assertEquals(value, map.get(key, loader));
-    assertEquals(1, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(1);
+    assertThat(map.get(key, loader)).isEqualTo(value);
+    assertThat(loader.getCount()).isEqualTo(1);
   }
 
   public void testRecordReadOnCompute() throws ExecutionException {
@@ -564,8 +654,8 @@ public class LocalCacheTest extends TestCase {
     for (CacheBuilder<Object, Object> builder : allEvictingMakers()) {
       LocalCache<Object, Object> map = makeLocalCache(builder.concurrencyLevel(1));
       Segment<Object, Object> segment = map.segments[0];
-      List<ReferenceEntry<Object, Object>> writeOrder = Lists.newLinkedList();
-      List<ReferenceEntry<Object, Object>> readOrder = Lists.newLinkedList();
+      List<ReferenceEntry<Object, Object>> writeOrder = new LinkedList<>();
+      List<ReferenceEntry<Object, Object>> readOrder = new LinkedList<>();
       for (int i = 0; i < SMALL_MAX_SIZE; i++) {
         Object key = new Object();
         int hash = map.hash(key);
@@ -578,11 +668,11 @@ public class LocalCacheTest extends TestCase {
 
       checkEvictionQueues(map, segment, readOrder, writeOrder);
       checkExpirationTimes(map);
-      assertTrue(segment.recencyQueue.isEmpty());
+      assertThat(segment.recencyQueue.isEmpty()).isTrue();
 
       // access some of the elements
       Random random = new Random();
-      List<ReferenceEntry<Object, Object>> reads = Lists.newArrayList();
+      List<ReferenceEntry<Object, Object>> reads = new ArrayList<>();
       Iterator<ReferenceEntry<Object, Object>> i = readOrder.iterator();
       while (i.hasNext()) {
         ReferenceEntry<Object, Object> entry = i.next();
@@ -590,7 +680,7 @@ public class LocalCacheTest extends TestCase {
           map.get(entry.getKey(), loader);
           reads.add(entry);
           i.remove();
-          assertTrue(segment.recencyQueue.size() <= DRAIN_THRESHOLD);
+          assertThat(segment.recencyQueue.size()).isAtMost(DRAIN_THRESHOLD);
         }
       }
       int undrainedIndex = reads.size() - segment.recencyQueue.size();
@@ -605,14 +695,14 @@ public class LocalCacheTest extends TestCase {
   public void testComputeExistingEntry() throws ExecutionException {
     CountingLoader loader = new CountingLoader();
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder());
-    assertEquals(0, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(0);
 
     Object key = new Object();
     Object value = new Object();
     map.put(key, value);
 
-    assertEquals(value, map.get(key, loader));
-    assertEquals(0, loader.getCount());
+    assertThat(map.get(key, loader)).isEqualTo(value);
+    assertThat(loader.getCount()).isEqualTo(0);
   }
 
   public void testComputePartiallyCollectedKey() throws ExecutionException {
@@ -621,7 +711,7 @@ public class LocalCacheTest extends TestCase {
     LocalCache<Object, Object> map = makeLocalCache(builder);
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(0, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(0);
 
     Object key = new Object();
     int hash = map.hash(key);
@@ -632,16 +722,16 @@ public class LocalCacheTest extends TestCase {
     DummyValueReference<Object, Object> valueRef = DummyValueReference.create(value);
     entry.setValueReference(valueRef);
     table.set(index, entry);
-    segment.count++;
+    incrementCount(segment);
 
-    assertSame(value, map.get(key, loader));
-    assertEquals(0, loader.getCount());
-    assertEquals(1, segment.count);
+    assertThat(map.get(key, loader)).isSameInstanceAs(value);
+    assertThat(loader.getCount()).isEqualTo(0);
+    assertThat(segment.count).isEqualTo(1);
 
     entry.clearKey();
-    assertNotSame(value, map.get(key, loader));
-    assertEquals(1, loader.getCount());
-    assertEquals(2, segment.count);
+    assertThat(map.get(key, loader)).isNotSameInstanceAs(value);
+    assertThat(loader.getCount()).isEqualTo(1);
+    assertThat(segment.count).isEqualTo(2);
   }
 
   public void testComputePartiallyCollectedValue() throws ExecutionException {
@@ -650,7 +740,7 @@ public class LocalCacheTest extends TestCase {
     LocalCache<Object, Object> map = makeLocalCache(builder);
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(0, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(0);
 
     Object key = new Object();
     int hash = map.hash(key);
@@ -661,33 +751,31 @@ public class LocalCacheTest extends TestCase {
     DummyValueReference<Object, Object> valueRef = DummyValueReference.create(value);
     entry.setValueReference(valueRef);
     table.set(index, entry);
-    segment.count++;
+    incrementCount(segment);
 
-    assertSame(value, map.get(key, loader));
-    assertEquals(0, loader.getCount());
-    assertEquals(1, segment.count);
+    assertThat(map.get(key, loader)).isSameInstanceAs(value);
+    assertThat(loader.getCount()).isEqualTo(0);
+    assertThat(segment.count).isEqualTo(1);
 
     valueRef.clear();
-    assertNotSame(value, map.get(key, loader));
-    assertEquals(1, loader.getCount());
-    assertEquals(1, segment.count);
+    assertThat(map.get(key, loader)).isNotSameInstanceAs(value);
+    assertThat(loader.getCount()).isEqualTo(1);
+    assertThat(segment.count).isEqualTo(1);
   }
 
-  @AndroidIncompatible // Perhaps emulator clock does not update between the two get() calls?
   public void testComputeExpiredEntry() throws ExecutionException {
-    CacheBuilder<Object, Object> builder =
-        createCacheBuilder().expireAfterWrite(1, TimeUnit.NANOSECONDS);
+    CacheBuilder<Object, Object> builder = createCacheBuilder().expireAfterWrite(1, NANOSECONDS);
     CountingLoader loader = new CountingLoader();
     LocalCache<Object, Object> map = makeLocalCache(builder);
-    assertEquals(0, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(0);
 
     Object key = new Object();
     Object one = map.get(key, loader);
-    assertEquals(1, loader.getCount());
+    assertThat(loader.getCount()).isEqualTo(1);
 
     Object two = map.get(key, loader);
-    assertNotSame(one, two);
-    assertEquals(2, loader.getCount());
+    assertThat(two).isNotSameInstanceAs(one);
+    assertThat(loader.getCount()).isEqualTo(2);
   }
 
   public void testValues() {
@@ -695,18 +783,18 @@ public class LocalCacheTest extends TestCase {
     map.put("foo", "bar");
     map.put("baz", "bar");
     map.put("quux", "quux");
-    assertFalse(map.values() instanceof Set);
-    assertTrue(map.values().removeAll(ImmutableSet.of("bar")));
-    assertEquals(1, map.size());
+    assertThat(map.values() instanceof Set).isFalse();
+    assertThat(map.values().removeAll(ImmutableSet.of("bar"))).isTrue();
+    assertThat(map).hasSize(1);
   }
 
   public void testCopyEntry_computing() {
-    final CountDownLatch startSignal = new CountDownLatch(1);
-    final CountDownLatch computingSignal = new CountDownLatch(1);
-    final CountDownLatch doneSignal = new CountDownLatch(2);
-    final Object computedObject = new Object();
+    CountDownLatch startSignal = new CountDownLatch(1);
+    CountDownLatch computingSignal = new CountDownLatch(1);
+    CountDownLatch doneSignal = new CountDownLatch(2);
+    Object computedObject = new Object();
 
-    final CacheLoader<Object, Object> loader =
+    CacheLoader<Object, Object> loader =
         new CacheLoader<Object, Object>() {
           @Override
           public Object load(Object key) throws Exception {
@@ -719,12 +807,12 @@ public class LocalCacheTest extends TestCase {
     QueuingRemovalListener<Object, Object> listener = queuingRemovalListener();
     CacheBuilder<Object, Object> builder =
         createCacheBuilder().concurrencyLevel(1).removalListener(listener);
-    final LocalCache<Object, Object> map = makeLocalCache(builder);
+    LocalCache<Object, Object> map = makeLocalCache(builder);
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
-    final Object one = new Object();
+    Object one = new Object();
     int hash = map.hash(one);
     int index = hash & (table.length() - 1);
 
@@ -765,7 +853,7 @@ public class LocalCacheTest extends TestCase {
     @SuppressWarnings("unchecked")
     LoadingValueReference<Object, Object> valueReference =
         (LoadingValueReference) newEntry.getValueReference();
-    assertFalse(valueReference.futureValue.isDone());
+    assertThat(valueReference.futureValue.isDone()).isFalse();
     startSignal.countDown();
 
     try {
@@ -775,24 +863,21 @@ public class LocalCacheTest extends TestCase {
     }
 
     map.cleanUp(); // force notifications
-    assertTrue(listener.isEmpty());
-    assertTrue(map.containsKey(one));
-    assertEquals(1, map.size());
-    assertSame(computedObject, map.get(one));
+    assertThat(listener.isEmpty()).isTrue();
+    assertThat(map.containsKey(one)).isTrue();
+    assertThat(map).hasSize(1);
+    assertThat(map.get(one)).isSameInstanceAs(computedObject);
   }
 
   public void testRemovalListenerCheckedException() {
-    final RuntimeException e = new RuntimeException();
+    RuntimeException e = new RuntimeException();
     RemovalListener<Object, Object> listener =
-        new RemovalListener<Object, Object>() {
-          @Override
-          public void onRemoval(RemovalNotification<Object, Object> notification) {
-            throw e;
-          }
+        unused -> {
+          throw e;
         };
 
     CacheBuilder<Object, Object> builder = createCacheBuilder().removalListener(listener);
-    final LocalCache<Object, Object> cache = makeLocalCache(builder);
+    LocalCache<Object, Object> cache = makeLocalCache(builder);
     Object key = new Object();
     cache.put(key, new Object());
     checkNothingLogged();
@@ -802,12 +887,12 @@ public class LocalCacheTest extends TestCase {
   }
 
   public void testRemovalListener_replaced_computing() {
-    final CountDownLatch startSignal = new CountDownLatch(1);
-    final CountDownLatch computingSignal = new CountDownLatch(1);
-    final CountDownLatch doneSignal = new CountDownLatch(1);
-    final Object computedObject = new Object();
+    CountDownLatch startSignal = new CountDownLatch(1);
+    CountDownLatch computingSignal = new CountDownLatch(1);
+    CountDownLatch doneSignal = new CountDownLatch(1);
+    Object computedObject = new Object();
 
-    final CacheLoader<Object, Object> loader =
+    CacheLoader<Object, Object> loader =
         new CacheLoader<Object, Object>() {
           @Override
           public Object load(Object key) throws Exception {
@@ -819,11 +904,11 @@ public class LocalCacheTest extends TestCase {
 
     QueuingRemovalListener<Object, Object> listener = queuingRemovalListener();
     CacheBuilder<Object, Object> builder = createCacheBuilder().removalListener(listener);
-    final LocalCache<Object, Object> map = makeLocalCache(builder);
-    assertTrue(listener.isEmpty());
+    LocalCache<Object, Object> map = makeLocalCache(builder);
+    assertThat(listener.isEmpty()).isTrue();
 
-    final Object one = new Object();
-    final Object two = new Object();
+    Object one = new Object();
+    Object two = new Object();
 
     new Thread() {
       @Override
@@ -844,7 +929,7 @@ public class LocalCacheTest extends TestCase {
     }
 
     map.put(one, two);
-    assertSame(two, map.get(one));
+    assertThat(map.get(one)).isSameInstanceAs(two);
     startSignal.countDown();
 
     try {
@@ -855,10 +940,10 @@ public class LocalCacheTest extends TestCase {
 
     map.cleanUp(); // force notifications
     assertNotified(listener, one, computedObject, RemovalCause.REPLACED);
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
   }
 
-  public void testSegmentRefresh_duplicate() throws ExecutionException {
+  public void testSegmentRefresh_duplicate() {
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().concurrencyLevel(1));
     Segment<Object, Object> segment = map.segments[0];
 
@@ -873,7 +958,7 @@ public class LocalCacheTest extends TestCase {
     valueRef.setLoading(true);
     entry.setValueReference(valueRef);
     table.set(index, entry);
-    assertNull(segment.refresh(key, hash, identityLoader(), false));
+    assertThat(segment.refresh(key, hash, identityLoader(), false)).isNull();
   }
 
   // Removal listener tests
@@ -881,7 +966,7 @@ public class LocalCacheTest extends TestCase {
   public void testRemovalListener_explicit() {
     QueuingRemovalListener<Object, Object> listener = queuingRemovalListener();
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().removalListener(listener));
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     Object one = new Object();
     Object two = new Object();
@@ -916,13 +1001,13 @@ public class LocalCacheTest extends TestCase {
     i.remove();
     assertNotified(listener, five, six, RemovalCause.EXPLICIT);
 
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
   }
 
   public void testRemovalListener_replaced() {
     QueuingRemovalListener<Object, Object> listener = queuingRemovalListener();
     LocalCache<Object, Object> map = makeLocalCache(createCacheBuilder().removalListener(listener));
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     Object one = new Object();
     Object two = new Object();
@@ -952,7 +1037,7 @@ public class LocalCacheTest extends TestCase {
         makeLocalCache(
             createCacheBuilder().concurrencyLevel(1).softValues().removalListener(listener));
     Segment<Object, Object> segment = map.segments[0];
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     Object one = new Object();
     Object two = new Object();
@@ -960,14 +1045,14 @@ public class LocalCacheTest extends TestCase {
 
     map.put(one, two);
     map.put(two, three);
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     int hash = map.hash(one);
     ReferenceEntry<Object, Object> entry = segment.getEntry(one, hash);
     map.reclaimValue(entry.getValueReference());
     assertNotified(listener, one, two, RemovalCause.COLLECTED);
 
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
   }
 
   public void testRemovalListener_expired() {
@@ -977,10 +1062,10 @@ public class LocalCacheTest extends TestCase {
         makeLocalCache(
             createCacheBuilder()
                 .concurrencyLevel(1)
-                .expireAfterWrite(3, TimeUnit.NANOSECONDS)
+                .expireAfterWrite(3, NANOSECONDS)
                 .ticker(ticker)
                 .removalListener(listener));
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     Object one = new Object();
     Object two = new Object();
@@ -993,12 +1078,12 @@ public class LocalCacheTest extends TestCase {
     map.put(two, three);
     ticker.advance(1);
     map.put(three, four);
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
     ticker.advance(1);
     map.put(four, five);
     assertNotified(listener, one, two, RemovalCause.EXPIRED);
 
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
   }
 
   public void testRemovalListener_size() {
@@ -1006,7 +1091,7 @@ public class LocalCacheTest extends TestCase {
     LocalCache<Object, Object> map =
         makeLocalCache(
             createCacheBuilder().concurrencyLevel(1).maximumSize(2).removalListener(listener));
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
 
     Object one = new Object();
     Object two = new Object();
@@ -1015,19 +1100,19 @@ public class LocalCacheTest extends TestCase {
 
     map.put(one, two);
     map.put(two, three);
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
     map.put(three, four);
     assertNotified(listener, one, two, RemovalCause.SIZE);
 
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
   }
 
   static <K, V> void assertNotified(
       QueuingRemovalListener<K, V> listener, K key, V value, RemovalCause cause) {
     RemovalNotification<K, V> notification = listener.remove();
-    assertSame(key, notification.getKey());
-    assertSame(value, notification.getValue());
-    assertSame(cause, notification.getCause());
+    assertThat(notification.getKey()).isSameInstanceAs(key);
+    assertThat(notification.getValue()).isSameInstanceAs(value);
+    assertThat(notification.getCause()).isEqualTo(cause);
   }
 
   // Segment core tests
@@ -1041,26 +1126,26 @@ public class LocalCacheTest extends TestCase {
       int hashOne = map.hash(keyOne);
       ReferenceEntry<Object, Object> entryOne = map.newEntry(keyOne, hashOne, null);
       ValueReference<Object, Object> valueRefOne = map.newValueReference(entryOne, valueOne, 1);
-      assertSame(valueOne, valueRefOne.get());
+      assertThat(valueRefOne.get()).isSameInstanceAs(valueOne);
       entryOne.setValueReference(valueRefOne);
 
-      assertSame(keyOne, entryOne.getKey());
-      assertEquals(hashOne, entryOne.getHash());
-      assertNull(entryOne.getNext());
-      assertSame(valueRefOne, entryOne.getValueReference());
+      assertThat(entryOne.getKey()).isSameInstanceAs(keyOne);
+      assertThat(entryOne.getHash()).isEqualTo(hashOne);
+      assertThat(entryOne.getNext()).isNull();
+      assertThat(entryOne.getValueReference()).isSameInstanceAs(valueRefOne);
 
       Object keyTwo = new Object();
       Object valueTwo = new Object();
       int hashTwo = map.hash(keyTwo);
       ReferenceEntry<Object, Object> entryTwo = map.newEntry(keyTwo, hashTwo, entryOne);
       ValueReference<Object, Object> valueRefTwo = map.newValueReference(entryTwo, valueTwo, 1);
-      assertSame(valueTwo, valueRefTwo.get());
+      assertThat(valueRefTwo.get()).isSameInstanceAs(valueTwo);
       entryTwo.setValueReference(valueRefTwo);
 
-      assertSame(keyTwo, entryTwo.getKey());
-      assertEquals(hashTwo, entryTwo.getHash());
-      assertSame(entryOne, entryTwo.getNext());
-      assertSame(valueRefTwo, entryTwo.getValueReference());
+      assertThat(entryTwo.getKey()).isSameInstanceAs(keyTwo);
+      assertThat(entryTwo.getHash()).isEqualTo(hashTwo);
+      assertThat(entryTwo.getNext()).isSameInstanceAs(entryOne);
+      assertThat(entryTwo.getValueReference()).isSameInstanceAs(valueRefTwo);
     }
   }
 
@@ -1088,17 +1173,17 @@ public class LocalCacheTest extends TestCase {
       assertConnected(map, entryOne, entryTwo);
 
       ReferenceEntry<Object, Object> copyOne = map.copyEntry(entryOne, null);
-      assertSame(keyOne, entryOne.getKey());
-      assertEquals(hashOne, entryOne.getHash());
-      assertNull(entryOne.getNext());
-      assertSame(valueOne, copyOne.getValueReference().get());
+      assertThat(entryOne.getKey()).isSameInstanceAs(keyOne);
+      assertThat(entryOne.getHash()).isEqualTo(hashOne);
+      assertThat(entryOne.getNext()).isNull();
+      assertThat(copyOne.getValueReference().get()).isSameInstanceAs(valueOne);
       assertConnected(map, copyOne, entryTwo);
 
       ReferenceEntry<Object, Object> copyTwo = map.copyEntry(entryTwo, copyOne);
-      assertSame(keyTwo, copyTwo.getKey());
-      assertEquals(hashTwo, copyTwo.getHash());
-      assertSame(copyOne, copyTwo.getNext());
-      assertSame(valueTwo, copyTwo.getValueReference().get());
+      assertThat(copyTwo.getKey()).isSameInstanceAs(keyTwo);
+      assertThat(copyTwo.getHash()).isEqualTo(hashTwo);
+      assertThat(copyTwo.getNext()).isSameInstanceAs(copyOne);
+      assertThat(copyTwo.getValueReference().get()).isSameInstanceAs(valueTwo);
       assertConnected(map, copyOne, copyTwo);
     }
   }
@@ -1106,10 +1191,10 @@ public class LocalCacheTest extends TestCase {
   private static <K, V> void assertConnected(
       LocalCache<K, V> map, ReferenceEntry<K, V> one, ReferenceEntry<K, V> two) {
     if (map.usesWriteQueue()) {
-      assertSame(two, one.getNextInWriteQueue());
+      assertThat(one.getNextInWriteQueue()).isSameInstanceAs(two);
     }
     if (map.usesAccessQueue()) {
-      assertSame(two, one.getNextInAccessQueue());
+      assertThat(one.getNextInAccessQueue()).isSameInstanceAs(two);
     }
   }
 
@@ -1120,7 +1205,7 @@ public class LocalCacheTest extends TestCase {
             createCacheBuilder()
                 .concurrencyLevel(1)
                 .ticker(ticker)
-                .expireAfterAccess(1, TimeUnit.NANOSECONDS));
+                .expireAfterAccess(1, NANOSECONDS));
     Segment<Object, Object> segment = map.segments[0];
     // TODO(fry): check recency ordering
 
@@ -1134,21 +1219,21 @@ public class LocalCacheTest extends TestCase {
     ValueReference<Object, Object> valueRef = map.newValueReference(entry, value, 1);
     entry.setValueReference(valueRef);
 
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
 
     // count == 0
     table.set(index, entry);
-    assertNull(segment.get(key, hash));
-    assertFalse(segment.containsKey(key, hash));
-    assertFalse(segment.containsValue(value));
+    assertThat(segment.get(key, hash)).isNull();
+    assertThat(segment.containsKey(key, hash)).isFalse();
+    assertThat(segment.containsValue(value)).isFalse();
 
     // count == 1
-    segment.count++;
-    assertSame(value, segment.get(key, hash));
-    assertTrue(segment.containsKey(key, hash));
-    assertTrue(segment.containsValue(value));
+    incrementCount(segment);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
+    assertThat(segment.containsKey(key, hash)).isTrue();
+    assertThat(segment.containsValue(value)).isTrue();
     // don't see absent values now that count > 0
-    assertNull(segment.get(new Object(), hash));
+    assertThat(segment.get(new Object(), hash)).isNull();
 
     // null key
     DummyEntry<Object, Object> nullEntry = DummyEntry.create(null, hash, entry);
@@ -1157,10 +1242,10 @@ public class LocalCacheTest extends TestCase {
     nullEntry.setValueReference(nullValueRef);
     table.set(index, nullEntry);
     // skip the null key
-    assertSame(value, segment.get(key, hash));
-    assertTrue(segment.containsKey(key, hash));
-    assertTrue(segment.containsValue(value));
-    assertFalse(segment.containsValue(nullValue));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
+    assertThat(segment.containsKey(key, hash)).isTrue();
+    assertThat(segment.containsValue(value)).isTrue();
+    assertThat(segment.containsValue(nullValue)).isFalse();
 
     // hash collision
     DummyEntry<Object, Object> dummy = DummyEntry.create(new Object(), hash, entry);
@@ -1168,10 +1253,10 @@ public class LocalCacheTest extends TestCase {
     ValueReference<Object, Object> dummyValueRef = map.newValueReference(dummy, dummyValue, 1);
     dummy.setValueReference(dummyValueRef);
     table.set(index, dummy);
-    assertSame(value, segment.get(key, hash));
-    assertTrue(segment.containsKey(key, hash));
-    assertTrue(segment.containsValue(value));
-    assertTrue(segment.containsValue(dummyValue));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
+    assertThat(segment.containsKey(key, hash)).isTrue();
+    assertThat(segment.containsValue(value)).isTrue();
+    assertThat(segment.containsValue(dummyValue)).isTrue();
 
     // key collision
     dummy = DummyEntry.create(key, hash, entry);
@@ -1180,17 +1265,17 @@ public class LocalCacheTest extends TestCase {
     dummy.setValueReference(dummyValueRef);
     table.set(index, dummy);
     // returns the most recent entry
-    assertSame(dummyValue, segment.get(key, hash));
-    assertTrue(segment.containsKey(key, hash));
-    assertTrue(segment.containsValue(value));
-    assertTrue(segment.containsValue(dummyValue));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(dummyValue);
+    assertThat(segment.containsKey(key, hash)).isTrue();
+    assertThat(segment.containsValue(value)).isTrue();
+    assertThat(segment.containsValue(dummyValue)).isTrue();
 
     // expired
     dummy.setAccessTime(ticker.read() - 2);
-    assertNull(segment.get(key, hash));
-    assertFalse(segment.containsKey(key, hash));
-    assertTrue(segment.containsValue(value));
-    assertFalse(segment.containsValue(dummyValue));
+    assertThat(segment.get(key, hash)).isNull();
+    assertThat(segment.containsKey(key, hash)).isFalse();
+    assertThat(segment.containsValue(value)).isTrue();
+    assertThat(segment.containsValue(dummyValue)).isFalse();
   }
 
   public void testSegmentReplaceValue() {
@@ -1211,30 +1296,30 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(oldValueRef);
 
     // no entry
-    assertFalse(segment.replace(key, hash, oldValue, newValue));
-    assertEquals(0, segment.count);
+    assertThat(segment.replace(key, hash, oldValue, newValue)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
 
     // same value
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertTrue(segment.replace(key, hash, oldValue, newValue));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.replace(key, hash, oldValue, newValue)).isTrue();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
 
     // different value
-    assertFalse(segment.replace(key, hash, oldValue, newValue));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.replace(key, hash, oldValue, newValue)).isFalse();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
 
     // cleared
     entry.setValueReference(oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertFalse(segment.replace(key, hash, oldValue, newValue));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.replace(key, hash, oldValue, newValue)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentReplace() {
@@ -1255,25 +1340,25 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(oldValueRef);
 
     // no entry
-    assertNull(segment.replace(key, hash, newValue));
-    assertEquals(0, segment.count);
+    assertThat(segment.replace(key, hash, newValue)).isNull();
+    assertThat(segment.count).isEqualTo(0);
 
     // same key
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertSame(oldValue, segment.replace(key, hash, newValue));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.replace(key, hash, newValue)).isSameInstanceAs(oldValue);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
 
     // cleared
     entry.setValueReference(oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertNull(segment.replace(key, hash, newValue));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.replace(key, hash, newValue)).isNull();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentPut() {
@@ -1288,24 +1373,24 @@ public class LocalCacheTest extends TestCase {
     Object newValue = new Object();
 
     // no entry
-    assertEquals(0, segment.count);
-    assertNull(segment.put(key, hash, oldValue, false));
-    assertEquals(1, segment.count);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.put(key, hash, oldValue, false)).isNull();
+    assertThat(segment.count).isEqualTo(1);
 
     // same key
-    assertSame(oldValue, segment.put(key, hash, newValue, false));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.put(key, hash, newValue, false)).isSameInstanceAs(oldValue);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
 
     // cleared
     ReferenceEntry<Object, Object> entry = segment.getEntry(key, hash);
     DummyValueReference<Object, Object> oldValueRef = DummyValueReference.create(oldValue);
     entry.setValueReference(oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertNull(segment.put(key, hash, newValue, false));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.put(key, hash, newValue, false)).isNull();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
   }
 
   public void testSegmentPutIfAbsent() {
@@ -1320,39 +1405,39 @@ public class LocalCacheTest extends TestCase {
     Object newValue = new Object();
 
     // no entry
-    assertEquals(0, segment.count);
-    assertNull(segment.put(key, hash, oldValue, true));
-    assertEquals(1, segment.count);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.put(key, hash, oldValue, true)).isNull();
+    assertThat(segment.count).isEqualTo(1);
 
     // same key
-    assertSame(oldValue, segment.put(key, hash, newValue, true));
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.put(key, hash, newValue, true)).isSameInstanceAs(oldValue);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
 
     // cleared
     ReferenceEntry<Object, Object> entry = segment.getEntry(key, hash);
     DummyValueReference<Object, Object> oldValueRef = DummyValueReference.create(oldValue);
     entry.setValueReference(oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertNull(segment.put(key, hash, newValue, true));
-    assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.put(key, hash, newValue, true)).isNull();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(newValue);
   }
 
   public void testSegmentPut_expand() {
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
     Segment<Object, Object> segment = map.segments[0];
-    assertEquals(1, segment.table.length());
+    assertThat(segment.table.length()).isEqualTo(1);
 
     int count = 1024;
     for (int i = 0; i < count; i++) {
       Object key = new Object();
       Object value = new Object();
       int hash = map.hash(key);
-      assertNull(segment.put(key, hash, value, false));
-      assertTrue(segment.table.length() > i);
+      assertThat(segment.put(key, hash, value, false)).isNull();
+      assertThat(segment.table.length()).isGreaterThan(i);
     }
   }
 
@@ -1363,7 +1448,7 @@ public class LocalCacheTest extends TestCase {
 
     // manually add elements to avoid eviction
     int originalCount = 1024;
-    LinkedHashMap<Object, Object> originalMap = Maps.newLinkedHashMap();
+    LinkedHashMap<Object, Object> originalMap = new LinkedHashMap<>();
     for (int i = 0; i < originalCount; i++) {
       Object key = new Object();
       Object value = new Object();
@@ -1374,7 +1459,7 @@ public class LocalCacheTest extends TestCase {
         it.next();
         it.remove();
       }
-      assertEquals(originalMap, map);
+      assertThat(map).isEqualTo(originalMap);
     }
   }
 
@@ -1395,34 +1480,34 @@ public class LocalCacheTest extends TestCase {
 
     // absent
     Object value = new Object();
-    assertTrue(listener.isEmpty());
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
-    assertTrue(segment.storeLoadedValue(key, hash, valueRef, value));
-    assertSame(value, segment.get(key, hash));
-    assertEquals(1, segment.count);
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
+    assertThat(segment.storeLoadedValue(key, hash, valueRef, value)).isTrue();
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(listener.isEmpty()).isTrue();
 
     // clobbered
     Object value2 = new Object();
-    assertFalse(segment.storeLoadedValue(key, hash, valueRef, value2));
-    assertEquals(1, segment.count);
-    assertSame(value, segment.get(key, hash));
+    assertThat(segment.storeLoadedValue(key, hash, valueRef, value2)).isFalse();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
     RemovalNotification<Object, Object> notification = listener.remove();
-    assertEquals(immutableEntry(key, value2), notification);
-    assertEquals(RemovalCause.REPLACED, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification).isEqualTo(immutableEntry(key, value2));
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.REPLACED);
+    assertThat(listener.isEmpty()).isTrue();
 
     // inactive
     Object value3 = new Object();
     map.clear();
     listener.clear();
-    assertEquals(0, segment.count);
+    assertThat(segment.count).isEqualTo(0);
     table.set(index, entry);
-    assertTrue(segment.storeLoadedValue(key, hash, valueRef, value3));
-    assertSame(value3, segment.get(key, hash));
-    assertEquals(1, segment.count);
-    assertTrue(listener.isEmpty());
+    assertThat(segment.storeLoadedValue(key, hash, valueRef, value3)).isTrue();
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value3);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(listener.isEmpty()).isTrue();
 
     // replaced
     Object value4 = new Object();
@@ -1430,29 +1515,29 @@ public class LocalCacheTest extends TestCase {
     valueRef = new LoadingValueReference<>(value3Ref);
     entry.setValueReference(valueRef);
     table.set(index, entry);
-    assertSame(value3, segment.get(key, hash));
-    assertEquals(1, segment.count);
-    assertTrue(segment.storeLoadedValue(key, hash, valueRef, value4));
-    assertSame(value4, segment.get(key, hash));
-    assertEquals(1, segment.count);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value3);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.storeLoadedValue(key, hash, valueRef, value4)).isTrue();
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value4);
+    assertThat(segment.count).isEqualTo(1);
     notification = listener.remove();
-    assertEquals(immutableEntry(key, value3), notification);
-    assertEquals(RemovalCause.REPLACED, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification).isEqualTo(immutableEntry(key, value3));
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.REPLACED);
+    assertThat(listener.isEmpty()).isTrue();
 
     // collected
     entry.setValueReference(valueRef);
     table.set(index, entry);
-    assertSame(value3, segment.get(key, hash));
-    assertEquals(1, segment.count);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value3);
+    assertThat(segment.count).isEqualTo(1);
     value3Ref.clear();
-    assertTrue(segment.storeLoadedValue(key, hash, valueRef, value4));
-    assertSame(value4, segment.get(key, hash));
-    assertEquals(1, segment.count);
+    assertThat(segment.storeLoadedValue(key, hash, valueRef, value4)).isTrue();
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value4);
+    assertThat(segment.count).isEqualTo(1);
     notification = listener.remove();
-    assertEquals(immutableEntry(key, null), notification);
-    assertEquals(RemovalCause.COLLECTED, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification).isEqualTo(immutableEntry(key, null));
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.COLLECTED);
+    assertThat(listener.isEmpty()).isTrue();
   }
 
   public void testSegmentRemove() {
@@ -1470,28 +1555,28 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(oldValueRef);
 
     // no entry
-    assertEquals(0, segment.count);
-    assertNull(segment.remove(key, hash));
-    assertEquals(0, segment.count);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.remove(key, hash)).isNull();
+    assertThat(segment.count).isEqualTo(0);
 
     // same key
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertSame(oldValue, segment.remove(key, hash));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.remove(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
 
     // cleared
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertNull(segment.remove(key, hash));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.remove(key, hash)).isNull();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentRemoveValue() {
@@ -1510,41 +1595,41 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(oldValueRef);
 
     // no entry
-    assertEquals(0, segment.count);
-    assertNull(segment.remove(key, hash));
-    assertEquals(0, segment.count);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.remove(key, hash)).isNull();
+    assertThat(segment.count).isEqualTo(0);
 
     // same value
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertTrue(segment.remove(key, hash, oldValue));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.remove(key, hash, oldValue)).isTrue();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
 
     // different value
     table.set(index, entry);
-    segment.count++;
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertFalse(segment.remove(key, hash, newValue));
-    assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
+    assertThat(segment.remove(key, hash, newValue)).isFalse();
+    assertThat(segment.count).isEqualTo(1);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
 
     // cleared
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isSameInstanceAs(oldValue);
     oldValueRef.clear();
-    assertFalse(segment.remove(key, hash, oldValue));
-    assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.remove(key, hash, oldValue)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testExpand() {
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
     Segment<Object, Object> segment = map.segments[0];
-    assertEquals(1, segment.table.length());
+    assertThat(segment.table.length()).isEqualTo(1);
 
     // manually add elements to avoid expansion
     int originalCount = 1024;
@@ -1561,17 +1646,17 @@ public class LocalCacheTest extends TestCase {
     segment.table.set(0, entry);
     segment.count = originalCount;
     ImmutableMap<Object, Object> originalMap = ImmutableMap.copyOf(map);
-    assertEquals(originalCount, originalMap.size());
-    assertEquals(originalMap, map);
+    assertThat(originalMap).hasSize(originalCount);
+    assertThat(map).isEqualTo(originalMap);
 
     for (int i = 1; i <= originalCount * 2; i *= 2) {
       if (i > 1) {
         segment.expand();
       }
-      assertEquals(i, segment.table.length());
-      assertEquals(originalCount, countLiveEntries(map, 0));
-      assertEquals(originalCount, segment.count);
-      assertEquals(originalMap, map);
+      assertThat(segment.table.length()).isEqualTo(i);
+      assertThat(countLiveEntries(map, 0)).isEqualTo(originalCount);
+      assertThat(segment.count).isEqualTo(originalCount);
+      assertThat(map).isEqualTo(originalMap);
     }
   }
 
@@ -1580,11 +1665,11 @@ public class LocalCacheTest extends TestCase {
       LocalCache<Object, Object> map =
           makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
       Segment<Object, Object> segment = map.segments[0];
-      assertEquals(1, segment.table.length());
+      assertThat(segment.table.length()).isEqualTo(1);
 
       for (int i = 0; i < count; i++) {
         Object key = new Object();
-        final Object value = new Object();
+        Object value = new Object();
         segment.get(
             key,
             key.hashCode(),
@@ -1595,19 +1680,20 @@ public class LocalCacheTest extends TestCase {
               }
             });
       }
-      assertEquals(count, segment.count);
-      assertTrue(count <= segment.threshold);
-      assertTrue(count <= (segment.table.length() * 3 / 4));
-      assertTrue(count > (segment.table.length() * 3 / 8));
+      assertThat(segment.count).isEqualTo(count);
+      assertThat(count).isAtMost(segment.threshold);
+      assertThat(count).isAtMost((segment.table.length() * 3 / 4));
+      assertThat(count).isGreaterThan(segment.table.length() * 3 / 8);
     }
   }
 
+  @SuppressWarnings("TruthGetOrDefault") // We are testing our implementation of getOrDefault.
   public void testGetOrDefault() {
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
     map.put(1, 1);
-    assertEquals(1, map.getOrDefault(1, 2));
-    assertEquals(2, map.getOrDefault(2, 2));
+    assertThat(map.getOrDefault(1, 2)).isEqualTo(1);
+    assertThat(map.getOrDefault(2, 2)).isEqualTo(2);
   }
 
   public void testPutCausesExpansion() {
@@ -1615,17 +1701,17 @@ public class LocalCacheTest extends TestCase {
       LocalCache<Object, Object> map =
           makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
       Segment<Object, Object> segment = map.segments[0];
-      assertEquals(1, segment.table.length());
+      assertThat(segment.table.length()).isEqualTo(1);
 
       for (int i = 0; i < count; i++) {
         Object key = new Object();
         Object value = new Object();
         segment.put(key, key.hashCode(), value, true);
       }
-      assertEquals(count, segment.count);
-      assertTrue(count <= segment.threshold);
-      assertTrue(count <= (segment.table.length() * 3 / 4));
-      assertTrue(count > (segment.table.length() * 3 / 8));
+      assertThat(segment.count).isEqualTo(count);
+      assertThat(count).isAtMost(segment.threshold);
+      assertThat(count).isAtMost((segment.table.length() * 3 / 4));
+      assertThat(count).isGreaterThan(segment.table.length() * 3 / 8);
     }
   }
 
@@ -1641,7 +1727,7 @@ public class LocalCacheTest extends TestCase {
                 .removalListener(listener));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     // create 3 objects and chain them together
     Object keyOne = new Object();
@@ -1659,28 +1745,28 @@ public class LocalCacheTest extends TestCase {
         createDummyEntry(keyThree, hashThree, valueThree, entryTwo);
 
     // absent
-    assertEquals(0, listener.getCount());
-    assertFalse(segment.reclaimKey(entryOne, hashOne));
-    assertEquals(0, listener.getCount());
+    assertThat(listener.getCount()).isEqualTo(0);
+    assertThat(segment.reclaimKey(entryOne, hashOne)).isFalse();
+    assertThat(listener.getCount()).isEqualTo(0);
     table.set(0, entryOne);
-    assertFalse(segment.reclaimKey(entryTwo, hashTwo));
-    assertEquals(0, listener.getCount());
+    assertThat(segment.reclaimKey(entryTwo, hashTwo)).isFalse();
+    assertThat(listener.getCount()).isEqualTo(0);
     table.set(0, entryTwo);
-    assertFalse(segment.reclaimKey(entryThree, hashThree));
-    assertEquals(0, listener.getCount());
+    assertThat(segment.reclaimKey(entryThree, hashThree)).isFalse();
+    assertThat(listener.getCount()).isEqualTo(0);
 
     // present
     table.set(0, entryOne);
     segment.count = 1;
-    assertTrue(segment.reclaimKey(entryOne, hashOne));
-    assertEquals(1, listener.getCount());
-    assertSame(keyOne, listener.getLastEvictedKey());
-    assertSame(valueOne, listener.getLastEvictedValue());
-    assertTrue(map.removalNotificationQueue.isEmpty());
-    assertFalse(segment.accessQueue.contains(entryOne));
-    assertFalse(segment.writeQueue.contains(entryOne));
-    assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(segment.reclaimKey(entryOne, hashOne)).isTrue();
+    assertThat(listener.getCount()).isEqualTo(1);
+    assertThat(listener.getLastEvictedKey()).isSameInstanceAs(keyOne);
+    assertThat(listener.getLastEvictedValue()).isSameInstanceAs(valueOne);
+    assertThat(map.removalNotificationQueue.isEmpty()).isTrue();
+    assertThat(segment.accessQueue.contains(entryOne)).isFalse();
+    assertThat(segment.writeQueue.contains(entryOne)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(table.get(0)).isNull();
   }
 
   public void testRemoveEntryFromChain() {
@@ -1703,35 +1789,35 @@ public class LocalCacheTest extends TestCase {
         createDummyEntry(keyThree, hashThree, valueThree, entryTwo);
 
     // alone
-    assertNull(segment.removeEntryFromChain(entryOne, entryOne));
+    assertThat(segment.removeEntryFromChain(entryOne, entryOne)).isNull();
 
     // head
-    assertSame(entryOne, segment.removeEntryFromChain(entryTwo, entryTwo));
+    assertThat(segment.removeEntryFromChain(entryTwo, entryTwo)).isSameInstanceAs(entryOne);
 
     // middle
     ReferenceEntry<Object, Object> newFirst = segment.removeEntryFromChain(entryThree, entryTwo);
-    assertSame(keyThree, newFirst.getKey());
-    assertSame(valueThree, newFirst.getValueReference().get());
-    assertEquals(hashThree, newFirst.getHash());
-    assertSame(entryOne, newFirst.getNext());
+    assertThat(newFirst.getKey()).isSameInstanceAs(keyThree);
+    assertThat(newFirst.getValueReference().get()).isSameInstanceAs(valueThree);
+    assertThat(newFirst.getHash()).isEqualTo(hashThree);
+    assertThat(newFirst.getNext()).isSameInstanceAs(entryOne);
 
     // tail (remaining entries are copied in reverse order)
     newFirst = segment.removeEntryFromChain(entryThree, entryOne);
-    assertSame(keyTwo, newFirst.getKey());
-    assertSame(valueTwo, newFirst.getValueReference().get());
-    assertEquals(hashTwo, newFirst.getHash());
+    assertThat(newFirst.getKey()).isSameInstanceAs(keyTwo);
+    assertThat(newFirst.getValueReference().get()).isSameInstanceAs(valueTwo);
+    assertThat(newFirst.getHash()).isEqualTo(hashTwo);
     newFirst = newFirst.getNext();
-    assertSame(keyThree, newFirst.getKey());
-    assertSame(valueThree, newFirst.getValueReference().get());
-    assertEquals(hashThree, newFirst.getHash());
-    assertNull(newFirst.getNext());
+    assertThat(newFirst.getKey()).isSameInstanceAs(keyThree);
+    assertThat(newFirst.getValueReference().get()).isSameInstanceAs(valueThree);
+    assertThat(newFirst.getHash()).isEqualTo(hashThree);
+    assertThat(newFirst.getNext()).isNull();
   }
 
   public void testExpand_cleanup() {
     LocalCache<Object, Object> map =
         makeLocalCache(createCacheBuilder().concurrencyLevel(1).initialCapacity(1));
     Segment<Object, Object> segment = map.segments[0];
-    assertEquals(1, segment.table.length());
+    assertThat(segment.table.length()).isEqualTo(1);
 
     // manually add elements to avoid expansion
     // 1/3 null keys, 1/3 null values
@@ -1752,22 +1838,22 @@ public class LocalCacheTest extends TestCase {
     segment.table.set(0, entry);
     segment.count = originalCount;
     int liveCount = originalCount / 3;
-    assertEquals(1, segment.table.length());
-    assertEquals(liveCount, countLiveEntries(map, 0));
+    assertThat(segment.table.length()).isEqualTo(1);
+    assertThat(countLiveEntries(map, 0)).isEqualTo(liveCount);
     ImmutableMap<Object, Object> originalMap = ImmutableMap.copyOf(map);
-    assertEquals(liveCount, originalMap.size());
+    assertThat(originalMap).hasSize(liveCount);
     // can't compare map contents until cleanup occurs
 
     for (int i = 1; i <= originalCount * 2; i *= 2) {
       if (i > 1) {
         segment.expand();
       }
-      assertEquals(i, segment.table.length());
-      assertEquals(liveCount, countLiveEntries(map, 0));
+      assertThat(segment.table.length()).isEqualTo(i);
+      assertThat(countLiveEntries(map, 0)).isEqualTo(liveCount);
       // expansion cleanup is sloppy, with a goal of avoiding unnecessary copies
-      assertTrue(segment.count >= liveCount);
-      assertTrue(segment.count <= originalCount);
-      assertEquals(originalMap, ImmutableMap.copyOf(map));
+      assertThat(segment.count).isAtLeast(liveCount);
+      assertThat(segment.count).isAtMost(originalCount);
+      assertThat(ImmutableMap.copyOf(map)).isEqualTo(originalMap);
     }
   }
 
@@ -1796,7 +1882,7 @@ public class LocalCacheTest extends TestCase {
                 .expireAfterWrite(99999, SECONDS));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     Object key = new Object();
     Object value = new Object();
@@ -1808,17 +1894,17 @@ public class LocalCacheTest extends TestCase {
     segment.count = 1;
     segment.totalWeight = 1;
 
-    assertSame(entry, table.get(0));
-    assertSame(entry, segment.accessQueue.peek());
-    assertSame(entry, segment.writeQueue.peek());
+    assertThat(table.get(0)).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.writeQueue.peek()).isSameInstanceAs(entry);
 
     segment.clear();
-    assertNull(table.get(0));
-    assertTrue(segment.accessQueue.isEmpty());
-    assertTrue(segment.writeQueue.isEmpty());
-    assertEquals(0, segment.readCount.get());
-    assertEquals(0, segment.count);
-    assertEquals(0, segment.totalWeight);
+    assertThat(table.get(0)).isNull();
+    assertThat(segment.accessQueue.isEmpty()).isTrue();
+    assertThat(segment.writeQueue.isEmpty()).isTrue();
+    assertThat(segment.readCount.get()).isEqualTo(0);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.totalWeight).isEqualTo(0);
   }
 
   public void testClear_notification() {
@@ -1833,7 +1919,7 @@ public class LocalCacheTest extends TestCase {
                 .removalListener(listener));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     Object key = new Object();
     Object value = new Object();
@@ -1845,17 +1931,17 @@ public class LocalCacheTest extends TestCase {
     segment.count = 1;
     segment.totalWeight = 1;
 
-    assertSame(entry, table.get(0));
-    assertSame(entry, segment.accessQueue.peek());
-    assertSame(entry, segment.writeQueue.peek());
+    assertThat(table.get(0)).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.writeQueue.peek()).isSameInstanceAs(entry);
 
     segment.clear();
-    assertNull(table.get(0));
-    assertTrue(segment.accessQueue.isEmpty());
-    assertTrue(segment.writeQueue.isEmpty());
-    assertEquals(0, segment.readCount.get());
-    assertEquals(0, segment.count);
-    assertEquals(0, segment.totalWeight);
+    assertThat(table.get(0)).isNull();
+    assertThat(segment.accessQueue.isEmpty()).isTrue();
+    assertThat(segment.writeQueue.isEmpty()).isTrue();
+    assertThat(segment.readCount.get()).isEqualTo(0);
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(segment.totalWeight).isEqualTo(0);
     assertNotified(listener, key, value, RemovalCause.EXPLICIT);
   }
 
@@ -1870,7 +1956,7 @@ public class LocalCacheTest extends TestCase {
                 .removalListener(countingRemovalListener()));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     Object key = new Object();
     Object value = new Object();
@@ -1878,19 +1964,19 @@ public class LocalCacheTest extends TestCase {
     DummyEntry<Object, Object> entry = createDummyEntry(key, hash, value, null);
 
     // remove absent
-    assertFalse(segment.removeEntry(entry, hash, RemovalCause.COLLECTED));
+    assertThat(segment.removeEntry(entry, hash, RemovalCause.COLLECTED)).isFalse();
 
     // remove live
     segment.recordWrite(entry, 1, map.ticker.read());
     table.set(0, entry);
     segment.count = 1;
-    assertTrue(segment.removeEntry(entry, hash, RemovalCause.COLLECTED));
-    assertNotificationEnqueued(map, key, value, hash);
-    assertTrue(map.removalNotificationQueue.isEmpty());
-    assertFalse(segment.accessQueue.contains(entry));
-    assertFalse(segment.writeQueue.contains(entry));
-    assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(segment.removeEntry(entry, hash, RemovalCause.COLLECTED)).isTrue();
+    assertNotificationEnqueued(map, key, value);
+    assertThat(map.removalNotificationQueue.isEmpty()).isTrue();
+    assertThat(segment.accessQueue.contains(entry)).isFalse();
+    assertThat(segment.writeQueue.contains(entry)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(table.get(0)).isNull();
   }
 
   public void testReclaimValue() {
@@ -1905,7 +1991,7 @@ public class LocalCacheTest extends TestCase {
                 .removalListener(listener));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     Object key = new Object();
     Object value = new Object();
@@ -1915,32 +2001,32 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(valueRef);
 
     // reclaim absent
-    assertFalse(segment.reclaimValue(key, hash, valueRef));
+    assertThat(segment.reclaimValue(key, hash, valueRef)).isFalse();
 
     // reclaim live
     segment.recordWrite(entry, 1, map.ticker.read());
     table.set(0, entry);
     segment.count = 1;
-    assertTrue(segment.reclaimValue(key, hash, valueRef));
-    assertEquals(1, listener.getCount());
-    assertSame(key, listener.getLastEvictedKey());
-    assertSame(value, listener.getLastEvictedValue());
-    assertTrue(map.removalNotificationQueue.isEmpty());
-    assertFalse(segment.accessQueue.contains(entry));
-    assertFalse(segment.writeQueue.contains(entry));
-    assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(segment.reclaimValue(key, hash, valueRef)).isTrue();
+    assertThat(listener.getCount()).isEqualTo(1);
+    assertThat(listener.getLastEvictedKey()).isSameInstanceAs(key);
+    assertThat(listener.getLastEvictedValue()).isSameInstanceAs(value);
+    assertThat(map.removalNotificationQueue.isEmpty()).isTrue();
+    assertThat(segment.accessQueue.contains(entry)).isFalse();
+    assertThat(segment.writeQueue.contains(entry)).isFalse();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(table.get(0)).isNull();
 
     // reclaim wrong value reference
     table.set(0, entry);
     DummyValueReference<Object, Object> otherValueRef = DummyValueReference.create(value);
     entry.setValueReference(otherValueRef);
-    assertFalse(segment.reclaimValue(key, hash, valueRef));
-    assertEquals(1, listener.getCount());
-    assertTrue(segment.reclaimValue(key, hash, otherValueRef));
-    assertEquals(2, listener.getCount());
-    assertSame(key, listener.getLastEvictedKey());
-    assertSame(value, listener.getLastEvictedValue());
+    assertThat(segment.reclaimValue(key, hash, valueRef)).isFalse();
+    assertThat(listener.getCount()).isEqualTo(1);
+    assertThat(segment.reclaimValue(key, hash, otherValueRef)).isTrue();
+    assertThat(listener.getCount()).isEqualTo(2);
+    assertThat(listener.getLastEvictedKey()).isSameInstanceAs(key);
+    assertThat(listener.getLastEvictedValue()).isSameInstanceAs(value);
   }
 
   public void testRemoveComputingValue() {
@@ -1954,7 +2040,7 @@ public class LocalCacheTest extends TestCase {
                 .removalListener(countingRemovalListener()));
     Segment<Object, Object> segment = map.segments[0];
     AtomicReferenceArray<ReferenceEntry<Object, Object>> table = segment.table;
-    assertEquals(1, table.length());
+    assertThat(table.length()).isEqualTo(1);
 
     Object key = new Object();
     int hash = map.hash(key);
@@ -1963,16 +2049,16 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(valueRef);
 
     // absent
-    assertFalse(segment.removeLoadingValue(key, hash, valueRef));
+    assertThat(segment.removeLoadingValue(key, hash, valueRef)).isFalse();
 
     // live
     table.set(0, entry);
     // don't increment count; this is used during computation
-    assertTrue(segment.removeLoadingValue(key, hash, valueRef));
+    assertThat(segment.removeLoadingValue(key, hash, valueRef)).isTrue();
     // no notification sent with removeLoadingValue
-    assertTrue(map.removalNotificationQueue.isEmpty());
-    assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(map.removalNotificationQueue.isEmpty()).isTrue();
+    assertThat(segment.count).isEqualTo(0);
+    assertThat(table.get(0)).isNull();
 
     // active
     Object value = new Object();
@@ -1981,24 +2067,23 @@ public class LocalCacheTest extends TestCase {
     entry.setValueReference(valueRef);
     table.set(0, entry);
     segment.count = 1;
-    assertTrue(segment.removeLoadingValue(key, hash, valueRef));
-    assertSame(entry, table.get(0));
-    assertSame(value, segment.get(key, hash));
+    assertThat(segment.removeLoadingValue(key, hash, valueRef)).isTrue();
+    assertThat(table.get(0)).isSameInstanceAs(entry);
+    assertThat(segment.get(key, hash)).isSameInstanceAs(value);
 
     // wrong value reference
     table.set(0, entry);
     DummyValueReference<Object, Object> otherValueRef = DummyValueReference.create(value);
     entry.setValueReference(otherValueRef);
-    assertFalse(segment.removeLoadingValue(key, hash, valueRef));
+    assertThat(segment.removeLoadingValue(key, hash, valueRef)).isFalse();
     entry.setValueReference(valueRef);
-    assertTrue(segment.removeLoadingValue(key, hash, valueRef));
+    assertThat(segment.removeLoadingValue(key, hash, valueRef)).isTrue();
   }
 
-  private static <K, V> void assertNotificationEnqueued(
-      LocalCache<K, V> map, K key, V value, int hash) {
+  private static <K, V> void assertNotificationEnqueued(LocalCache<K, V> map, K key, V value) {
     RemovalNotification<K, V> notification = map.removalNotificationQueue.poll();
-    assertSame(key, notification.getKey());
-    assertSame(value, notification.getValue());
+    assertThat(notification.getKey()).isSameInstanceAs(key);
+    assertThat(notification.getValue()).isSameInstanceAs(value);
   }
 
   // Segment eviction tests
@@ -2015,15 +2100,15 @@ public class LocalCacheTest extends TestCase {
         Object valueTwo = new Object();
 
         map.put(keyOne, valueOne);
-        assertTrue(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isTrue();
 
         for (int i = 0; i < DRAIN_THRESHOLD / 2; i++) {
           map.get(keyOne);
         }
-        assertFalse(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isFalse();
 
         map.put(keyTwo, valueTwo);
-        assertTrue(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isTrue();
       }
     }
   }
@@ -2040,16 +2125,16 @@ public class LocalCacheTest extends TestCase {
         // repeated get of the same key
 
         map.put(keyOne, valueOne);
-        assertTrue(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isTrue();
 
         for (int i = 0; i < DRAIN_THRESHOLD / 2; i++) {
           map.get(keyOne);
         }
-        assertFalse(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isFalse();
 
         for (int i = 0; i < DRAIN_THRESHOLD * 2; i++) {
           map.get(keyOne);
-          assertTrue(segment.recencyQueue.size() <= DRAIN_THRESHOLD);
+          assertThat(segment.recencyQueue.size()).isAtMost(DRAIN_THRESHOLD);
         }
 
         // get over many different keys
@@ -2057,16 +2142,16 @@ public class LocalCacheTest extends TestCase {
         for (int i = 0; i < DRAIN_THRESHOLD * 2; i++) {
           map.put(new Object(), new Object());
         }
-        assertTrue(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isTrue();
 
         for (int i = 0; i < DRAIN_THRESHOLD / 2; i++) {
           map.get(keyOne);
         }
-        assertFalse(segment.recencyQueue.isEmpty());
+        assertThat(segment.recencyQueue.isEmpty()).isFalse();
 
         for (Object key : map.keySet()) {
           map.get(key);
-          assertTrue(segment.recencyQueue.size() <= DRAIN_THRESHOLD);
+          assertThat(segment.recencyQueue.size()).isAtMost(DRAIN_THRESHOLD);
         }
       }
     }
@@ -2076,8 +2161,8 @@ public class LocalCacheTest extends TestCase {
     for (CacheBuilder<Object, Object> builder : allEvictingMakers()) {
       LocalCache<Object, Object> map = makeLocalCache(builder.concurrencyLevel(1));
       Segment<Object, Object> segment = map.segments[0];
-      List<ReferenceEntry<Object, Object>> writeOrder = Lists.newLinkedList();
-      List<ReferenceEntry<Object, Object>> readOrder = Lists.newLinkedList();
+      List<ReferenceEntry<Object, Object>> writeOrder = new LinkedList<>();
+      List<ReferenceEntry<Object, Object>> readOrder = new LinkedList<>();
       for (int i = 0; i < DRAIN_THRESHOLD * 2; i++) {
         Object key = new Object();
         int hash = map.hash(key);
@@ -2095,7 +2180,7 @@ public class LocalCacheTest extends TestCase {
 
       // access some of the elements
       Random random = new Random();
-      List<ReferenceEntry<Object, Object>> reads = Lists.newArrayList();
+      List<ReferenceEntry<Object, Object>> reads = new ArrayList<>();
       Iterator<ReferenceEntry<Object, Object>> i = readOrder.iterator();
       while (i.hasNext()) {
         ReferenceEntry<Object, Object> entry = i.next();
@@ -2117,8 +2202,8 @@ public class LocalCacheTest extends TestCase {
     for (CacheBuilder<Object, Object> builder : allEvictingMakers()) {
       LocalCache<Object, Object> map = makeLocalCache(builder.concurrencyLevel(1));
       Segment<Object, Object> segment = map.segments[0];
-      List<ReferenceEntry<Object, Object>> writeOrder = Lists.newLinkedList();
-      List<ReferenceEntry<Object, Object>> readOrder = Lists.newLinkedList();
+      List<ReferenceEntry<Object, Object>> writeOrder = new LinkedList<>();
+      List<ReferenceEntry<Object, Object>> readOrder = new LinkedList<>();
       for (int i = 0; i < DRAIN_THRESHOLD * 2; i++) {
         Object key = new Object();
         int hash = map.hash(key);
@@ -2132,11 +2217,11 @@ public class LocalCacheTest extends TestCase {
 
       checkEvictionQueues(map, segment, readOrder, writeOrder);
       checkExpirationTimes(map);
-      assertTrue(segment.recencyQueue.isEmpty());
+      assertThat(segment.recencyQueue.isEmpty()).isTrue();
 
       // access some of the elements
       Random random = new Random();
-      List<ReferenceEntry<Object, Object>> reads = Lists.newArrayList();
+      List<ReferenceEntry<Object, Object>> reads = new ArrayList<>();
       Iterator<ReferenceEntry<Object, Object>> i = readOrder.iterator();
       while (i.hasNext()) {
         ReferenceEntry<Object, Object> entry = i.next();
@@ -2144,7 +2229,7 @@ public class LocalCacheTest extends TestCase {
           map.get(entry.getKey());
           reads.add(entry);
           i.remove();
-          assertTrue(segment.recencyQueue.size() <= DRAIN_THRESHOLD);
+          assertThat(segment.recencyQueue.size()).isAtMost(DRAIN_THRESHOLD);
         }
       }
       int undrainedIndex = reads.size() - segment.recencyQueue.size();
@@ -2160,7 +2245,7 @@ public class LocalCacheTest extends TestCase {
     for (CacheBuilder<Object, Object> builder : allEvictingMakers()) {
       LocalCache<Object, Object> map = makeLocalCache(builder.concurrencyLevel(1));
       Segment<Object, Object> segment = map.segments[0];
-      List<ReferenceEntry<Object, Object>> writeOrder = Lists.newLinkedList();
+      List<ReferenceEntry<Object, Object>> writeOrder = new LinkedList<>();
       for (int i = 0; i < DRAIN_THRESHOLD * 2; i++) {
         Object key = new Object();
         int hash = map.hash(key);
@@ -2177,7 +2262,7 @@ public class LocalCacheTest extends TestCase {
 
       // access some of the elements
       Random random = new Random();
-      List<ReferenceEntry<Object, Object>> writes = Lists.newArrayList();
+      List<ReferenceEntry<Object, Object>> writes = new ArrayList<>();
       Iterator<ReferenceEntry<Object, Object>> i = writeOrder.iterator();
       while (i.hasNext()) {
         ReferenceEntry<Object, Object> entry = i.next();
@@ -2218,12 +2303,13 @@ public class LocalCacheTest extends TestCase {
   private static <K, V> void assertSameEntries(
       List<ReferenceEntry<K, V>> expectedEntries, List<ReferenceEntry<K, V>> actualEntries) {
     int size = expectedEntries.size();
-    assertEquals(size, actualEntries.size());
+    assertThat(actualEntries).hasSize(size);
     for (int i = 0; i < size; i++) {
       ReferenceEntry<K, V> expectedEntry = expectedEntries.get(i);
       ReferenceEntry<K, V> actualEntry = actualEntries.get(i);
-      assertSame(expectedEntry.getKey(), actualEntry.getKey());
-      assertSame(expectedEntry.getValueReference().get(), actualEntry.getValueReference().get());
+      assertThat(actualEntry.getKey()).isSameInstanceAs(expectedEntry.getKey());
+      assertThat(actualEntry.getValueReference().get())
+          .isSameInstanceAs(expectedEntry.getValueReference().get());
     }
   }
 
@@ -2237,10 +2323,10 @@ public class LocalCacheTest extends TestCase {
       long lastWriteTime = 0;
       for (ReferenceEntry<K, V> e : segment.recencyQueue) {
         long accessTime = e.getAccessTime();
-        assertTrue(accessTime >= lastAccessTime);
+        assertThat(accessTime).isAtLeast(lastAccessTime);
         lastAccessTime = accessTime;
         long writeTime = e.getWriteTime();
-        assertTrue(writeTime >= lastWriteTime);
+        assertThat(writeTime).isAtLeast(lastWriteTime);
         lastWriteTime = writeTime;
       }
 
@@ -2248,12 +2334,12 @@ public class LocalCacheTest extends TestCase {
       lastWriteTime = 0;
       for (ReferenceEntry<K, V> e : segment.accessQueue) {
         long accessTime = e.getAccessTime();
-        assertTrue(accessTime >= lastAccessTime);
+        assertThat(accessTime).isAtLeast(lastAccessTime);
         lastAccessTime = accessTime;
       }
       for (ReferenceEntry<K, V> e : segment.writeQueue) {
         long writeTime = e.getWriteTime();
-        assertTrue(writeTime >= lastWriteTime);
+        assertThat(writeTime).isAtLeast(lastWriteTime);
         lastWriteTime = writeTime;
       }
     }
@@ -2266,38 +2352,38 @@ public class LocalCacheTest extends TestCase {
             createCacheBuilder()
                 .concurrencyLevel(1)
                 .ticker(ticker)
-                .expireAfterWrite(2, TimeUnit.NANOSECONDS));
+                .expireAfterWrite(2, NANOSECONDS));
     Segment<Object, Object> segment = map.segments[0];
 
     Object key = new Object();
     Object value = new Object();
     map.put(key, value);
     ReferenceEntry<Object, Object> entry = map.getEntry(key);
-    assertTrue(map.isLive(entry, ticker.read()));
+    assertThat(map.isLive(entry, ticker.read())).isTrue();
 
     segment.writeQueue.add(entry);
-    assertSame(value, map.get(key));
-    assertSame(entry, segment.writeQueue.peek());
-    assertEquals(1, segment.writeQueue.size());
+    assertThat(map.get(key)).isSameInstanceAs(value);
+    assertThat(segment.writeQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.writeQueue).hasSize(1);
 
     segment.recordRead(entry, ticker.read());
     segment.expireEntries(ticker.read());
-    assertSame(value, map.get(key));
-    assertSame(entry, segment.writeQueue.peek());
-    assertEquals(1, segment.writeQueue.size());
+    assertThat(map.get(key)).isSameInstanceAs(value);
+    assertThat(segment.writeQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.writeQueue).hasSize(1);
 
     ticker.advance(1);
     segment.recordRead(entry, ticker.read());
     segment.expireEntries(ticker.read());
-    assertSame(value, map.get(key));
-    assertSame(entry, segment.writeQueue.peek());
-    assertEquals(1, segment.writeQueue.size());
+    assertThat(map.get(key)).isSameInstanceAs(value);
+    assertThat(segment.writeQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.writeQueue).hasSize(1);
 
     ticker.advance(1);
-    assertNull(map.get(key));
+    assertThat(map.get(key)).isNull();
     segment.expireEntries(ticker.read());
-    assertNull(map.get(key));
-    assertTrue(segment.writeQueue.isEmpty());
+    assertThat(map.get(key)).isNull();
+    assertThat(segment.writeQueue.isEmpty()).isTrue();
   }
 
   public void testExpireAfterAccess() {
@@ -2307,53 +2393,53 @@ public class LocalCacheTest extends TestCase {
             createCacheBuilder()
                 .concurrencyLevel(1)
                 .ticker(ticker)
-                .expireAfterAccess(2, TimeUnit.NANOSECONDS));
+                .expireAfterAccess(2, NANOSECONDS));
     Segment<Object, Object> segment = map.segments[0];
 
     Object key = new Object();
     Object value = new Object();
     map.put(key, value);
     ReferenceEntry<Object, Object> entry = map.getEntry(key);
-    assertTrue(map.isLive(entry, ticker.read()));
+    assertThat(map.isLive(entry, ticker.read())).isTrue();
 
     segment.accessQueue.add(entry);
-    assertSame(value, map.get(key));
-    assertSame(entry, segment.accessQueue.peek());
-    assertEquals(1, segment.accessQueue.size());
+    assertThat(map.get(key)).isSameInstanceAs(value);
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue).hasSize(1);
 
     segment.recordRead(entry, ticker.read());
     segment.expireEntries(ticker.read());
-    assertTrue(map.containsKey(key));
-    assertSame(entry, segment.accessQueue.peek());
-    assertEquals(1, segment.accessQueue.size());
-
-    ticker.advance(1);
-    segment.recordRead(entry, ticker.read());
-    segment.expireEntries(ticker.read());
-    assertTrue(map.containsKey(key));
-    assertSame(entry, segment.accessQueue.peek());
-    assertEquals(1, segment.accessQueue.size());
+    assertThat(map.containsKey(key)).isTrue();
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue).hasSize(1);
 
     ticker.advance(1);
     segment.recordRead(entry, ticker.read());
     segment.expireEntries(ticker.read());
-    assertTrue(map.containsKey(key));
-    assertSame(entry, segment.accessQueue.peek());
-    assertEquals(1, segment.accessQueue.size());
+    assertThat(map.containsKey(key)).isTrue();
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue).hasSize(1);
+
+    ticker.advance(1);
+    segment.recordRead(entry, ticker.read());
+    segment.expireEntries(ticker.read());
+    assertThat(map.containsKey(key)).isTrue();
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue).hasSize(1);
 
     ticker.advance(1);
     segment.expireEntries(ticker.read());
-    assertTrue(map.containsKey(key));
-    assertSame(entry, segment.accessQueue.peek());
-    assertEquals(1, segment.accessQueue.size());
+    assertThat(map.containsKey(key)).isTrue();
+    assertThat(segment.accessQueue.peek()).isSameInstanceAs(entry);
+    assertThat(segment.accessQueue).hasSize(1);
 
     ticker.advance(1);
-    assertFalse(map.containsKey(key));
-    assertNull(map.get(key));
+    assertThat(map.containsKey(key)).isFalse();
+    assertThat(map.get(key)).isNull();
     segment.expireEntries(ticker.read());
-    assertFalse(map.containsKey(key));
-    assertNull(map.get(key));
-    assertTrue(segment.accessQueue.isEmpty());
+    assertThat(map.containsKey(key)).isFalse();
+    assertThat(map.get(key)).isNull();
+    assertThat(segment.accessQueue.isEmpty()).isTrue();
   }
 
   public void testEvictEntries() {
@@ -2365,7 +2451,7 @@ public class LocalCacheTest extends TestCase {
     // manually add elements to avoid eviction
     int originalCount = 1024;
     ReferenceEntry<Object, Object> entry = null;
-    LinkedHashMap<Object, Object> originalMap = Maps.newLinkedHashMap();
+    LinkedHashMap<Object, Object> originalMap = new LinkedHashMap<>();
     for (int i = 0; i < originalCount; i++) {
       Object key = new Object();
       Object value = new Object();
@@ -2382,8 +2468,8 @@ public class LocalCacheTest extends TestCase {
     }
     segment.count = originalCount;
     segment.totalWeight = originalCount;
-    assertEquals(originalCount, map.size());
-    assertEquals(originalMap, map);
+    assertThat(map).hasSize(originalCount);
+    assertThat(map).isEqualTo(originalMap);
 
     Iterator<Object> it = originalMap.keySet().iterator();
     for (int i = 0; i < originalCount - maxSize; i++) {
@@ -2391,8 +2477,8 @@ public class LocalCacheTest extends TestCase {
       it.remove();
     }
     segment.evictEntries(entry);
-    assertEquals(maxSize, map.size());
-    assertEquals(originalMap, map);
+    assertThat(map).hasSize(maxSize);
+    assertThat(map).isEqualTo(originalMap);
   }
 
   // reference queues
@@ -2413,15 +2499,15 @@ public class LocalCacheTest extends TestCase {
         ReferenceEntry<Object, Object> entry = segment.getEntry(keyOne, hashOne);
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) entry;
+        Reference<Object> reference = (Reference<Object>) entry;
         reference.enqueue();
 
         map.put(keyTwo, valueTwo);
-        assertFalse(map.containsKey(keyOne));
-        assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
-        assertEquals(1, map.size());
-        assertNull(segment.keyReferenceQueue.poll());
+        assertThat(map.containsKey(keyOne)).isFalse();
+        assertThat(map.containsValue(valueOne)).isFalse();
+        assertThat(map.get(keyOne)).isNull();
+        assertThat(map).hasSize(1);
+        assertThat(segment.keyReferenceQueue.poll()).isNull();
       }
     }
   }
@@ -2443,15 +2529,15 @@ public class LocalCacheTest extends TestCase {
         ValueReference<Object, Object> valueReference = entry.getValueReference();
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) valueReference;
+        Reference<Object> reference = (Reference<Object>) valueReference;
         reference.enqueue();
 
         map.put(keyTwo, valueTwo);
-        assertFalse(map.containsKey(keyOne));
-        assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
-        assertEquals(1, map.size());
-        assertNull(segment.valueReferenceQueue.poll());
+        assertThat(map.containsKey(keyOne)).isFalse();
+        assertThat(map.containsValue(valueOne)).isFalse();
+        assertThat(map.get(keyOne)).isNull();
+        assertThat(map).hasSize(1);
+        assertThat(segment.valueReferenceQueue.poll()).isNull();
       }
     }
   }
@@ -2471,17 +2557,17 @@ public class LocalCacheTest extends TestCase {
         ReferenceEntry<Object, Object> entry = segment.getEntry(keyOne, hashOne);
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) entry;
+        Reference<Object> reference = (Reference<Object>) entry;
         reference.enqueue();
 
         for (int i = 0; i < SMALL_MAX_SIZE; i++) {
           map.get(keyTwo);
         }
-        assertFalse(map.containsKey(keyOne));
-        assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
-        assertEquals(0, map.size());
-        assertNull(segment.keyReferenceQueue.poll());
+        assertThat(map.containsKey(keyOne)).isFalse();
+        assertThat(map.containsValue(valueOne)).isFalse();
+        assertThat(map.get(keyOne)).isNull();
+        assertThat(map).isEmpty();
+        assertThat(segment.keyReferenceQueue.poll()).isNull();
       }
     }
   }
@@ -2502,26 +2588,26 @@ public class LocalCacheTest extends TestCase {
         ValueReference<Object, Object> valueReference = entry.getValueReference();
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) valueReference;
+        Reference<Object> reference = (Reference<Object>) valueReference;
         reference.enqueue();
 
         for (int i = 0; i < SMALL_MAX_SIZE; i++) {
           map.get(keyTwo);
         }
-        assertFalse(map.containsKey(keyOne));
-        assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
-        assertEquals(0, map.size());
-        assertNull(segment.valueReferenceQueue.poll());
+        assertThat(map.containsKey(keyOne)).isFalse();
+        assertThat(map.containsValue(valueOne)).isFalse();
+        assertThat(map.get(keyOne)).isNull();
+        assertThat(map).isEmpty();
+        assertThat(segment.valueReferenceQueue.poll()).isNull();
       }
     }
   }
 
-  public void testNullParameters() throws Exception {
+  public void testNullParameters() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicInstanceMethods(makeLocalCache(createCacheBuilder()));
     CacheLoader<Object, Object> loader = identityLoader();
-    tester.testAllPublicInstanceMethods(makeLocalCache(createCacheBuilder()));
+    tester.testAllPublicInstanceMethods(makeLocalCache(createCacheBuilder(), loader));
   }
 
   public void testSerializationProxyLoading() {
@@ -2545,42 +2631,41 @@ public class LocalCacheTest extends TestCase {
                 .build(loader);
     // add a non-serializable entry
     one.getUnchecked(new Object());
-    assertEquals(1, one.size());
-    assertFalse(one.asMap().isEmpty());
-    LocalLoadingCache<Object, Object> two = SerializableTester.reserialize(one);
-    assertEquals(0, two.size());
-    assertTrue(two.asMap().isEmpty());
+    assertThat(one.size()).isEqualTo(1);
+    assertThat(one.asMap().isEmpty()).isFalse();
+    LocalLoadingCache<Object, Object> two = reserialize(one);
+    assertThat(two.size()).isEqualTo(0);
+    assertThat(two.asMap().isEmpty()).isTrue();
 
     LocalCache<Object, Object> localCacheOne = one.localCache;
     LocalCache<Object, Object> localCacheTwo = two.localCache;
 
-    assertEquals(localCacheOne.keyStrength, localCacheTwo.keyStrength);
-    assertEquals(localCacheOne.keyStrength, localCacheTwo.keyStrength);
-    assertEquals(localCacheOne.valueEquivalence, localCacheTwo.valueEquivalence);
-    assertEquals(localCacheOne.valueEquivalence, localCacheTwo.valueEquivalence);
-    assertEquals(localCacheOne.maxWeight, localCacheTwo.maxWeight);
-    assertEquals(localCacheOne.weigher, localCacheTwo.weigher);
-    assertEquals(localCacheOne.expireAfterAccessNanos, localCacheTwo.expireAfterAccessNanos);
-    assertEquals(localCacheOne.expireAfterWriteNanos, localCacheTwo.expireAfterWriteNanos);
-    assertEquals(localCacheOne.refreshNanos, localCacheTwo.refreshNanos);
-    assertEquals(localCacheOne.removalListener, localCacheTwo.removalListener);
-    assertEquals(localCacheOne.ticker, localCacheTwo.ticker);
+    assertThat(localCacheTwo.keyStrength).isEqualTo(localCacheOne.keyStrength);
+    assertThat(localCacheTwo.valueEquivalence).isEqualTo(localCacheOne.valueEquivalence);
+    assertThat(localCacheTwo.maxWeight).isEqualTo(localCacheOne.maxWeight);
+    assertThat(localCacheTwo.weigher).isEqualTo(localCacheOne.weigher);
+    assertThat(localCacheTwo.expireAfterAccessNanos)
+        .isEqualTo(localCacheOne.expireAfterAccessNanos);
+    assertThat(localCacheTwo.expireAfterWriteNanos).isEqualTo(localCacheOne.expireAfterWriteNanos);
+    assertThat(localCacheTwo.refreshNanos).isEqualTo(localCacheOne.refreshNanos);
+    assertThat(localCacheTwo.removalListener).isEqualTo(localCacheOne.removalListener);
+    assertThat(localCacheTwo.ticker).isEqualTo(localCacheOne.ticker);
 
     // serialize the reconstituted version to be sure we haven't lost the ability to reserialize
-    LocalLoadingCache<Object, Object> three = SerializableTester.reserialize(two);
+    LocalLoadingCache<Object, Object> three = reserialize(two);
     LocalCache<Object, Object> localCacheThree = three.localCache;
 
-    assertEquals(localCacheTwo.defaultLoader, localCacheThree.defaultLoader);
-    assertEquals(localCacheTwo.keyStrength, localCacheThree.keyStrength);
-    assertEquals(localCacheTwo.keyStrength, localCacheThree.keyStrength);
-    assertEquals(localCacheTwo.valueEquivalence, localCacheThree.valueEquivalence);
-    assertEquals(localCacheTwo.valueEquivalence, localCacheThree.valueEquivalence);
-    assertEquals(localCacheTwo.maxWeight, localCacheThree.maxWeight);
-    assertEquals(localCacheTwo.weigher, localCacheThree.weigher);
-    assertEquals(localCacheTwo.expireAfterAccessNanos, localCacheThree.expireAfterAccessNanos);
-    assertEquals(localCacheTwo.expireAfterWriteNanos, localCacheThree.expireAfterWriteNanos);
-    assertEquals(localCacheTwo.removalListener, localCacheThree.removalListener);
-    assertEquals(localCacheTwo.ticker, localCacheThree.ticker);
+    assertThat(localCacheThree.defaultLoader).isEqualTo(localCacheTwo.defaultLoader);
+    assertThat(localCacheThree.keyStrength).isEqualTo(localCacheTwo.keyStrength);
+    assertThat(localCacheThree.valueEquivalence).isEqualTo(localCacheTwo.valueEquivalence);
+    assertThat(localCacheThree.maxWeight).isEqualTo(localCacheTwo.maxWeight);
+    assertThat(localCacheThree.weigher).isEqualTo(localCacheTwo.weigher);
+    assertThat(localCacheThree.expireAfterAccessNanos)
+        .isEqualTo(localCacheTwo.expireAfterAccessNanos);
+    assertThat(localCacheThree.expireAfterWriteNanos)
+        .isEqualTo(localCacheTwo.expireAfterWriteNanos);
+    assertThat(localCacheThree.removalListener).isEqualTo(localCacheTwo.removalListener);
+    assertThat(localCacheThree.ticker).isEqualTo(localCacheTwo.ticker);
   }
 
   public void testSerializationProxyManual() {
@@ -2602,51 +2687,137 @@ public class LocalCacheTest extends TestCase {
                 .build();
     // add a non-serializable entry
     one.put(new Object(), new Object());
-    assertEquals(1, one.size());
-    assertFalse(one.asMap().isEmpty());
-    LocalManualCache<Object, Object> two = SerializableTester.reserialize(one);
-    assertEquals(0, two.size());
-    assertTrue(two.asMap().isEmpty());
+    assertThat(one.size()).isEqualTo(1);
+    assertThat(one.asMap().isEmpty()).isFalse();
+    LocalManualCache<Object, Object> two = reserialize(one);
+    assertThat(two.size()).isEqualTo(0);
+    assertThat(two.asMap().isEmpty()).isTrue();
 
     LocalCache<Object, Object> localCacheOne = one.localCache;
     LocalCache<Object, Object> localCacheTwo = two.localCache;
 
-    assertEquals(localCacheOne.keyStrength, localCacheTwo.keyStrength);
-    assertEquals(localCacheOne.keyStrength, localCacheTwo.keyStrength);
-    assertEquals(localCacheOne.valueEquivalence, localCacheTwo.valueEquivalence);
-    assertEquals(localCacheOne.valueEquivalence, localCacheTwo.valueEquivalence);
-    assertEquals(localCacheOne.maxWeight, localCacheTwo.maxWeight);
-    assertEquals(localCacheOne.weigher, localCacheTwo.weigher);
-    assertEquals(localCacheOne.expireAfterAccessNanos, localCacheTwo.expireAfterAccessNanos);
-    assertEquals(localCacheOne.expireAfterWriteNanos, localCacheTwo.expireAfterWriteNanos);
-    assertEquals(localCacheOne.removalListener, localCacheTwo.removalListener);
-    assertEquals(localCacheOne.ticker, localCacheTwo.ticker);
+    assertThat(localCacheTwo.keyStrength).isEqualTo(localCacheOne.keyStrength);
+    assertThat(localCacheTwo.valueEquivalence).isEqualTo(localCacheOne.valueEquivalence);
+    assertThat(localCacheTwo.maxWeight).isEqualTo(localCacheOne.maxWeight);
+    assertThat(localCacheTwo.weigher).isEqualTo(localCacheOne.weigher);
+    assertThat(localCacheTwo.expireAfterAccessNanos)
+        .isEqualTo(localCacheOne.expireAfterAccessNanos);
+    assertThat(localCacheTwo.expireAfterWriteNanos).isEqualTo(localCacheOne.expireAfterWriteNanos);
+    assertThat(localCacheTwo.removalListener).isEqualTo(localCacheOne.removalListener);
+    assertThat(localCacheTwo.ticker).isEqualTo(localCacheOne.ticker);
 
     // serialize the reconstituted version to be sure we haven't lost the ability to reserialize
-    LocalManualCache<Object, Object> three = SerializableTester.reserialize(two);
+    LocalManualCache<Object, Object> three = reserialize(two);
     LocalCache<Object, Object> localCacheThree = three.localCache;
 
-    assertEquals(localCacheTwo.keyStrength, localCacheThree.keyStrength);
-    assertEquals(localCacheTwo.keyStrength, localCacheThree.keyStrength);
-    assertEquals(localCacheTwo.valueEquivalence, localCacheThree.valueEquivalence);
-    assertEquals(localCacheTwo.valueEquivalence, localCacheThree.valueEquivalence);
-    assertEquals(localCacheTwo.maxWeight, localCacheThree.maxWeight);
-    assertEquals(localCacheTwo.weigher, localCacheThree.weigher);
-    assertEquals(localCacheTwo.expireAfterAccessNanos, localCacheThree.expireAfterAccessNanos);
-    assertEquals(localCacheTwo.expireAfterWriteNanos, localCacheThree.expireAfterWriteNanos);
-    assertEquals(localCacheTwo.removalListener, localCacheThree.removalListener);
-    assertEquals(localCacheTwo.ticker, localCacheThree.ticker);
+    assertThat(localCacheThree.keyStrength).isEqualTo(localCacheTwo.keyStrength);
+    assertThat(localCacheThree.valueEquivalence).isEqualTo(localCacheTwo.valueEquivalence);
+    assertThat(localCacheThree.maxWeight).isEqualTo(localCacheTwo.maxWeight);
+    assertThat(localCacheThree.weigher).isEqualTo(localCacheTwo.weigher);
+    assertThat(localCacheThree.expireAfterAccessNanos)
+        .isEqualTo(localCacheTwo.expireAfterAccessNanos);
+    assertThat(localCacheThree.expireAfterWriteNanos)
+        .isEqualTo(localCacheTwo.expireAfterWriteNanos);
+    assertThat(localCacheThree.removalListener).isEqualTo(localCacheTwo.removalListener);
+    assertThat(localCacheThree.ticker).isEqualTo(localCacheTwo.ticker);
+  }
+
+  public void testDeserializeWithHugeConcurrencyLevel() {
+    LocalManualCache<?, ?> cache =
+        (LocalManualCache<?, ?>)
+            CacheBuilder.newBuilder().concurrencyLevel(Integer.MAX_VALUE).build();
+    assertThat(cache.localCache.segments).hasLength(65536);
+    LocalManualCache<?, ?> deserialized = reserialize(cache);
+    assertThat(deserialized.localCache.segments).hasLength(1024);
+  }
+
+  public void testLoadDifferentKeyInLoader() throws ExecutionException {
+    LocalCache<String, String> cache = makeLocalCache(createCacheBuilder());
+    String key1 = "key1";
+    String key2 = "key2";
+
+    assertThat(
+            cache.get(
+                key1,
+                new CacheLoader<String, String>() {
+                  @Override
+                  public String load(String key) throws Exception {
+                    return cache.get(key2, identityLoader()); // loads a different key, should work
+                  }
+                }))
+        .isEqualTo(key2);
+  }
+
+  public void testRecursiveLoad() throws InterruptedException {
+    LocalCache<String, String> cache = makeLocalCache(createCacheBuilder());
+    String key = "key";
+    CacheLoader<String, String> loader =
+        new CacheLoader<String, String>() {
+          @Override
+          public String load(String key) throws Exception {
+            return cache.get(key, identityLoader()); // recursive load, this should fail
+          }
+        };
+    testLoadThrows(key, cache, loader);
+  }
+
+  public void testRecursiveLoadWithProxy() throws InterruptedException {
+    String key = "key";
+    String otherKey = "otherKey";
+    LocalCache<String, String> cache = makeLocalCache(createCacheBuilder());
+    CacheLoader<String, String> loader =
+        new CacheLoader<String, String>() {
+          @Override
+          public String load(String key) throws Exception {
+            return cache.get(
+                key,
+                identityLoader()); // recursive load (same as the initial one), this should fail
+          }
+        };
+    CacheLoader<String, String> proxyLoader =
+        new CacheLoader<String, String>() {
+          @Override
+          public String load(String key) throws Exception {
+            return cache.get(otherKey, loader); // loads another key, is ok
+          }
+        };
+    testLoadThrows(key, cache, proxyLoader);
   }
 
   // utility methods
+
+  private static void testLoadThrows(
+      String key, LocalCache<String, String> cache, CacheLoader<String, String> loader)
+      throws InterruptedException {
+    CountDownLatch doneSignal = new CountDownLatch(1);
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                cache.get(key, loader);
+              } catch (UncheckedExecutionException | ExecutionException e) {
+                doneSignal.countDown();
+              }
+            });
+    thread.start();
+
+    boolean done = doneSignal.await(1, SECONDS);
+    if (!done) {
+      StringBuilder builder = new StringBuilder();
+      for (StackTraceElement trace : thread.getStackTrace()) {
+        builder.append("\tat ").append(trace).append('\n');
+      }
+      fail(builder.toString());
+    }
+  }
 
   /**
    * Returns an iterable containing all combinations of maximumSize, expireAfterAccess/Write,
    * weakKeys and weak/softValues.
    */
-  @SuppressWarnings("unchecked") // varargs
   private static Iterable<CacheBuilder<Object, Object>> allEntryTypeMakers() {
-    List<CacheBuilder<Object, Object>> result = newArrayList(allKeyValueStrengthMakers());
+    List<CacheBuilder<Object, Object>> result = new ArrayList<>();
+    Iterables.addAll(result, allKeyValueStrengthMakers());
     for (CacheBuilder<Object, Object> builder : allKeyValueStrengthMakers()) {
       result.add(builder.maximumSize(SMALL_MAX_SIZE));
     }
@@ -2666,22 +2837,16 @@ public class LocalCacheTest extends TestCase {
   }
 
   /** Returns an iterable containing all combinations of maximumSize and expireAfterAccess/Write. */
-  @SuppressWarnings("unchecked") // varargs
   static Iterable<CacheBuilder<Object, Object>> allEvictingMakers() {
     return ImmutableList.of(
         createCacheBuilder().maximumSize(SMALL_MAX_SIZE),
         createCacheBuilder().expireAfterAccess(99999, SECONDS),
         createCacheBuilder().expireAfterWrite(99999, SECONDS),
-        createCacheBuilder()
-            .maximumSize(SMALL_MAX_SIZE)
-            .expireAfterAccess(SMALL_MAX_SIZE, TimeUnit.SECONDS),
-        createCacheBuilder()
-            .maximumSize(SMALL_MAX_SIZE)
-            .expireAfterWrite(SMALL_MAX_SIZE, TimeUnit.SECONDS));
+        createCacheBuilder().maximumSize(SMALL_MAX_SIZE).expireAfterAccess(SMALL_MAX_SIZE, SECONDS),
+        createCacheBuilder().maximumSize(SMALL_MAX_SIZE).expireAfterWrite(SMALL_MAX_SIZE, SECONDS));
   }
 
   /** Returns an iterable containing all combinations weakKeys and weak/softValues. */
-  @SuppressWarnings("unchecked") // varargs
   private static Iterable<CacheBuilder<Object, Object>> allKeyValueStrengthMakers() {
     return ImmutableList.of(
         createCacheBuilder(),
@@ -2695,29 +2860,30 @@ public class LocalCacheTest extends TestCase {
   // entries and values
 
   private static <K, V> DummyEntry<K, V> createDummyEntry(
-      K key, int hash, V value, ReferenceEntry<K, V> next) {
+      K key, int hash, V value, @Nullable ReferenceEntry<K, V> next) {
     DummyEntry<K, V> entry = DummyEntry.create(key, hash, next);
     DummyValueReference<K, V> valueRef = DummyValueReference.create(value);
     entry.setValueReference(valueRef);
     return entry;
   }
 
-  static class DummyEntry<K, V> implements ReferenceEntry<K, V> {
-    private K key;
+  private static final class DummyEntry<K, V> implements ReferenceEntry<K, V> {
+    private @Nullable K key;
     private final int hash;
-    private final ReferenceEntry<K, V> next;
+    private final @Nullable ReferenceEntry<K, V> next;
 
-    public DummyEntry(K key, int hash, ReferenceEntry<K, V> next) {
+    DummyEntry(@Nullable K key, int hash, @Nullable ReferenceEntry<K, V> next) {
       this.key = key;
       this.hash = hash;
       this.next = next;
     }
 
-    public static <K, V> DummyEntry<K, V> create(K key, int hash, ReferenceEntry<K, V> next) {
+    static <K, V> DummyEntry<K, V> create(
+        @Nullable K key, int hash, @Nullable ReferenceEntry<K, V> next) {
       return new DummyEntry<>(key, hash, next);
     }
 
-    public void clearKey() {
+    void clearKey() {
       this.key = null;
     }
 
@@ -2734,7 +2900,7 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public ReferenceEntry<K, V> getNext() {
+    public @Nullable ReferenceEntry<K, V> getNext() {
       return next;
     }
 
@@ -2744,7 +2910,7 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public K getKey() {
+    public @Nullable K getKey() {
       return key;
     }
 
@@ -2821,28 +2987,24 @@ public class LocalCacheTest extends TestCase {
     }
   }
 
-  static class DummyValueReference<K, V> implements ValueReference<K, V> {
-    private V value;
+  private static final class DummyValueReference<K, V> implements ValueReference<K, V> {
+    private @Nullable V value;
     boolean loading = false;
 
-    public DummyValueReference() {
+    DummyValueReference() {
       this.loading = true;
     }
 
-    public DummyValueReference(V value) {
+    DummyValueReference(@Nullable V value) {
       this.value = value;
     }
 
-    public static <K, V> DummyValueReference<K, V> create(V value) {
+    static <K, V> DummyValueReference<K, V> create(@Nullable V value) {
       return new DummyValueReference<>(value);
     }
 
-    public static <K, V> DummyValueReference<K, V> createLoading() {
-      return new DummyValueReference<>();
-    }
-
     @Override
-    public V get() {
+    public @Nullable V get() {
       return value;
     }
 
@@ -2852,13 +3014,13 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public ReferenceEntry<K, V> getEntry() {
+    public @Nullable ReferenceEntry<K, V> getEntry() {
       return null;
     }
 
     @Override
     public ValueReference<K, V> copyFor(
-        ReferenceQueue<V> queue, V value, ReferenceEntry<K, V> entry) {
+        @Nullable ReferenceQueue<V> queue, @Nullable V value, ReferenceEntry<K, V> entry) {
       return this;
     }
 
@@ -2884,12 +3046,12 @@ public class LocalCacheTest extends TestCase {
     @Override
     public void notifyNewValue(V newValue) {}
 
-    public void clear() {
+    void clear() {
       value = null;
     }
   }
 
-  private static class SerializableCacheLoader extends CacheLoader<Object, Object>
+  private static final class SerializableCacheLoader extends CacheLoader<Object, Object>
       implements Serializable {
     @Override
     public Object load(Object key) {
@@ -2902,12 +3064,12 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object o) {
-      return (o instanceof SerializableCacheLoader);
+    public boolean equals(@Nullable Object o) {
+      return o instanceof SerializableCacheLoader;
     }
   }
 
-  private static class SerializableRemovalListener<K, V>
+  private static final class SerializableRemovalListener<K, V>
       implements RemovalListener<K, V>, Serializable {
     @Override
     public void onRemoval(RemovalNotification<K, V> notification) {}
@@ -2918,12 +3080,12 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object o) {
-      return (o instanceof SerializableRemovalListener);
+    public boolean equals(@Nullable Object o) {
+      return o instanceof SerializableRemovalListener;
     }
   }
 
-  private static class SerializableTicker extends Ticker implements Serializable {
+  private static final class SerializableTicker extends Ticker implements Serializable {
     @Override
     public long read() {
       return 42;
@@ -2935,12 +3097,12 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object o) {
-      return (o instanceof SerializableTicker);
+    public boolean equals(@Nullable Object o) {
+      return o instanceof SerializableTicker;
     }
   }
 
-  private static class SerializableWeigher<K, V> implements Weigher<K, V>, Serializable {
+  private static final class SerializableWeigher<K, V> implements Weigher<K, V>, Serializable {
     @Override
     public int weigh(K key, V value) {
       return 42;
@@ -2952,8 +3114,14 @@ public class LocalCacheTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object o) {
-      return (o instanceof SerializableWeigher);
+    public boolean equals(@Nullable Object o) {
+      return o instanceof SerializableWeigher;
     }
+  }
+
+  // Our tests are generally (always?) updating the count from only one thread.
+  @SuppressWarnings("NonAtomicVolatileUpdate")
+  private static void incrementCount(Segment<?, ?> segment) {
+    segment.count++;
   }
 }

@@ -16,30 +16,35 @@
 
 package com.google.common.base;
 
+import static com.google.common.base.Strings.repeat;
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Unit test for {@link Strings}.
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
+@NullMarked
+@GwtCompatible
 public class StringsTest extends TestCase {
   public void testNullToEmpty() {
-    assertEquals("", Strings.nullToEmpty(null));
-    assertEquals("", Strings.nullToEmpty(""));
-    assertEquals("a", Strings.nullToEmpty("a"));
+    assertThat(Strings.nullToEmpty(null)).isEqualTo("");
+    assertThat(Strings.nullToEmpty("")).isEqualTo("");
+    assertThat(Strings.nullToEmpty("a")).isEqualTo("a");
   }
 
   public void testEmptyToNull() {
-    assertNull(Strings.emptyToNull(null));
-    assertNull(Strings.emptyToNull(""));
-    assertEquals("a", Strings.emptyToNull("a"));
+    assertThat(Strings.emptyToNull(null)).isNull();
+    assertThat(Strings.emptyToNull("")).isNull();
+    assertThat(Strings.emptyToNull("a")).isEqualTo("a");
   }
 
   public void testIsNullOrEmpty() {
@@ -49,154 +54,141 @@ public class StringsTest extends TestCase {
   }
 
   public void testPadStart_noPadding() {
-    assertSame("", Strings.padStart("", 0, '-'));
-    assertSame("x", Strings.padStart("x", 0, '-'));
-    assertSame("x", Strings.padStart("x", 1, '-'));
-    assertSame("xx", Strings.padStart("xx", 0, '-'));
-    assertSame("xx", Strings.padStart("xx", 2, '-'));
+    assertThat(Strings.padStart("", 0, '-')).isSameInstanceAs("");
+    assertThat(Strings.padStart("x", 0, '-')).isSameInstanceAs("x");
+    assertThat(Strings.padStart("x", 1, '-')).isSameInstanceAs("x");
+    assertThat(Strings.padStart("xx", 0, '-')).isSameInstanceAs("xx");
+    assertThat(Strings.padStart("xx", 2, '-')).isSameInstanceAs("xx");
   }
 
   public void testPadStart_somePadding() {
-    assertEquals("-", Strings.padStart("", 1, '-'));
-    assertEquals("--", Strings.padStart("", 2, '-'));
-    assertEquals("-x", Strings.padStart("x", 2, '-'));
-    assertEquals("--x", Strings.padStart("x", 3, '-'));
-    assertEquals("-xx", Strings.padStart("xx", 3, '-'));
+    assertThat(Strings.padStart("", 1, '-')).isEqualTo("-");
+    assertThat(Strings.padStart("", 2, '-')).isEqualTo("--");
+    assertThat(Strings.padStart("x", 2, '-')).isEqualTo("-x");
+    assertThat(Strings.padStart("x", 3, '-')).isEqualTo("--x");
+    assertThat(Strings.padStart("xx", 3, '-')).isEqualTo("-xx");
   }
 
   public void testPadStart_negativeMinLength() {
-    assertSame("x", Strings.padStart("x", -1, '-'));
+    assertThat(Strings.padStart("x", -1, '-')).isSameInstanceAs("x");
   }
 
-  // TODO: could remove if we got NPT working in GWT somehow
+  @SuppressWarnings("nullness") // test of a bogus call
   public void testPadStart_null() {
-    try {
-      Strings.padStart(null, 5, '0');
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Strings.padStart(null, 5, '0'));
   }
 
   public void testPadEnd_noPadding() {
-    assertSame("", Strings.padEnd("", 0, '-'));
-    assertSame("x", Strings.padEnd("x", 0, '-'));
-    assertSame("x", Strings.padEnd("x", 1, '-'));
-    assertSame("xx", Strings.padEnd("xx", 0, '-'));
-    assertSame("xx", Strings.padEnd("xx", 2, '-'));
+    assertThat(Strings.padEnd("", 0, '-')).isSameInstanceAs("");
+    assertThat(Strings.padEnd("x", 0, '-')).isSameInstanceAs("x");
+    assertThat(Strings.padEnd("x", 1, '-')).isSameInstanceAs("x");
+    assertThat(Strings.padEnd("xx", 0, '-')).isSameInstanceAs("xx");
+    assertThat(Strings.padEnd("xx", 2, '-')).isSameInstanceAs("xx");
   }
 
   public void testPadEnd_somePadding() {
-    assertEquals("-", Strings.padEnd("", 1, '-'));
-    assertEquals("--", Strings.padEnd("", 2, '-'));
-    assertEquals("x-", Strings.padEnd("x", 2, '-'));
-    assertEquals("x--", Strings.padEnd("x", 3, '-'));
-    assertEquals("xx-", Strings.padEnd("xx", 3, '-'));
+    assertThat(Strings.padEnd("", 1, '-')).isEqualTo("-");
+    assertThat(Strings.padEnd("", 2, '-')).isEqualTo("--");
+    assertThat(Strings.padEnd("x", 2, '-')).isEqualTo("x-");
+    assertThat(Strings.padEnd("x", 3, '-')).isEqualTo("x--");
+    assertThat(Strings.padEnd("xx", 3, '-')).isEqualTo("xx-");
   }
 
   public void testPadEnd_negativeMinLength() {
-    assertSame("x", Strings.padEnd("x", -1, '-'));
+    assertThat(Strings.padEnd("x", -1, '-')).isSameInstanceAs("x");
   }
 
-  // TODO: could remove if we got NPT working in GWT somehow
+  @SuppressWarnings("nullness") // test of a bogus call
   public void testPadEnd_null() {
-    try {
-      Strings.padEnd(null, 5, '0');
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Strings.padEnd(null, 5, '0'));
   }
 
+  @SuppressWarnings("InlineMeInliner") // test of method that doesn't just delegate
   public void testRepeat() {
     String input = "20";
-    assertEquals("", Strings.repeat(input, 0));
-    assertEquals("20", Strings.repeat(input, 1));
-    assertEquals("2020", Strings.repeat(input, 2));
-    assertEquals("202020", Strings.repeat(input, 3));
+    assertThat(repeat(input, 0)).isEqualTo("");
+    assertThat(repeat(input, 1)).isEqualTo("20");
+    assertThat(repeat(input, 2)).isEqualTo("2020");
+    assertThat(repeat(input, 3)).isEqualTo("202020");
 
-    assertEquals("", Strings.repeat("", 4));
+    assertThat(repeat("", 4)).isEqualTo("");
 
     for (int i = 0; i < 100; ++i) {
-      assertEquals(2 * i, Strings.repeat(input, i).length());
+      assertEquals(2 * i, repeat(input, i).length());
     }
 
-    try {
-      Strings.repeat("x", -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      // Massive string
-      Strings.repeat("12345678", (1 << 30) + 3);
-      fail();
-    } catch (ArrayIndexOutOfBoundsException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> repeat("x", -1));
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> repeat("12345678", (1 << 30) + 3));
   }
 
-  // TODO: could remove if we got NPT working in GWT somehow
+  @SuppressWarnings({
+    "InlineMeInliner", // test of method that doesn't just delegate
+    "nullness", // test of a bogus call
+  })
   public void testRepeat_null() {
-    try {
-      Strings.repeat(null, 5);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> repeat(null, 5));
   }
 
+  @SuppressWarnings("UnnecessaryStringBuilder") // We want to test a non-String CharSequence
   public void testCommonPrefix() {
-    assertEquals("", Strings.commonPrefix("", ""));
-    assertEquals("", Strings.commonPrefix("abc", ""));
-    assertEquals("", Strings.commonPrefix("", "abc"));
-    assertEquals("", Strings.commonPrefix("abcde", "xyz"));
-    assertEquals("", Strings.commonPrefix("xyz", "abcde"));
-    assertEquals("", Strings.commonPrefix("xyz", "abcxyz"));
-    assertEquals("a", Strings.commonPrefix("abc", "aaaaa"));
-    assertEquals("aa", Strings.commonPrefix("aa", "aaaaa"));
-    assertEquals("abc", Strings.commonPrefix(new StringBuffer("abcdef"), "abcxyz"));
+    assertThat(Strings.commonPrefix("", "")).isEqualTo("");
+    assertThat(Strings.commonPrefix("abc", "")).isEqualTo("");
+    assertThat(Strings.commonPrefix("", "abc")).isEqualTo("");
+    assertThat(Strings.commonPrefix("abcde", "xyz")).isEqualTo("");
+    assertThat(Strings.commonPrefix("xyz", "abcde")).isEqualTo("");
+    assertThat(Strings.commonPrefix("xyz", "abcxyz")).isEqualTo("");
+    assertThat(Strings.commonPrefix("abc", "aaaaa")).isEqualTo("a");
+    assertThat(Strings.commonPrefix("aa", "aaaaa")).isEqualTo("aa");
+    assertThat(Strings.commonPrefix(new StringBuilder("abcdef"), "abcxyz")).isEqualTo("abc");
 
     // Identical valid surrogate pairs.
-    assertEquals(
-        "abc\uD8AB\uDCAB", Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uDCABxyz"));
+    assertThat(Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uDCABxyz"))
+        .isEqualTo("abc\uD8AB\uDCAB");
     // Differing valid surrogate pairs.
-    assertEquals("abc", Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uDCACxyz"));
+    assertThat(Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uDCACxyz")).isEqualTo("abc");
     // One invalid pair.
-    assertEquals("abc", Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uD8ABxyz"));
+    assertThat(Strings.commonPrefix("abc\uD8AB\uDCABdef", "abc\uD8AB\uD8ABxyz")).isEqualTo("abc");
     // Two identical invalid pairs.
-    assertEquals(
-        "abc\uD8AB\uD8AC", Strings.commonPrefix("abc\uD8AB\uD8ACdef", "abc\uD8AB\uD8ACxyz"));
+    assertThat(Strings.commonPrefix("abc\uD8AB\uD8ACdef", "abc\uD8AB\uD8ACxyz"))
+        .isEqualTo("abc\uD8AB\uD8AC");
     // Two differing invalid pairs.
-    assertEquals("abc\uD8AB", Strings.commonPrefix("abc\uD8AB\uD8ABdef", "abc\uD8AB\uD8ACxyz"));
+    assertThat(Strings.commonPrefix("abc\uD8AB\uD8ABdef", "abc\uD8AB\uD8ACxyz"))
+        .isEqualTo("abc\uD8AB");
     // One orphan high surrogate.
-    assertEquals("", Strings.commonPrefix("\uD8AB\uDCAB", "\uD8AB"));
+    assertThat(Strings.commonPrefix("\uD8AB\uDCAB", "\uD8AB")).isEqualTo("");
     // Two orphan high surrogates.
-    assertEquals("\uD8AB", Strings.commonPrefix("\uD8AB", "\uD8AB"));
+    assertThat(Strings.commonPrefix("\uD8AB", "\uD8AB")).isEqualTo("\uD8AB");
   }
 
+  @SuppressWarnings("UnnecessaryStringBuilder") // We want to test a non-String CharSequence
   public void testCommonSuffix() {
-    assertEquals("", Strings.commonSuffix("", ""));
-    assertEquals("", Strings.commonSuffix("abc", ""));
-    assertEquals("", Strings.commonSuffix("", "abc"));
-    assertEquals("", Strings.commonSuffix("abcde", "xyz"));
-    assertEquals("", Strings.commonSuffix("xyz", "abcde"));
-    assertEquals("", Strings.commonSuffix("xyz", "xyzabc"));
-    assertEquals("c", Strings.commonSuffix("abc", "ccccc"));
-    assertEquals("aa", Strings.commonSuffix("aa", "aaaaa"));
-    assertEquals("abc", Strings.commonSuffix(new StringBuffer("xyzabc"), "xxxabc"));
+    assertThat(Strings.commonSuffix("", "")).isEqualTo("");
+    assertThat(Strings.commonSuffix("abc", "")).isEqualTo("");
+    assertThat(Strings.commonSuffix("", "abc")).isEqualTo("");
+    assertThat(Strings.commonSuffix("abcde", "xyz")).isEqualTo("");
+    assertThat(Strings.commonSuffix("xyz", "abcde")).isEqualTo("");
+    assertThat(Strings.commonSuffix("xyz", "xyzabc")).isEqualTo("");
+    assertThat(Strings.commonSuffix("abc", "ccccc")).isEqualTo("c");
+    assertThat(Strings.commonSuffix("aa", "aaaaa")).isEqualTo("aa");
+    assertThat(Strings.commonSuffix(new StringBuilder("xyzabc"), "xxxabc")).isEqualTo("abc");
 
     // Identical valid surrogate pairs.
-    assertEquals(
-        "\uD8AB\uDCABdef", Strings.commonSuffix("abc\uD8AB\uDCABdef", "xyz\uD8AB\uDCABdef"));
+    assertThat(Strings.commonSuffix("abc\uD8AB\uDCABdef", "xyz\uD8AB\uDCABdef"))
+        .isEqualTo("\uD8AB\uDCABdef");
     // Differing valid surrogate pairs.
-    assertEquals("def", Strings.commonSuffix("abc\uD8AB\uDCABdef", "abc\uD8AC\uDCABdef"));
+    assertThat(Strings.commonSuffix("abc\uD8AB\uDCABdef", "abc\uD8AC\uDCABdef")).isEqualTo("def");
     // One invalid pair.
-    assertEquals("def", Strings.commonSuffix("abc\uD8AB\uDCABdef", "xyz\uDCAB\uDCABdef"));
+    assertThat(Strings.commonSuffix("abc\uD8AB\uDCABdef", "xyz\uDCAB\uDCABdef")).isEqualTo("def");
     // Two identical invalid pairs.
-    assertEquals(
-        "\uD8AB\uD8ABdef", Strings.commonSuffix("abc\uD8AB\uD8ABdef", "xyz\uD8AB\uD8ABdef"));
+    assertThat(Strings.commonSuffix("abc\uD8AB\uD8ABdef", "xyz\uD8AB\uD8ABdef"))
+        .isEqualTo("\uD8AB\uD8ABdef");
     // Two differing invalid pairs.
-    assertEquals("\uDCABdef", Strings.commonSuffix("abc\uDCAB\uDCABdef", "abc\uDCAC\uDCABdef"));
+    assertThat(Strings.commonSuffix("abc\uDCAB\uDCABdef", "abc\uDCAC\uDCABdef"))
+        .isEqualTo("\uDCABdef");
     // One orphan low surrogate.
-    assertEquals("", Strings.commonSuffix("x\uD8AB\uDCAB", "\uDCAB"));
+    assertThat(Strings.commonSuffix("x\uD8AB\uDCAB", "\uDCAB")).isEqualTo("");
     // Two orphan low surrogates.
-    assertEquals("\uDCAB", Strings.commonSuffix("\uDCAB", "\uDCAB"));
+    assertThat(Strings.commonSuffix("\uDCAB", "\uDCAB")).isEqualTo("\uDCAB");
   }
 
   public void testValidSurrogatePairAt() {
@@ -213,30 +205,38 @@ public class StringsTest extends TestCase {
     assertFalse(Strings.validSurrogatePairAt("\uD8ABx", 0));
   }
 
+  @SuppressWarnings("LenientFormatStringValidation") // Intentional for testing.
   public void testLenientFormat() {
-    assertEquals("%s", Strings.lenientFormat("%s"));
-    assertEquals("5", Strings.lenientFormat("%s", 5));
-    assertEquals("foo [5]", Strings.lenientFormat("foo", 5));
-    assertEquals("foo [5, 6, 7]", Strings.lenientFormat("foo", 5, 6, 7));
-    assertEquals("%s 1 2", Strings.lenientFormat("%s %s %s", "%s", 1, 2));
-    assertEquals(" [5, 6]", Strings.lenientFormat("", 5, 6));
-    assertEquals("123", Strings.lenientFormat("%s%s%s", 1, 2, 3));
-    assertEquals("1%s%s", Strings.lenientFormat("%s%s%s", 1));
-    assertEquals("5 + 6 = 11", Strings.lenientFormat("%s + 6 = 11", 5));
-    assertEquals("5 + 6 = 11", Strings.lenientFormat("5 + %s = 11", 6));
-    assertEquals("5 + 6 = 11", Strings.lenientFormat("5 + 6 = %s", 11));
-    assertEquals("5 + 6 = 11", Strings.lenientFormat("%s + %s = %s", 5, 6, 11));
-    assertEquals("null [null, null]", Strings.lenientFormat("%s", null, null, null));
-    assertEquals("null [5, 6]", Strings.lenientFormat(null, 5, 6));
-    assertEquals("null", Strings.lenientFormat("%s", (Object) null));
-    assertEquals("(Object[])null", Strings.lenientFormat("%s", (Object[]) null));
+    assertThat(Strings.lenientFormat("%s")).isEqualTo("%s");
+    assertThat(Strings.lenientFormat("%s", 5)).isEqualTo("5");
+    assertThat(Strings.lenientFormat("foo", 5)).isEqualTo("foo [5]");
+    assertThat(Strings.lenientFormat("foo", 5, 6, 7)).isEqualTo("foo [5, 6, 7]");
+    assertThat(Strings.lenientFormat("%s %s %s", "%s", 1, 2)).isEqualTo("%s 1 2");
+    assertThat(Strings.lenientFormat("", 5, 6)).isEqualTo(" [5, 6]");
+    assertThat(Strings.lenientFormat("%s%s%s", 1, 2, 3)).isEqualTo("123");
+    assertThat(Strings.lenientFormat("%s%s%s", 1)).isEqualTo("1%s%s");
+    assertThat(Strings.lenientFormat("%s + 6 = 11", 5)).isEqualTo("5 + 6 = 11");
+    assertThat(Strings.lenientFormat("5 + %s = 11", 6)).isEqualTo("5 + 6 = 11");
+    assertThat(Strings.lenientFormat("5 + 6 = %s", 11)).isEqualTo("5 + 6 = 11");
+    assertThat(Strings.lenientFormat("%s + %s = %s", 5, 6, 11)).isEqualTo("5 + 6 = 11");
+    assertThat(Strings.lenientFormat("%s + %s = %s", (Object[]) new Integer[] {5, 6, 11}))
+        .isEqualTo("5 + 6 = 11");
+    assertThat(Strings.lenientFormat("%s", null, null, null)).isEqualTo("null [null, null]");
+    assertThat(Strings.lenientFormat(null, 5, 6)).isEqualTo("null [5, 6]");
+    assertThat(Strings.lenientFormat("%s", (Object) null)).isEqualTo("null");
+  }
+
+  @J2ktIncompatible // TODO(b/319404022): Allow passing null array as varargs
+  public void testLenientFormat_nullArrayVarargs() {
+    assertThat(Strings.lenientFormat("%s", (Object[]) null)).isEqualTo("(Object[])null");
   }
 
   @GwtIncompatible // GWT reflection includes less data
   public void testLenientFormat_badArgumentToString() {
     assertThat(Strings.lenientFormat("boiler %s plate", new ThrowsOnToString()))
         .matches(
-            "boiler <com\\.google\\.common\\.base\\.StringsTest\\$ThrowsOnToString@[0-9a-f]+ "
+            // J2kt nested class name does not use "$"
+            "boiler <com\\.google\\.common\\.base\\.StringsTest[.$]ThrowsOnToString@[0-9a-f]+ "
                 + "threw java\\.lang\\.UnsupportedOperationException> plate");
   }
 
@@ -252,6 +252,7 @@ public class StringsTest extends TestCase {
     }
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointers() {
     NullPointerTester tester = new NullPointerTester();

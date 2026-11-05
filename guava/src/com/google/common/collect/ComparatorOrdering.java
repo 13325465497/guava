@@ -19,13 +19,16 @@ package com.google.common.collect;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.Comparator;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /** An ordering for a pre-existing comparator. */
-@GwtCompatible(serializable = true)
-final class ComparatorOrdering<T> extends Ordering<T> implements Serializable {
+@GwtCompatible
+final class ComparatorOrdering<T extends @Nullable Object> extends Ordering<T>
+    implements Serializable {
   final Comparator<T> comparator;
 
   ComparatorOrdering(Comparator<T> comparator) {
@@ -33,7 +36,7 @@ final class ComparatorOrdering<T> extends Ordering<T> implements Serializable {
   }
 
   @Override
-  public int compare(T a, T b) {
+  public int compare(@ParametricNullness T a, @ParametricNullness T b) {
     return comparator.compare(a, b);
   }
 
@@ -59,5 +62,5 @@ final class ComparatorOrdering<T> extends Ordering<T> implements Serializable {
     return comparator.toString();
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

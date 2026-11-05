@@ -18,9 +18,11 @@ package com.google.common.collect;
 
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
@@ -33,16 +35,20 @@ import java.util.RandomAccess;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Unit tests for {@code ArrayListMultimap}.
  *
  * @author Jared Levy
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class ArrayListMultimapTest extends TestCase {
 
   @GwtIncompatible // suite
+  @J2ktIncompatible
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -72,13 +78,9 @@ public class ArrayListMultimapTest extends TestCase {
     return suite;
   }
 
-  protected ListMultimap<String, Integer> create() {
-    return ArrayListMultimap.create();
-  }
-
   /** Confirm that get() returns a List implementing RandomAccess. */
   public void testGetRandomAccess() {
-    Multimap<String, Integer> multimap = create();
+    Multimap<String, Integer> multimap = ArrayListMultimap.create();
     multimap.put("foo", 1);
     multimap.put("foo", 3);
     assertTrue(multimap.get("foo") instanceof RandomAccess);
@@ -87,7 +89,7 @@ public class ArrayListMultimapTest extends TestCase {
 
   /** Confirm that removeAll() returns a List implementing RandomAccess. */
   public void testRemoveAllRandomAccess() {
-    Multimap<String, Integer> multimap = create();
+    Multimap<String, Integer> multimap = ArrayListMultimap.create();
     multimap.put("foo", 1);
     multimap.put("foo", 3);
     assertTrue(multimap.removeAll("foo") instanceof RandomAccess);
@@ -96,7 +98,7 @@ public class ArrayListMultimapTest extends TestCase {
 
   /** Confirm that replaceValues() returns a List implementing RandomAccess. */
   public void testReplaceValuesRandomAccess() {
-    Multimap<String, Integer> multimap = create();
+    Multimap<String, Integer> multimap = ArrayListMultimap.create();
     multimap.put("foo", 1);
     multimap.put("foo", 3);
     assertTrue(multimap.replaceValues("foo", asList(2, 4)) instanceof RandomAccess);
@@ -105,7 +107,7 @@ public class ArrayListMultimapTest extends TestCase {
 
   /** Test throwing ConcurrentModificationException when a sublist's ancestor's delegate changes. */
   public void testSublistConcurrentModificationException() {
-    ListMultimap<String, Integer> multimap = create();
+    ListMultimap<String, Integer> multimap = ArrayListMultimap.create();
     multimap.putAll("foo", asList(1, 2, 3, 4, 5));
     List<Integer> list = multimap.get("foo");
     assertThat(multimap.get("foo")).containsExactly(1, 2, 3, 4, 5).inOrder();
@@ -116,15 +118,11 @@ public class ArrayListMultimapTest extends TestCase {
     assertTrue(sublist.isEmpty());
     multimap.put("foo", 6);
 
-    try {
-      sublist.isEmpty();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-    }
+    assertThrows(ConcurrentModificationException.class, () -> sublist.isEmpty());
   }
 
   public void testCreateFromMultimap() {
-    Multimap<String, Integer> multimap = create();
+    Multimap<String, Integer> multimap = ArrayListMultimap.create();
     multimap.put("foo", 1);
     multimap.put("foo", 3);
     multimap.put("bar", 2);
@@ -143,17 +141,9 @@ public class ArrayListMultimapTest extends TestCase {
   }
 
   public void testCreateFromIllegalSizes() {
-    try {
-      ArrayListMultimap.create(15, -2);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> ArrayListMultimap.create(15, -2));
 
-    try {
-      ArrayListMultimap.create(-15, 2);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> ArrayListMultimap.create(-15, 2));
   }
 
   public void testCreateFromHashMultimap() {

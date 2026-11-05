@@ -24,7 +24,7 @@ import java.util.AbstractSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A class to represent the set of edges connecting an (implicit) origin node to a target node.
@@ -46,11 +46,11 @@ abstract class MultiEdgesConnecting<E> extends AbstractSet<E> {
   }
 
   @Override
-  public UnmodifiableIterator<E> iterator() {
-    final Iterator<? extends Entry<E, ?>> entries = outEdgeToNode.entrySet().iterator();
+  public final UnmodifiableIterator<E> iterator() {
+    Iterator<? extends Entry<E, ?>> entries = outEdgeToNode.entrySet().iterator();
     return new AbstractIterator<E>() {
       @Override
-      protected E computeNext() {
+      protected @Nullable E computeNext() {
         while (entries.hasNext()) {
           Entry<E, ?> entry = entries.next();
           if (targetNode.equals(entry.getValue())) {
@@ -63,7 +63,7 @@ abstract class MultiEdgesConnecting<E> extends AbstractSet<E> {
   }
 
   @Override
-  public boolean contains(@NullableDecl Object edge) {
+  public final boolean contains(@Nullable Object edge) {
     return targetNode.equals(outEdgeToNode.get(edge));
   }
 }

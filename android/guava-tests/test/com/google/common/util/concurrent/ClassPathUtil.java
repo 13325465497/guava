@@ -17,15 +17,21 @@ package com.google.common.util.concurrent;
 import static com.google.common.base.StandardSystemProperty.JAVA_CLASS_PATH;
 import static com.google.common.base.StandardSystemProperty.PATH_SEPARATOR;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import org.jspecify.annotations.NullUnmarked;
 
 // TODO(b/65488446): Make this a public API.
 /** Utility method to parse the system class path. */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 final class ClassPathUtil {
   private ClassPathUtil() {}
 
@@ -41,12 +47,12 @@ final class ClassPathUtil {
         try {
           urls.add(new File(entry).toURI().toURL());
         } catch (SecurityException e) { // File.toURI checks to see if the file is a directory
-          urls.add(new URL("file", null, new File(entry).getAbsolutePath()));
+          @SuppressWarnings("deprecation") // This is the fallback if the preferred pattern fails.
+          URL url = new URL("file", null, new File(entry).getAbsolutePath());
+          urls.add(url);
         }
       } catch (MalformedURLException e) {
-        AssertionError error = new AssertionError("malformed class path entry: " + entry);
-        error.initCause(e);
-        throw error;
+        throw new AssertionError("malformed class path entry: " + entry, e);
       }
     }
     return urls.build().toArray(new URL[0]);

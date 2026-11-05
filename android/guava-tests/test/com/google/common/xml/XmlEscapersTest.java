@@ -18,10 +18,13 @@ package com.google.common.xml;
 
 import static com.google.common.escape.testing.EscaperAsserts.assertEscaping;
 import static com.google.common.escape.testing.EscaperAsserts.assertUnescaped;
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.escape.CharEscaper;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for the {@link XmlEscapers} class.
@@ -30,38 +33,39 @@ import junit.framework.TestCase;
  * @author David Beaumont
  */
 @GwtCompatible
+@NullUnmarked
 public class XmlEscapersTest extends TestCase {
 
-  public void testXmlContentEscaper() throws Exception {
+  public void testXmlContentEscaper() {
     CharEscaper xmlContentEscaper = (CharEscaper) XmlEscapers.xmlContentEscaper();
     assertBasicXmlEscaper(xmlContentEscaper, false, false);
     // Test quotes are not escaped.
-    assertEquals("\"test\"", xmlContentEscaper.escape("\"test\""));
-    assertEquals("'test'", xmlContentEscaper.escape("'test'"));
+    assertThat(xmlContentEscaper.escape("\"test\"")).isEqualTo("\"test\"");
+    assertThat(xmlContentEscaper.escape("'test'")).isEqualTo("'test'");
   }
 
-  public void testXmlAttributeEscaper() throws Exception {
+  public void testXmlAttributeEscaper() {
     CharEscaper xmlAttributeEscaper = (CharEscaper) XmlEscapers.xmlAttributeEscaper();
     assertBasicXmlEscaper(xmlAttributeEscaper, true, true);
     // Test quotes are escaped.
-    assertEquals("&quot;test&quot;", xmlAttributeEscaper.escape("\"test\""));
-    assertEquals("&apos;test&apos;", xmlAttributeEscaper.escape("\'test'"));
+    assertThat(xmlAttributeEscaper.escape("\"test\"")).isEqualTo("&quot;test&quot;");
+    assertThat(xmlAttributeEscaper.escape("'test'")).isEqualTo("&apos;test&apos;");
     // Test all escapes
-    assertEquals(
-        "a&quot;b&lt;c&gt;d&amp;e&quot;f&apos;", xmlAttributeEscaper.escape("a\"b<c>d&e\"f'"));
+    assertThat(xmlAttributeEscaper.escape("a\"b<c>d&e\"f'"))
+        .isEqualTo("a&quot;b&lt;c&gt;d&amp;e&quot;f&apos;");
     // Test '\t', '\n' and '\r' are escaped.
-    assertEquals("a&#x9;b&#xA;c&#xD;d", xmlAttributeEscaper.escape("a\tb\nc\rd"));
+    assertThat(xmlAttributeEscaper.escape("a\tb\nc\rd")).isEqualTo("a&#x9;b&#xA;c&#xD;d");
   }
 
   // Helper to assert common properties of xml escapers.
   static void assertBasicXmlEscaper(
       CharEscaper xmlEscaper, boolean shouldEscapeQuotes, boolean shouldEscapeWhitespaceChars) {
     // Simple examples (smoke tests)
-    assertEquals("xxx", xmlEscaper.escape("xxx"));
-    assertEquals("test &amp; test &amp; test", xmlEscaper.escape("test & test & test"));
-    assertEquals("test &lt;&lt; 1", xmlEscaper.escape("test << 1"));
-    assertEquals("test &gt;&gt; 1", xmlEscaper.escape("test >> 1"));
-    assertEquals("&lt;tab&gt;", xmlEscaper.escape("<tab>"));
+    assertThat(xmlEscaper.escape("xxx")).isEqualTo("xxx");
+    assertThat(xmlEscaper.escape("test & test & test")).isEqualTo("test &amp; test &amp; test");
+    assertThat(xmlEscaper.escape("test << 1")).isEqualTo("test &lt;&lt; 1");
+    assertThat(xmlEscaper.escape("test >> 1")).isEqualTo("test &gt;&gt; 1");
+    assertThat(xmlEscaper.escape("<tab>")).isEqualTo("&lt;tab&gt;");
 
     // Test all non-escaped ASCII characters.
     String s =
@@ -69,7 +73,7 @@ public class XmlEscapersTest extends TestCase {
             + "abcdefghijklmnopqrstuvwxyz"
             + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             + "1234567890";
-    assertEquals(s, xmlEscaper.escape(s));
+    assertThat(xmlEscaper.escape(s)).isEqualTo(s);
 
     // Test ASCII control characters.
     for (char ch = 0; ch < 0x20; ch++) {
@@ -102,8 +106,9 @@ public class XmlEscapersTest extends TestCase {
       } else {
         String input = String.valueOf(ch);
         String escaped = xmlEscaper.escape(input);
-        assertEquals(
-            "char 0x" + Integer.toString(ch, 16) + " should not be escaped", input, escaped);
+        assertWithMessage("char 0x" + Integer.toString(ch, 16) + " should not be escaped")
+            .that(escaped)
+            .isEqualTo(input);
       }
     }
 
@@ -111,13 +116,11 @@ public class XmlEscapersTest extends TestCase {
     assertEscaping(xmlEscaper, "\uFFFD", '\uFFFE');
     assertEscaping(xmlEscaper, "\uFFFD", '\uFFFF');
 
-    assertEquals(
-        "0xFFFE is forbidden and should be replaced during escaping",
-        "[\uFFFD]",
-        xmlEscaper.escape("[\ufffe]"));
-    assertEquals(
-        "0xFFFF is forbidden and should be replaced during escaping",
-        "[\uFFFD]",
-        xmlEscaper.escape("[\uffff]"));
+    assertWithMessage("0xFFFE is forbidden and should be replaced during escaping")
+        .that(xmlEscaper.escape("[\ufffe]"))
+        .isEqualTo("[\uFFFD]");
+    assertWithMessage("0xFFFF is forbidden and should be replaced during escaping")
+        .that(xmlEscaper.escape("[\uffff]"))
+        .isEqualTo("[\uFFFD]");
   }
 }

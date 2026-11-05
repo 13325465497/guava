@@ -16,10 +16,15 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Sets.newIdentityHashSet;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static com.google.common.truth.Truth.assertThat;
 import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.AnEnum;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
@@ -28,23 +33,27 @@ import com.google.common.collect.testing.google.MultisetTestSuiteBuilder;
 import com.google.common.collect.testing.google.TestEnumMultisetGenerator;
 import com.google.common.testing.ClassSanityTester;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.SerializableTester;
+import com.google.errorprone.annotations.Keep;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Set;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for an {@link EnumMultiset}.
  *
  * @author Jared Levy
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@J2ktIncompatible // EnumMultiset
+@NullUnmarked
 public class EnumMultisetTest extends TestCase {
 
   @GwtIncompatible // suite
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -62,6 +71,7 @@ public class EnumMultisetTest extends TestCase {
     return suite;
   }
 
+  @AndroidIncompatible // test-suite builders
   private static TestEnumMultisetGenerator enumMultisetGenerator() {
     return new TestEnumMultisetGenerator() {
       @Override
@@ -105,24 +115,17 @@ public class EnumMultisetTest extends TestCase {
 
   public void testIllegalCreate() {
     Collection<Color> empty = EnumSet.noneOf(Color.class);
-    try {
-      EnumMultiset.create(empty);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> EnumMultiset.create(empty));
   }
 
   public void testCreateEmptyWithClass() {
-    Multiset<Color> ms = EnumMultiset.create(ImmutableList.<Color>of(), Color.class);
+    Multiset<Color> ms = EnumMultiset.create(ImmutableList.of(), Color.class);
     ms.add(Color.RED);
   }
 
   public void testCreateEmptyWithoutClassFails() {
-    try {
-      EnumMultiset.create(ImmutableList.<Color>of());
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> EnumMultiset.create(ImmutableList.<Color>of()));
   }
 
   public void testToString() {
@@ -130,13 +133,13 @@ public class EnumMultisetTest extends TestCase {
     ms.add(Color.BLUE, 3);
     ms.add(Color.YELLOW, 1);
     ms.add(Color.RED, 2);
-    assertEquals("[BLUE x 3, RED x 2, YELLOW]", ms.toString());
+    assertThat(ms.toString()).isEqualTo("[BLUE x 3, RED x 2, YELLOW]");
   }
 
   @GwtIncompatible // SerializableTester
   public void testSerializable() {
     Multiset<Color> ms = EnumMultiset.create(asList(Color.RED, Color.YELLOW, Color.RED));
-    assertEquals(ms, SerializableTester.reserialize(ms));
+    assertEquals(ms, reserialize(ms));
   }
 
   public void testEntrySet() {
@@ -145,7 +148,7 @@ public class EnumMultisetTest extends TestCase {
     ms.add(Color.YELLOW, 1);
     ms.add(Color.RED, 2);
 
-    Set<Object> uniqueEntries = Sets.newIdentityHashSet();
+    Set<Object> uniqueEntries = newIdentityHashSet();
     uniqueEntries.addAll(ms.entrySet());
     assertEquals(3, uniqueEntries.size());
   }
@@ -154,6 +157,7 @@ public class EnumMultisetTest extends TestCase {
   // create(Enum1.class) is equal to create(Enum2.class) but testEquals() expects otherwise.
   // For the same reason, we need to skip create(Iterable, Class).
   private static class EnumMultisetFactory {
+    @Keep // used reflectively by testEquals
     public static <E extends Enum<E>> EnumMultiset<E> create(Iterable<E> elements) {
       return EnumMultiset.create(elements);
     }
@@ -169,7 +173,7 @@ public class EnumMultisetTest extends TestCase {
   }
 
   @GwtIncompatible // reflection
-  public void testNulls() throws Exception {
+  public void testNulls() {
     new NullPointerTester()
         .setDefault(Class.class, Color.class)
         .setDefault(Iterable.class, EnumSet.allOf(Color.class))

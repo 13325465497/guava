@@ -17,13 +17,14 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.base.Objects;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.CompatibleWith;
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A collection that associates an ordered pair of keys, called a row key and a column key, with a
@@ -43,8 +44,18 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * not be modifiable. When modification isn't supported, those methods will throw an {@link
  * UnsupportedOperationException}.
  *
+ * <h2>Implementations</h2>
+ *
+ * <ul>
+ *   <li>{@link ImmutableTable}
+ *   <li>{@link HashBasedTable}
+ *   <li>{@link TreeBasedTable}
+ *   <li>{@link ArrayTable}
+ *   <li>{@link Tables#newCustomTable Tables.newCustomTable}
+ * </ul>
+ *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#table"> {@code Table}</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#table">{@code Table}</a>.
  *
  * @author Jared Levy
  * @param <R> the type of the table row keys
@@ -52,8 +63,10 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @param <V> the type of the mapped values
  * @since 7.0
  */
+@DoNotMock("Use ImmutableTable, HashBasedTable, or another implementation")
 @GwtCompatible
-public interface Table<R, C, V> {
+public interface Table<
+    R extends @Nullable Object, C extends @Nullable Object, V extends @Nullable Object> {
   // TODO(jlevy): Consider adding methods similar to ConcurrentMap methods.
 
   // Accessors
@@ -65,29 +78,29 @@ public interface Table<R, C, V> {
    * @param columnKey key of column to search for
    */
   boolean contains(
-      @NullableDecl @CompatibleWith("R") Object rowKey,
-      @NullableDecl @CompatibleWith("C") Object columnKey);
+      @CompatibleWith("R") @Nullable Object rowKey,
+      @CompatibleWith("C") @Nullable Object columnKey);
 
   /**
    * Returns {@code true} if the table contains a mapping with the specified row key.
    *
    * @param rowKey key of row to search for
    */
-  boolean containsRow(@NullableDecl @CompatibleWith("R") Object rowKey);
+  boolean containsRow(@CompatibleWith("R") @Nullable Object rowKey);
 
   /**
    * Returns {@code true} if the table contains a mapping with the specified column.
    *
    * @param columnKey key of column to search for
    */
-  boolean containsColumn(@NullableDecl @CompatibleWith("C") Object columnKey);
+  boolean containsColumn(@CompatibleWith("C") @Nullable Object columnKey);
 
   /**
    * Returns {@code true} if the table contains a mapping with the specified value.
    *
    * @param value value to search for
    */
-  boolean containsValue(@NullableDecl @CompatibleWith("V") Object value);
+  boolean containsValue(@CompatibleWith("V") @Nullable Object value);
 
   /**
    * Returns the value corresponding to the given row and column keys, or {@code null} if no such
@@ -96,9 +109,9 @@ public interface Table<R, C, V> {
    * @param rowKey key of row to search for
    * @param columnKey key of column to search for
    */
-  V get(
-      @NullableDecl @CompatibleWith("R") Object rowKey,
-      @NullableDecl @CompatibleWith("C") Object columnKey);
+  @Nullable V get(
+      @CompatibleWith("R") @Nullable Object rowKey,
+      @CompatibleWith("C") @Nullable Object columnKey);
 
   /** Returns {@code true} if the table contains no mappings. */
   boolean isEmpty();
@@ -111,7 +124,7 @@ public interface Table<R, C, V> {
    * cell views, as returned by {@link #cellSet}, are equal.
    */
   @Override
-  boolean equals(@NullableDecl Object obj);
+  boolean equals(@Nullable Object obj);
 
   /**
    * Returns the hash code for this table. The hash code of a table is defined as the hash code of
@@ -136,8 +149,8 @@ public interface Table<R, C, V> {
    *     for the keys
    */
   @CanIgnoreReturnValue
-  @NullableDecl
-  V put(R rowKey, C columnKey, V value);
+  @Nullable V put(
+      @ParametricNullness R rowKey, @ParametricNullness C columnKey, @ParametricNullness V value);
 
   /**
    * Copies all mappings from the specified table to this table. The effect is equivalent to calling
@@ -155,10 +168,9 @@ public interface Table<R, C, V> {
    * @return the value previously associated with the keys, or {@code null} if no such value existed
    */
   @CanIgnoreReturnValue
-  @NullableDecl
-  V remove(
-      @NullableDecl @CompatibleWith("R") Object rowKey,
-      @NullableDecl @CompatibleWith("C") Object columnKey);
+  @Nullable V remove(
+      @CompatibleWith("R") @Nullable Object rowKey,
+      @CompatibleWith("C") @Nullable Object columnKey);
 
   // Views
 
@@ -172,7 +184,7 @@ public interface Table<R, C, V> {
    * @param rowKey key of row to search for in the table
    * @return the corresponding map from column keys to values
    */
-  Map<C, V> row(R rowKey);
+  Map<C, V> row(@ParametricNullness R rowKey);
 
   /**
    * Returns a view of all mappings that have the given column key. For each row key / column key /
@@ -184,7 +196,7 @@ public interface Table<R, C, V> {
    * @param columnKey key of column to search for in the table
    * @return the corresponding map from row keys to values
    */
-  Map<R, V> column(C columnKey);
+  Map<R, V> column(@ParametricNullness C columnKey);
 
   /**
    * Returns a set of all row key / column key / value triplets. Changes to the returned set will
@@ -250,17 +262,18 @@ public interface Table<R, C, V> {
    *
    * @since 7.0
    */
-  interface Cell<R, C, V> {
+  interface Cell<
+      R extends @Nullable Object, C extends @Nullable Object, V extends @Nullable Object> {
     /** Returns the row key of this cell. */
-    @NullableDecl
+    @ParametricNullness
     R getRowKey();
 
     /** Returns the column key of this cell. */
-    @NullableDecl
+    @ParametricNullness
     C getColumnKey();
 
     /** Returns the value of this cell. */
-    @NullableDecl
+    @ParametricNullness
     V getValue();
 
     /**
@@ -268,7 +281,7 @@ public interface Table<R, C, V> {
      * equal row keys, column keys, and values.
      */
     @Override
-    boolean equals(@NullableDecl Object obj);
+    boolean equals(@Nullable Object obj);
 
     /**
      * Returns the hash code of this cell.

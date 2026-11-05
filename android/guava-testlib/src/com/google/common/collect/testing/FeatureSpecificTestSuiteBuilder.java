@@ -16,7 +16,13 @@
 
 package com.google.common.collect.testing;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.testing.Helpers.copyToSet;
+import static com.google.common.collect.testing.Helpers.getMethod;
+import static com.google.common.collect.testing.features.FeatureUtil.addImpliedFeatures;
+import static java.util.Arrays.asList;
 import static java.util.Collections.disjoint;
+import static java.util.Collections.unmodifiableSet;
 import static java.util.logging.Level.FINER;
 
 import com.google.common.annotations.GwtIncompatible;
@@ -24,11 +30,10 @@ import com.google.common.collect.testing.features.ConflictingRequirementsExcepti
 import com.google.common.collect.testing.features.Feature;
 import com.google.common.collect.testing.features.FeatureUtil;
 import com.google.common.collect.testing.features.TesterRequirements;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -38,6 +43,7 @@ import java.util.logging.Logger;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Creates, based on your criteria, a JUnit test suite that exhaustively tests the object generated
@@ -61,12 +67,13 @@ public abstract class FeatureSpecificTestSuiteBuilder<
 
   // Test Data
 
-  private G subjectGenerator;
+  private @Nullable G subjectGenerator;
   // Gets run before every test.
-  private Runnable setUp;
+  private @Nullable Runnable setUp;
   // Gets run at the conclusion of every test.
-  private Runnable tearDown;
+  private @Nullable Runnable tearDown;
 
+  @CanIgnoreReturnValue
   protected B usingGenerator(G subjectGenerator) {
     this.subjectGenerator = subjectGenerator;
     return self();
@@ -76,36 +83,40 @@ public abstract class FeatureSpecificTestSuiteBuilder<
     return subjectGenerator;
   }
 
-  public B withSetUp(Runnable setUp) {
+  @CanIgnoreReturnValue
+  public B withSetUp(@Nullable Runnable setUp) {
     this.setUp = setUp;
     return self();
   }
 
-  protected Runnable getSetUp() {
+  public @Nullable Runnable getSetUp() {
     return setUp;
   }
 
-  public B withTearDown(Runnable tearDown) {
+  @CanIgnoreReturnValue
+  public B withTearDown(@Nullable Runnable tearDown) {
     this.tearDown = tearDown;
     return self();
   }
 
-  protected Runnable getTearDown() {
+  public @Nullable Runnable getTearDown() {
     return tearDown;
   }
 
   // Features
 
-  private Set<Feature<?>> features = new LinkedHashSet<>();
+  private final Set<Feature<?>> features = new LinkedHashSet<>();
 
   /**
    * Configures this builder to produce tests appropriate for the given features. This method may be
    * called more than once to add features in multiple groups.
    */
+  @CanIgnoreReturnValue
   public B withFeatures(Feature<?>... features) {
-    return withFeatures(Arrays.asList(features));
+    return withFeatures(asList(features));
   }
 
+  @CanIgnoreReturnValue
   public B withFeatures(Iterable<? extends Feature<?>> features) {
     for (Feature<?> feature : features) {
       this.features.add(feature);
@@ -114,20 +125,20 @@ public abstract class FeatureSpecificTestSuiteBuilder<
   }
 
   public Set<Feature<?>> getFeatures() {
-    return Collections.unmodifiableSet(features);
+    return unmodifiableSet(features);
   }
 
   // Name
 
-  private String name;
+  private @Nullable String name;
 
   /** Configures this builder produce a TestSuite with the given name. */
+  @CanIgnoreReturnValue
   public B named(String name) {
-    if (name.contains("(")) {
-      throw new IllegalArgumentException(
-          "Eclipse hides all characters after "
-              + "'('; please use '[]' or other characters instead of parentheses");
-    }
+    checkArgument(
+        !name.contains("("),
+        "Eclipse hides all characters after "
+            + "'('; please use '[]' or other characters instead of parentheses");
     this.name = name;
     return self();
   }
@@ -138,7 +149,7 @@ public abstract class FeatureSpecificTestSuiteBuilder<
 
   // Test suppression
 
-  private Set<Method> suppressedTests = new HashSet<>();
+  private final Set<Method> suppressedTests = new HashSet<>();
 
   /**
    * Prevents the given methods from being run as part of the test suite.
@@ -147,10 +158,12 @@ public abstract class FeatureSpecificTestSuiteBuilder<
    * semantics of an implementation disagree in unforeseen ways with the semantics expected by a
    * test, or to keep dependent builds clean in spite of an erroneous test.
    */
+  @CanIgnoreReturnValue
   public B suppressing(Method... methods) {
-    return suppressing(Arrays.asList(methods));
+    return suppressing(asList(methods));
   }
 
+  @CanIgnoreReturnValue
   public B suppressing(Collection<Method> methods) {
     suppressedTests.addAll(methods);
     return self();
@@ -164,28 +177,24 @@ public abstract class FeatureSpecificTestSuiteBuilder<
       Logger.getLogger(FeatureSpecificTestSuiteBuilder.class.getName());
 
   /** Creates a runnable JUnit test suite based on the criteria already given. */
-  /*
-   * Class parameters must be raw. This annotation should go on testerClass in
-   * the for loop, but the 1.5 javac crashes on annotations in for loops:
-   * <http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6294589>
-   */
-  @SuppressWarnings("unchecked")
   public TestSuite createTestSuite() {
     checkCanCreate();
 
     logger.fine(" Testing: " + name);
     logger.fine("Features: " + formatFeatureSet(features));
 
-    FeatureUtil.addImpliedFeatures(features);
+    addImpliedFeatures(features);
 
     logger.fine("Expanded: " + formatFeatureSet(features));
 
-    // Class parameters must be raw.
+    @SuppressWarnings("rawtypes") // class literals
     List<Class<? extends AbstractTester>> testers = getTesters();
 
     TestSuite suite = new TestSuite(name);
-    for (Class<? extends AbstractTester> testerClass : testers) {
-      final TestSuite testerSuite =
+    for (@SuppressWarnings("rawtypes") // class literals
+    Class<? extends AbstractTester> testerClass : testers) {
+      @SuppressWarnings("unchecked") // getting rid of the raw type, for better or for worse
+      TestSuite testerSuite =
           makeSuiteForTesterClass((Class<? extends AbstractTester<?>>) testerClass);
       if (testerSuite.countTestCases() > 0) {
         suite.addTest(testerSuite);
@@ -207,11 +216,11 @@ public abstract class FeatureSpecificTestSuiteBuilder<
     }
   }
 
-  // Class parameters must be raw.
+  @SuppressWarnings("rawtypes") // class literals
   protected abstract List<Class<? extends AbstractTester>> getTesters();
 
   private boolean matches(Test test) {
-    final Method method;
+    Method method;
     try {
       method = extractMethod(test);
     } catch (IllegalArgumentException e) {
@@ -222,7 +231,7 @@ public abstract class FeatureSpecificTestSuiteBuilder<
       logger.finer(Platform.format("%s: excluding because it was explicitly suppressed.", test));
       return false;
     }
-    final TesterRequirements requirements;
+    TesterRequirements requirements;
     try {
       requirements = FeatureUtil.getTesterRequirements(method);
     } catch (ConflictingRequirementsException e) {
@@ -230,7 +239,7 @@ public abstract class FeatureSpecificTestSuiteBuilder<
     }
     if (!features.containsAll(requirements.getPresentFeatures())) {
       if (logger.isLoggable(FINER)) {
-        Set<Feature<?>> missingFeatures = Helpers.copyToSet(requirements.getPresentFeatures());
+        Set<Feature<?>> missingFeatures = copyToSet(requirements.getPresentFeatures());
         missingFeatures.removeAll(features);
         logger.finer(
             Platform.format(
@@ -240,7 +249,7 @@ public abstract class FeatureSpecificTestSuiteBuilder<
     }
     if (intersect(features, requirements.getAbsentFeatures())) {
       if (logger.isLoggable(FINER)) {
-        Set<Feature<?>> unwantedFeatures = Helpers.copyToSet(requirements.getAbsentFeatures());
+        Set<Feature<?>> unwantedFeatures = copyToSet(requirements.getAbsentFeatures());
         unwantedFeatures.retainAll(features);
         logger.finer(
             Platform.format(
@@ -258,18 +267,18 @@ public abstract class FeatureSpecificTestSuiteBuilder<
   private static Method extractMethod(Test test) {
     if (test instanceof AbstractTester) {
       AbstractTester<?> tester = (AbstractTester<?>) test;
-      return Helpers.getMethod(tester.getClass(), tester.getTestMethodName());
+      return getMethod(tester.getClass(), tester.getTestMethodName());
     } else if (test instanceof TestCase) {
       TestCase testCase = (TestCase) test;
-      return Helpers.getMethod(testCase.getClass(), testCase.getName());
+      return getMethod(testCase.getClass(), testCase.getName());
     } else {
       throw new IllegalArgumentException("unable to extract method from test: not a TestCase.");
     }
   }
 
   protected TestSuite makeSuiteForTesterClass(Class<? extends AbstractTester<?>> testerClass) {
-    final TestSuite candidateTests = new TestSuite(testerClass);
-    final TestSuite suite = filterSuite(candidateTests);
+    TestSuite candidateTests = new TestSuite(testerClass);
+    TestSuite suite = filterSuite(candidateTests);
 
     Enumeration<?> allTests = suite.tests();
     while (allTests.hasMoreElements()) {
@@ -286,7 +295,7 @@ public abstract class FeatureSpecificTestSuiteBuilder<
 
   private TestSuite filterSuite(TestSuite suite) {
     TestSuite filtered = new TestSuite(suite.getName());
-    final Enumeration<?> tests = suite.tests();
+    Enumeration<?> tests = suite.tests();
     while (tests.hasMoreElements()) {
       Test test = (Test) tests.nextElement();
       if (matches(test)) {

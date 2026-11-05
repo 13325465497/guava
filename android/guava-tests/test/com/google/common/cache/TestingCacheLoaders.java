@@ -15,29 +15,34 @@
 package com.google.common.cache;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.cache.NullnessCasts.unsafeNull;
+import static com.google.common.util.concurrent.Futures.immediateFuture;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.collect.Maps;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Utility {@link CacheLoader} implementations intended for use in testing.
  *
  * @author mike nonemacher
  */
-@GwtCompatible(emulated = true)
-class TestingCacheLoaders {
+@GwtCompatible
+@NullUnmarked
+final class TestingCacheLoaders {
 
   /**
    * Returns a {@link CacheLoader} that implements a naive {@link CacheLoader#loadAll}, delegating
    * {@link CacheLoader#load} calls to {@code loader}.
    */
-  static <K, V> CacheLoader<K, V> bulkLoader(final CacheLoader<K, V> loader) {
+  static <K, V> CacheLoader<K, V> bulkLoader(CacheLoader<K, V> loader) {
     checkNotNull(loader);
     return new CacheLoader<K, V>() {
       @Override
@@ -47,7 +52,7 @@ class TestingCacheLoaders {
 
       @Override
       public Map<K, V> loadAll(Iterable<? extends K> keys) throws Exception {
-        Map<K, V> result = Maps.newHashMap(); // allow nulls
+        Map<K, V> result = new HashMap<>(); // allow nulls
         for (K key : keys) {
           result.put(key, load(key));
         }
@@ -57,7 +62,7 @@ class TestingCacheLoaders {
   }
 
   /** Returns a {@link CacheLoader} that returns the given {@code constant} for every request. */
-  static <K, V> ConstantLoader<K, V> constantLoader(@NullableDecl V constant) {
+  static <K, V> CacheLoader<K, V> constantLoader(@Nullable V constant) {
     return new ConstantLoader<>(constant);
   }
 
@@ -67,7 +72,7 @@ class TestingCacheLoaders {
   }
 
   /** Returns a {@link CacheLoader} that throws the given error for every request. */
-  static <K, V> CacheLoader<K, V> errorLoader(final Error e) {
+  static <K, V> CacheLoader<K, V> errorLoader(Error e) {
     checkNotNull(e);
     return new CacheLoader<K, V>() {
       @Override
@@ -78,7 +83,7 @@ class TestingCacheLoaders {
   }
 
   /** Returns a {@link CacheLoader} that throws the given exception for every request. */
-  static <K, V> CacheLoader<K, V> exceptionLoader(final Exception e) {
+  static <K, V> CacheLoader<K, V> exceptionLoader(Exception e) {
     checkNotNull(e);
     return new CacheLoader<K, V>() {
       @Override
@@ -97,7 +102,7 @@ class TestingCacheLoaders {
    * Returns a {@code new Object()} for every request, and increments a counter for every request.
    * The count is accessible via {@link #getCount}.
    */
-  static class CountingLoader extends CacheLoader<Object, Object> {
+  static final class CountingLoader extends CacheLoader<Object, Object> {
     private final AtomicInteger count = new AtomicInteger();
 
     @Override
@@ -111,16 +116,18 @@ class TestingCacheLoaders {
     }
   }
 
-  static final class ConstantLoader<K, V> extends CacheLoader<K, V> {
-    private final V constant;
+  private static final class ConstantLoader<K, V> extends CacheLoader<K, V> {
+    private final @Nullable V constant;
 
-    ConstantLoader(V constant) {
+    ConstantLoader(@Nullable V constant) {
       this.constant = constant;
     }
 
     @Override
+    @SuppressWarnings("nullness") // used to test what happens if a loader wrongly returns null
     public V load(K key) {
-      return constant;
+      // slightly convoluted but makes J2KT happy:
+      return constant == null ? unsafeNull() : constant;
     }
   }
 
@@ -130,21 +137,23 @@ class TestingCacheLoaders {
    * old value on {@code reload} requests. The load counts are accessible via {@link #getLoadCount}
    * and {@link #getReloadCount}.
    */
-  static class IncrementingLoader extends CacheLoader<Integer, Integer> {
+  static final class IncrementingLoader extends CacheLoader<Integer, Integer> {
     private final AtomicInteger countLoad = new AtomicInteger();
     private final AtomicInteger countReload = new AtomicInteger();
 
+    @CanIgnoreReturnValue // Sure, why not?
     @Override
     public Integer load(Integer key) {
       countLoad.incrementAndGet();
       return key;
     }
 
+    @J2ktIncompatible
     @GwtIncompatible // reload
     @Override
     public ListenableFuture<Integer> reload(Integer key, Integer oldValue) {
       countReload.incrementAndGet();
-      return Futures.immediateFuture(oldValue + 1);
+      return immediateFuture(oldValue + 1);
     }
 
     public int getLoadCount() {
@@ -162,4 +171,6 @@ class TestingCacheLoaders {
       return key;
     }
   }
+
+  private TestingCacheLoaders() {}
 }

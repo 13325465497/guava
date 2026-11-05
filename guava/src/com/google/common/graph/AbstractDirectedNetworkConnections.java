@@ -18,19 +18,20 @@ package com.google.common.graph;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.Iterables.concat;
+import static com.google.common.collect.Iterators.unmodifiableIterator;
+import static com.google.common.collect.Sets.union;
 import static com.google.common.graph.Graphs.checkNonNegative;
 import static com.google.common.graph.Graphs.checkPositive;
+import static java.util.Collections.unmodifiableSet;
+import static java.util.Objects.requireNonNull;
 
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Iterators;
-import com.google.common.collect.Sets;
 import com.google.common.collect.UnmodifiableIterator;
 import com.google.common.math.IntMath;
 import java.util.AbstractSet;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A base implementation of {@link NetworkConnections} for directed networks.
@@ -41,15 +42,14 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  */
 abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnections<N, E> {
   /** Keys are edges incoming to the origin node, values are the source node. */
-  protected final Map<E, N> inEdgeMap;
+  final Map<E, N> inEdgeMap;
 
   /** Keys are edges outgoing from the origin node, values are the target node. */
-  protected final Map<E, N> outEdgeMap;
+  final Map<E, N> outEdgeMap;
 
   private int selfLoopCount;
 
-  protected AbstractDirectedNetworkConnections(
-      Map<E, N> inEdgeMap, Map<E, N> outEdgeMap, int selfLoopCount) {
+  AbstractDirectedNetworkConnections(Map<E, N> inEdgeMap, Map<E, N> outEdgeMap, int selfLoopCount) {
     this.inEdgeMap = checkNotNull(inEdgeMap);
     this.outEdgeMap = checkNotNull(outEdgeMap);
     this.selfLoopCount = checkNonNegative(selfLoopCount);
@@ -58,7 +58,7 @@ abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnec
 
   @Override
   public Set<N> adjacentNodes() {
-    return Sets.union(predecessors(), successors());
+    return union(predecessors(), successors());
   }
 
   @Override
@@ -68,9 +68,9 @@ abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnec
       public UnmodifiableIterator<E> iterator() {
         Iterable<E> incidentEdges =
             (selfLoopCount == 0)
-                ? Iterables.concat(inEdgeMap.keySet(), outEdgeMap.keySet())
-                : Sets.union(inEdgeMap.keySet(), outEdgeMap.keySet());
-        return Iterators.unmodifiableIterator(incidentEdges.iterator());
+                ? concat(inEdgeMap.keySet(), outEdgeMap.keySet())
+                : union(inEdgeMap.keySet(), outEdgeMap.keySet());
+        return unmodifiableIterator(incidentEdges.iterator());
       }
 
       @Override
@@ -87,19 +87,20 @@ abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnec
 
   @Override
   public Set<E> inEdges() {
-    return Collections.unmodifiableSet(inEdgeMap.keySet());
+    return unmodifiableSet(inEdgeMap.keySet());
   }
 
   @Override
   public Set<E> outEdges() {
-    return Collections.unmodifiableSet(outEdgeMap.keySet());
+    return unmodifiableSet(outEdgeMap.keySet());
   }
 
   @Override
   public N adjacentNode(E edge) {
     // Since the reference node is defined to be 'source' for directed graphs,
     // we can assume this edge lives in the set of outgoing edges.
-    return checkNotNull(outEdgeMap.get(edge));
+    // (We're relying on callers to call this method only with an edge that's in the graph.)
+    return requireNonNull(outEdgeMap.get(edge));
   }
 
   @Override
@@ -108,17 +109,22 @@ abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnec
       checkNonNegative(--selfLoopCount);
     }
     N previousNode = inEdgeMap.remove(edge);
-    return checkNotNull(previousNode);
+    // We're relying on callers to call this method only with an edge that's in the graph.
+    return requireNonNull(previousNode);
   }
 
   @Override
   public N removeOutEdge(E edge) {
     N previousNode = outEdgeMap.remove(edge);
-    return checkNotNull(previousNode);
+    // We're relying on callers to call this method only with an edge that's in the graph.
+    return requireNonNull(previousNode);
   }
 
   @Override
   public void addInEdge(E edge, N node, boolean isSelfLoop) {
+    checkNotNull(edge);
+    checkNotNull(node);
+
     if (isSelfLoop) {
       checkPositive(++selfLoopCount);
     }
@@ -128,6 +134,9 @@ abstract class AbstractDirectedNetworkConnections<N, E> implements NetworkConnec
 
   @Override
   public void addOutEdge(E edge, N node) {
+    checkNotNull(edge);
+    checkNotNull(node);
+
     N previousNode = outEdgeMap.put(edge, node);
     checkState(previousNode == null);
   }

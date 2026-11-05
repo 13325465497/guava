@@ -14,24 +14,30 @@
 
 package com.google.common.hash;
 
-import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.hash.Hashing.sipHash24;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableSet;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link SipHashFunction}.
  *
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
+@J2ktIncompatible
 public class SipHashFunctionTest extends TestCase {
 
   // From https://131002.net/siphash/siphash24.c
   // k = 00 01 02 ...
   private static final long K0 = 0x0706050403020100L;
   private static final long K1 = 0x0f0e0d0c0b0a0908L;
-  private static final HashFunction SIP_WITH_KEY = Hashing.sipHash24(K0, K1);
-  private static final HashFunction SIP_WITHOUT_KEY = Hashing.sipHash24();
+  private static final HashFunction SIP_WITH_KEY = sipHash24(K0, K1);
+  private static final HashFunction SIP_WITHOUT_KEY = sipHash24();
 
   // These constants were originally ported from https://www.131002.net/siphash/siphash24.c. See:
   // https://github.com/nahi/siphash-java-inline/blob/master/src/test/java/org/jruby/util/SipHashInlineTest.java
@@ -123,7 +129,7 @@ public class SipHashFunctionTest extends TestCase {
     long k0 = 0x0706050403020100L;
     long k1 = 0x0f0e0d0c0b0a0908L;
 
-    assertEquals(0xa129ca6149be45e5L, Hashing.sipHash24(k0, k1).hashBytes(message).asLong());
+    assertEquals(0xa129ca6149be45e5L, sipHash24(k0, k1).hashBytes(message).asLong());
   }
 
   // From https://github.com/BrandonHaynes/siphash-csharp/blob/master/tests/Tests.cs
@@ -159,9 +165,9 @@ public class SipHashFunctionTest extends TestCase {
   }
 
   public void testToString() {
-    assertEquals("Hashing.sipHash24(" + K0 + ", " + K1 + ")", SIP_WITH_KEY.toString());
-    assertEquals("Hashing.sipHash24(" + K0 + ", " + K1 + ")", SIP_WITHOUT_KEY.toString());
-    assertEquals("Hashing.sipHash24(20, 13)", Hashing.sipHash24(20, 13).toString());
+    assertThat(SIP_WITH_KEY.toString()).isEqualTo("Hashing.sipHash24(" + K0 + ", " + K1 + ")");
+    assertThat(SIP_WITHOUT_KEY.toString()).isEqualTo("Hashing.sipHash24(" + K0 + ", " + K1 + ")");
+    assertThat(sipHash24(20, 13).toString()).isEqualTo("Hashing.sipHash24(20, 13)");
   }
 
   private static void assertSip(String input, long expected) {

@@ -15,21 +15,26 @@
 package com.google.common.collect;
 
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Arrays.asList;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Function;
 import com.google.common.testing.NullPointerTester;
-import java.util.Arrays;
 import java.util.List;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Tests for {@code TreeTraverser}.
  *
+ * @deprecated Use {@link com.google.common.graph.Traverser} instead.
  * @author Louis Wasserman
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
+@Deprecated // Use com.google.common.graph.Traverser instead.
 public class TreeTraverserTest extends TestCase {
   private static class Node {
     final char value;
@@ -42,9 +47,9 @@ public class TreeTraverserTest extends TestCase {
   private static final class Tree extends Node {
     final List<Tree> children;
 
-    public Tree(char value, Tree... children) {
+    Tree(char value, Tree... children) {
       super(value);
-      this.children = Arrays.asList(children);
+      this.children = asList(children);
     }
   }
 
@@ -72,16 +77,16 @@ public class TreeTraverserTest extends TestCase {
   //   /|\      |
   //  / | \     f
   // a  b  c
-  static final Tree a = new Tree('a');
-  static final Tree b = new Tree('b');
-  static final Tree c = new Tree('c');
-  static final Tree d = new Tree('d', a, b, c);
-  static final Tree e = new Tree('e');
-  static final Tree f = new Tree('f');
-  static final Tree g = new Tree('g', f);
-  static final Tree h = new Tree('h', d, e, g);
+  private static final Tree a = new Tree('a');
+  private static final Tree b = new Tree('b');
+  private static final Tree c = new Tree('c');
+  private static final Tree d = new Tree('d', a, b, c);
+  private static final Tree e = new Tree('e');
+  private static final Tree f = new Tree('f');
+  private static final Tree g = new Tree('g', f);
+  private static final Tree h = new Tree('h', d, e, g);
 
-  static String iterationOrder(Iterable<? extends Node> iterable) {
+  private static String iterationOrder(Iterable<? extends Node> iterable) {
     StringBuilder builder = new StringBuilder();
     for (Node t : iterable) {
       builder.append(t.value);
@@ -110,6 +115,7 @@ public class TreeTraverserTest extends TestCase {
     assertThat(iterationOrder(ADAPTER_USING_USING.preOrderTraversal(h))).isEqualTo("hdabcegf");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNulls() {
     NullPointerTester tester = new NullPointerTester();

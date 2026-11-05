@@ -14,25 +14,27 @@
 
 package com.google.common.collect.testing.google;
 
+import static com.google.common.collect.Lists.newArrayList;
+import static com.google.common.collect.testing.Helpers.mapEntry;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_REMOVE;
+import static java.util.Collections.singletonList;
+import static java.util.Collections.singletonMap;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import com.google.common.testing.EqualsTester;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Testers for {@link com.google.common.collect.ListMultimap#asMap}.
@@ -42,8 +44,9 @@ import org.junit.Ignore;
  * @param <V> The value type of the tested multimap.
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public class ListMultimapAsMapTester<K, V> extends AbstractListMultimapTester<K, V> {
+@NullMarked
+public class ListMultimapAsMapTester<K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractListMultimapTester<K, V> {
   public void testAsMapValuesImplementList() {
     for (Collection<V> valueCollection : multimap().asMap().values()) {
       assertTrue(valueCollection instanceof List);
@@ -67,32 +70,34 @@ public class ListMultimapAsMapTester<K, V> extends AbstractListMultimapTester<K,
 
   @CollectionSize.Require(SEVERAL)
   public void testEquals() {
-    resetContainer(
-        Helpers.mapEntry(k0(), v0()), Helpers.mapEntry(k1(), v0()), Helpers.mapEntry(k0(), v3()));
-    Map<K, Collection<V>> expected = Maps.newHashMap();
-    expected.put(k0(), Lists.newArrayList(v0(), v3()));
-    expected.put(k1(), Lists.newArrayList(v0()));
+    resetContainer(mapEntry(k0(), v0()), mapEntry(k1(), v0()), mapEntry(k0(), v3()));
+    Map<K, Collection<V>> expected = new HashMap<>();
+    expected.put(k0(), newArrayList(v0(), v3()));
+    expected.put(k1(), newArrayList(v0()));
     new EqualsTester().addEqualityGroup(expected, multimap().asMap()).testEquals();
   }
 
   @CollectionSize.Require(SEVERAL)
   public void testEntrySetEquals() {
-    resetContainer(
-        Helpers.mapEntry(k0(), v0()), Helpers.mapEntry(k1(), v0()), Helpers.mapEntry(k0(), v3()));
-    Set<Entry<K, Collection<V>>> expected = Sets.newHashSet();
-    expected.add(Helpers.mapEntry(k0(), (Collection<V>) Lists.newArrayList(v0(), v3())));
-    expected.add(Helpers.mapEntry(k1(), (Collection<V>) Lists.newArrayList(v0())));
+    resetContainer(mapEntry(k0(), v0()), mapEntry(k1(), v0()), mapEntry(k0(), v3()));
+    Set<Entry<K, Collection<V>>> expected = new HashSet<>();
+    expected.add(mapEntry(k0(), newArrayList(v0(), v3())));
+    expected.add(mapEntry(k1(), newArrayList(v0())));
     new EqualsTester().addEqualityGroup(expected, multimap().asMap().entrySet()).testEquals();
   }
 
   @CollectionSize.Require(SEVERAL)
   @MapFeature.Require(SUPPORTS_REMOVE)
+  /*
+   * ListMultimap.asMap essentially returns a Map<K, List<V>>; we just can't declare it that way.
+   * Thus, calls like asMap().values().remove(someList) are safe because they are comparing a list
+   * to a collection of other lists.
+   */
+  @SuppressWarnings("CollectionUndefinedEquality")
   public void testValuesRemove() {
-    resetContainer(
-        Helpers.mapEntry(k0(), v0()), Helpers.mapEntry(k1(), v0()), Helpers.mapEntry(k0(), v3()));
-    assertTrue(multimap().asMap().values().remove(Collections.singletonList(v0())));
+    resetContainer(mapEntry(k0(), v0()), mapEntry(k1(), v0()), mapEntry(k0(), v3()));
+    assertTrue(multimap().asMap().values().remove(singletonList(v0())));
     assertEquals(2, multimap().size());
-    assertEquals(
-        Collections.singletonMap(k0(), Lists.newArrayList(v0(), v3())), multimap().asMap());
+    assertEquals(singletonMap(k0(), newArrayList(v0(), v3())), multimap().asMap());
   }
 }

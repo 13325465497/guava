@@ -16,29 +16,29 @@
 
 package com.google.common.collect.testing.google;
 
+import static com.google.common.collect.testing.Helpers.getMethod;
 import static com.google.common.collect.testing.features.CollectionFeature.ALLOWS_NULL_QUERIES;
 import static com.google.common.collect.testing.features.CollectionFeature.ALLOWS_NULL_VALUES;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.collect.testing.Helpers;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.WrongType;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.List;
-import org.junit.Ignore;
 
 /**
  * Tests for {@code Multiset#count}.
  *
  * @author Jared Levy
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public class MultisetCountTester<E> extends AbstractMultisetTester<E> {
 
   public void testCount_0() {
@@ -63,11 +63,7 @@ public class MultisetCountTester<E> extends AbstractMultisetTester<E> {
 
   @CollectionFeature.Require(absent = ALLOWS_NULL_QUERIES)
   public void testCount_null_forbidden() {
-    try {
-      getMultiset().count(null);
-      fail("Expected NullPointerException");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> getMultiset().count(null));
   }
 
   @CollectionSize.Require(absent = ZERO)
@@ -86,8 +82,9 @@ public class MultisetCountTester<E> extends AbstractMultisetTester<E> {
    * Returns {@link Method} instances for the read tests that assume multisets support duplicates so
    * that the test of {@code Multisets.forSet()} can suppress them.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static List<Method> getCountDuplicateInitializingMethods() {
-    return Arrays.asList(Helpers.getMethod(MultisetCountTester.class, "testCount_3"));
+    return asList(getMethod(MultisetCountTester.class, "testCount_3"));
   }
 }

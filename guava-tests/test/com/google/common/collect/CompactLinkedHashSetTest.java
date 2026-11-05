@@ -17,6 +17,8 @@
 package com.google.common.collect;
 
 import static com.google.common.truth.Truth.assertThat;
+import static java.lang.Math.max;
+import static java.util.Arrays.asList;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.SetTestSuiteBuilder;
@@ -25,11 +27,13 @@ import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.Feature;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for CompactLinkedHashSet.
@@ -37,10 +41,12 @@ import junit.framework.TestSuite;
  * @author Dimitris Andreou
  */
 @GwtIncompatible // java.util.Arrays#copyOf(Object[], int), java.lang.reflect.Array
+@NullUnmarked
 public class CompactLinkedHashSetTest extends TestCase {
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     List<Feature<?>> allFeatures =
-        Arrays.<Feature<?>>asList(
+        Arrays.asList(
             CollectionSize.ANY,
             CollectionFeature.ALLOWS_NULL_VALUES,
             CollectionFeature.FAILS_FAST_ON_CONCURRENT_MODIFICATION,
@@ -58,10 +64,24 @@ public class CompactLinkedHashSetTest extends TestCase {
                 new TestStringSetGenerator() {
                   @Override
                   protected Set<String> create(String[] elements) {
-                    return CompactLinkedHashSet.create(Arrays.asList(elements));
+                    return CompactLinkedHashSet.create(asList(elements));
                   }
                 })
             .named("CompactLinkedHashSet")
+            .withFeatures(allFeatures)
+            .createTestSuite());
+    suite.addTest(
+        SetTestSuiteBuilder.using(
+                new TestStringSetGenerator() {
+                  @Override
+                  protected Set<String> create(String[] elements) {
+                    CompactLinkedHashSet<String> set = CompactLinkedHashSet.create();
+                    set.convertToHashFloodingResistantImplementation();
+                    Collections.addAll(set, elements);
+                    return set;
+                  }
+                })
+            .named("CompactLinkedHashSet with flooding protection")
             .withFeatures(allFeatures)
             .createTestSuite());
     return suite;
@@ -74,18 +94,18 @@ public class CompactLinkedHashSetTest extends TestCase {
 
     set.add(1);
     assertThat(set.needsAllocArrays()).isFalse();
-    assertThat(set.elements).hasLength(CompactHashSet.DEFAULT_SIZE);
+    assertThat(set.elements).hasLength(CompactHashing.DEFAULT_SIZE);
   }
 
   public void testAllocArraysExpectedSize() {
-    for (int i = 0; i <= CompactHashSet.DEFAULT_SIZE; i++) {
+    for (int i = 0; i <= CompactHashing.DEFAULT_SIZE; i++) {
       CompactHashSet<Integer> set = CompactHashSet.createWithExpectedSize(i);
       assertThat(set.needsAllocArrays()).isTrue();
       assertThat(set.elements).isNull();
 
       set.add(1);
       assertThat(set.needsAllocArrays()).isFalse();
-      int expectedSize = Math.max(1, i);
+      int expectedSize = max(1, i);
       assertThat(set.elements).hasLength(expectedSize);
     }
   }

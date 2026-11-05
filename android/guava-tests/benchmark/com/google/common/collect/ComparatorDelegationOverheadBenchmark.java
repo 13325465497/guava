@@ -14,12 +14,15 @@
 
 package com.google.common.collect;
 
+import static java.util.Arrays.sort;
+
 import com.google.caliper.BeforeExperiment;
 import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Random;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A benchmark to determine the overhead of sorting with {@link Ordering#from(Comparator)}, or with
@@ -28,6 +31,7 @@ import java.util.Random;
  *
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class ComparatorDelegationOverheadBenchmark {
   private final Integer[][] inputArrays = new Integer[0x100][];
 
@@ -35,7 +39,7 @@ public class ComparatorDelegationOverheadBenchmark {
   int n;
 
   @BeforeExperiment
-  void setUp() throws Exception {
+  void setUp() {
     Random rng = new Random();
     for (int i = 0; i < 0x100; i++) {
       Integer[] array = new Integer[n];
@@ -51,7 +55,7 @@ public class ComparatorDelegationOverheadBenchmark {
     int tmp = 0;
     for (int i = 0; i < reps; i++) {
       Integer[] copy = inputArrays[i & 0xFF].clone();
-      Arrays.sort(copy);
+      sort(copy);
       tmp += copy[0];
     }
     return tmp;
@@ -62,7 +66,7 @@ public class ComparatorDelegationOverheadBenchmark {
     int tmp = 0;
     for (int i = 0; i < reps; i++) {
       Integer[] copy = inputArrays[i & 0xFF].clone();
-      Arrays.sort(copy, Ordering.natural());
+      sort(copy, Ordering.natural());
       tmp += copy[0];
     }
     return tmp;
@@ -81,7 +85,7 @@ public class ComparatorDelegationOverheadBenchmark {
     int tmp = 0;
     for (int i = 0; i < reps; i++) {
       Integer[] copy = inputArrays[i & 0xFF].clone();
-      Arrays.sort(copy, Ordering.from(NATURAL_INTEGER));
+      sort(copy, Ordering.from(NATURAL_INTEGER));
       tmp += copy[0];
     }
     return tmp;

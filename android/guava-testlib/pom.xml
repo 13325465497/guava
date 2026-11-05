@@ -5,7 +5,7 @@
   <parent>
     <groupId>com.google.guava</groupId>
     <artifactId>guava-parent</artifactId>
-    <version>HEAD-android-SNAPSHOT</version>
+    <version>999.0.0-HEAD-android-SNAPSHOT</version>
   </parent>
   <artifactId>guava-testlib</artifactId>
   <name>Guava Testing Library</name>
@@ -15,12 +15,14 @@
   </description>
   <dependencies>
     <dependency>
-      <groupId>com.google.code.findbugs</groupId>
-      <artifactId>jsr305</artifactId>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.checkerframework</groupId>
-      <artifactId>checker-compat-qual</artifactId>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>${jsr305.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.google.errorprone</groupId>
@@ -31,14 +33,21 @@
       <artifactId>j2objc-annotations</artifactId>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
+      <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <scope>compile</scope><!-- testlib must carry these transitively -->
+      <!-- *not* <scope>test</scope>; <scope>compile</scope> is right so that guava-testlib users get junit transitively. -->
+      <version>${junit.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.testparameterinjector</groupId>
+      <artifactId>test-parameter-injector</artifactId>
+      <version>${test-parameter-injector.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <!--
@@ -46,21 +55,74 @@
       -->
       <groupId>com.google.truth</groupId>
       <artifactId>truth</artifactId>
+      <version>${truth.version}</version>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <!-- use the guava we're building. -->
+          <groupId>com.google.guava</groupId>
+          <artifactId>guava</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
   <build>
     <plugins>
       <plugin>
+        <groupId>org.mvnsearch</groupId>
+        <artifactId>toolchains-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <artifactId>maven-toolchains-plugin</artifactId>
+      </plugin>
+      <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>default-compile</id>
+            <configuration>
+              <compilerArgs combine.children="append">
+                <arg>-XDignore.symbol.file</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+          <execution>
+            <id>compile-java9</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <release>9</release>
+              <compileSourceRoots>
+                <compileSourceRoot>${project.basedir}/src</compileSourceRoot>
+              </compileSourceRoots>
+
+              <!--
+                JPMS needs access to the module sources to complete a modular Java build. We also need to override
+                the base compiler settings (in the root `pom.xml`) to enable MRJAR output.
+              -->
+              <compilerArgs combine.self="override">
+                <arg>-sourcepath</arg>
+                <arg>${project.basedir}/src</arg>
+                <arg>--add-reads=com.google.common=ALL-UNNAMED</arg>
+                <arg>--add-reads=com.google.common.testlib=ALL-UNNAMED</arg>
+                <!-- https://errorprone.info/docs/installation#maven -->
+                <arg>-XDcompilePolicy=simple</arg>
+                <arg>-Xlint:-removal</arg>
+                <arg>-Xlint:-options</arg>
+              </compilerArgs>
+              <multiReleaseOutput>true</multiReleaseOutput>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <artifactId>maven-source-plugin</artifactId>
         <executions>
           <execution>
             <id>attach-test-sources</id>
-            <phase>post-integration-test</phase>
-            <goals><goal>test-jar</goal></goals>
+            <goals><goal>test-jar-no-fork</goal></goals>
           </execution>
         </executions>
       </plugin>

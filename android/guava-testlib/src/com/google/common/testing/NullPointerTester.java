@@ -18,23 +18,24 @@ package com.google.common.testing;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Arrays.stream;
+import static java.util.Objects.requireNonNull;
+import static java.util.stream.Stream.concat;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Converter;
-import com.google.common.base.Objects;
 import com.google.common.collect.ClassToInstanceMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.common.collect.MutableClassToInstanceMap;
 import com.google.common.reflect.Invokable;
 import com.google.common.reflect.Parameter;
 import com.google.common.reflect.Reflection;
 import com.google.common.reflect.TypeToken;
+import com.google.common.util.concurrent.AbstractFuture;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
@@ -42,18 +43,21 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Map;
+import java.util.Objects;
 import junit.framework.Assert;
-import junit.framework.AssertionFailedError;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A test utility that verifies that your methods and constructors throw {@link
  * NullPointerException} or {@link UnsupportedOperationException} whenever null is passed to a
- * parameter that isn't annotated with an annotation with the simple name {@code Nullable}, {@lcode
- * CheckForNull}, {@link NullableType}, or {@link NullableDecl}.
+ * parameter whose declaration or type isn't annotated with an annotation with the simple name
+ * {@code Nullable}, {@code CheckForNull}, {@code NullableType}, or {@code NullableDecl}.
  *
  * <p>The tested methods and constructors are invoked -- each time with one parameter being null and
  * the rest not null -- and the test fails if no expected exception is thrown. {@code
@@ -66,19 +70,65 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@Beta
 @GwtIncompatible
+@J2ktIncompatible
+@NullMarked
 public final class NullPointerTester {
 
   private final ClassToInstanceMap<Object> defaults = MutableClassToInstanceMap.create();
-  private final List<Member> ignoredMembers = Lists.newArrayList();
+  private final List<Member> ignoredMembers = new ArrayList<>();
 
   private ExceptionTypePolicy policy = ExceptionTypePolicy.NPE_OR_UOE;
+
+  /*
+   * Requiring desugaring for guava-*testlib* is likely safe, at least for the reflection-based
+   * NullPointerTester. But if you are a user who is reading this because this change caused you
+   * trouble, please let us know: https://github.com/google/guava/issues/new
+   */
+  /** Constructs a new {@code NullPointerTester}. */
+  @IgnoreJRERequirement
+  public NullPointerTester() {
+    try {
+      /*
+       * Converter.apply has a non-nullable parameter type but doesn't throw for null arguments. For
+       * more information, see the comments in that class.
+       *
+       * We already know that that's how it behaves, and subclasses of Converter can't change that
+       * behavior. So there's no sense in making all subclass authors exclude the method from any
+       * NullPointerTester tests that they have.
+       */
+      ignoredMembers.add(Converter.class.getMethod("apply", Object.class));
+    } catch (NoSuchMethodException shouldBeImpossible) {
+      // Fine: If it doesn't exist, then there's no chance that we're going to be asked to test it.
+    }
+
+    /*
+     * These methods "should" call checkNotNull. However, I'm wary of accidentally introducing
+     * anything that might slow down execution on such a hot path. Given that the methods are only
+     * package-private, I feel OK with just not testing them for NPE.
+     *
+     * Note that testing casValue is particularly dangerous because it uses Unsafe under some
+     * versions of Java, and apparently Unsafe can cause SIGSEGV instead of NPE—almost as if it's
+     * not safe.
+     */
+    concat(
+            stream(AbstractFuture.class.getDeclaredMethods()),
+            stream(requireNonNull(AbstractFuture.class.getSuperclass()).getDeclaredMethods()))
+        .filter(
+            m ->
+                m.getName().equals("getDoneValue")
+                    || m.getName().equals("getKnownSuccessfulDoneValue")
+                    || m.getName().equals("casValue")
+                    || m.getName().equals("casListeners")
+                    || m.getName().equals("gasListeners"))
+        .forEach(ignoredMembers::add);
+  }
 
   /**
    * Sets a default value that can be used for any parameter of type {@code type}. Returns this
    * object.
    */
+  @CanIgnoreReturnValue
   public <T> NullPointerTester setDefault(Class<T> type, T value) {
     defaults.putInstance(type, checkNotNull(value));
     return this;
@@ -89,6 +139,7 @@ public final class NullPointerTester {
    *
    * @since 13.0
    */
+  @CanIgnoreReturnValue
   public NullPointerTester ignore(Method method) {
     ignoredMembers.add(checkNotNull(method));
     return this;
@@ -99,6 +150,7 @@ public final class NullPointerTester {
    *
    * @since 22.0
    */
+  @CanIgnoreReturnValue
   public NullPointerTester ignore(Constructor<?> constructor) {
     ignoredMembers.add(checkNotNull(constructor));
     return this;
@@ -176,7 +228,7 @@ public final class NullPointerTester {
    *
    * @param instance the instance to invoke {@code method} on, or null if {@code method} is static
    */
-  public void testMethod(@NullableDecl Object instance, Method method) {
+  public void testMethod(@Nullable Object instance, Method method) {
     Class<?>[] types = method.getParameterTypes();
     for (int nullIndex = 0; nullIndex < types.length; nullIndex++) {
       testMethodParameter(instance, method, nullIndex);
@@ -207,8 +259,7 @@ public final class NullPointerTester {
    *
    * @param instance the instance to invoke {@code method} on, or null if {@code method} is static
    */
-  public void testMethodParameter(
-      @NullableDecl final Object instance, final Method method, int paramIndex) {
+  public void testMethodParameter(@Nullable Object instance, Method method, int paramIndex) {
     method.setAccessible(true);
     testParameter(instance, invokable(instance, method), paramIndex, method.getDeclaringClass());
   }
@@ -253,7 +304,7 @@ public final class NullPointerTester {
       return isVisible(member.getModifiers());
     }
 
-    final Iterable<Method> getStaticMethods(Class<?> cls) {
+    final ImmutableList<Method> getStaticMethods(Class<?> cls) {
       ImmutableList.Builder<Method> builder = ImmutableList.builder();
       for (Method method : getVisibleMethods(cls)) {
         if (Invokable.from(method).isStatic()) {
@@ -263,8 +314,10 @@ public final class NullPointerTester {
       return builder.build();
     }
 
+    // TODO(cpovirk): Disable Animal Sniffer entirely for guava-testlib?
+    @IgnoreJRERequirement // see comment on other @IgnoreJRERequirement annotation above
     final Iterable<Method> getInstanceMethods(Class<?> cls) {
-      ConcurrentMap<Signature, Method> map = Maps.newConcurrentMap();
+      Map<Signature, Method> map = new HashMap<>();
       for (Method method : getVisibleMethods(cls)) {
         if (!Invokable.from(method).isStatic()) {
           map.putIfAbsent(new Signature(method), method);
@@ -306,7 +359,7 @@ public final class NullPointerTester {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
       if (obj instanceof Signature) {
         Signature that = (Signature) obj;
         return name.equals(that.name) && parameterTypes.equals(that.parameterTypes);
@@ -316,7 +369,7 @@ public final class NullPointerTester {
 
     @Override
     public int hashCode() {
-      return Objects.hashCode(name, parameterTypes);
+      return Objects.hash(name, parameterTypes);
     }
   }
 
@@ -329,11 +382,22 @@ public final class NullPointerTester {
    *     static
    */
   private void testParameter(
-      Object instance, Invokable<?, ?> invokable, int paramIndex, Class<?> testedClass) {
+      @Nullable Object instance, Invokable<?, ?> invokable, int paramIndex, Class<?> testedClass) {
+    /*
+     * com.google.common is starting to rely on type-use annotations, which aren't visible under
+     * Android VMs. So we skip testing there.
+     *
+     * The approach that we're using here also has the effect of skipping testing in the open-source
+     * repo for guava-android, even though those tests run under the JVM. That's not the behavior
+     * that we'd pick in a vacuum, but it's fine when the tests still run internally.
+     */
+    if (Reflection.getPackageName(testedClass).startsWith("com.google.common")) {
+      return;
+    }
     if (isPrimitiveOrNullable(invokable.getParameters().get(paramIndex))) {
       return; // there's nothing to test
     }
-    Object[] params = buildParamList(invokable, paramIndex);
+    @Nullable Object[] params = buildParamList(invokable, paramIndex);
     try {
       @SuppressWarnings("unchecked") // We'll get a runtime exception if the type is wrong.
       Invokable<Object, ?> unsafe = (Invokable<Object, ?>) invokable;
@@ -351,27 +415,26 @@ public final class NullPointerTester {
       if (policy.isExpectedType(cause)) {
         return;
       }
-      AssertionFailedError error =
-          new AssertionFailedError(
-              String.format(
-                  "wrong exception thrown from %s when passing null to %s parameter at index %s.%n"
-                      + "Full parameters: %s%n"
-                      + "Actual exception message: %s",
-                  invokable,
-                  invokable.getParameters().get(paramIndex).getType(),
-                  paramIndex,
-                  Arrays.toString(params),
-                  cause));
-      error.initCause(cause);
-      throw error;
+      throw new AssertionError(
+          String.format(
+              "wrong exception thrown from %s when passing null to %s parameter at index %s.%n"
+                  + "Full parameters: %s%n"
+                  + "Actual exception message: %s",
+              invokable,
+              invokable.getParameters().get(paramIndex).getType(),
+              paramIndex,
+              Arrays.toString(params),
+              cause),
+          cause);
     } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private Object[] buildParamList(Invokable<?, ?> invokable, int indexOfParamToSetToNull) {
+  private @Nullable Object[] buildParamList(
+      Invokable<?, ?> invokable, int indexOfParamToSetToNull) {
     ImmutableList<Parameter> params = invokable.getParameters();
-    Object[] args = new Object[params.size()];
+    @Nullable Object[] args = new Object[params.size()];
 
     for (int i = 0; i < args.length; i++) {
       Parameter param = params.get(i);
@@ -387,7 +450,7 @@ public final class NullPointerTester {
     return args;
   }
 
-  private <T> T getDefaultValue(TypeToken<T> type) {
+  private <T> @Nullable T getDefaultValue(TypeToken<T> type) {
     // We assume that all defaults are generics-safe, even if they aren't,
     // we take the risk.
     @SuppressWarnings("unchecked")
@@ -426,7 +489,7 @@ public final class NullPointerTester {
   }
 
   private <F, T> Converter<F, T> defaultConverter(
-      final TypeToken<F> convertFromType, final TypeToken<T> convertToType) {
+      TypeToken<F> convertFromType, TypeToken<T> convertToType) {
     return new Converter<F, T>() {
       @Override
       protected T doForward(F a) {
@@ -438,7 +501,7 @@ public final class NullPointerTester {
         return doConvert(convertFromType);
       }
 
-      private /*static*/ <S> S doConvert(TypeToken<S> type) {
+      /*static*/ <S> S doConvert(TypeToken<S> type) {
         return checkNotNull(getDefaultValue(type));
       }
     };
@@ -452,16 +515,16 @@ public final class NullPointerTester {
     }
   }
 
-  private <T> T newDefaultReturningProxy(final TypeToken<T> type) {
+  private <T> T newDefaultReturningProxy(TypeToken<T> type) {
     return new DummyProxy() {
       @Override
-      <R> R dummyReturnValue(TypeToken<R> returnType) {
+      <R> @Nullable R dummyReturnValue(TypeToken<R> returnType) {
         return getDefaultValue(returnType);
       }
     }.newProxy(type);
   }
 
-  private static Invokable<?, ?> invokable(@NullableDecl Object instance, Method method) {
+  private static Invokable<?, ?> invokable(@Nullable Object instance, Method method) {
     if (instance == null) {
       return Invokable.from(method);
     } else {
@@ -476,8 +539,16 @@ public final class NullPointerTester {
   private static final ImmutableSet<String> NULLABLE_ANNOTATION_SIMPLE_NAMES =
       ImmutableSet.of("CheckForNull", "Nullable", "NullableDecl", "NullableType");
 
-  static boolean isNullable(AnnotatedElement e) {
-    for (Annotation annotation : e.getAnnotations()) {
+  static boolean isNullable(Invokable<?, ?> invokable) {
+    return NULLNESS_ANNOTATION_READER.isNullable(invokable);
+  }
+
+  static boolean isNullable(Parameter param) {
+    return NULLNESS_ANNOTATION_READER.isNullable(param);
+  }
+
+  private static boolean containsNullable(Annotation[] annotations) {
+    for (Annotation annotation : annotations) {
       if (NULLABLE_ANNOTATION_SIMPLE_NAMES.contains(annotation.annotationType().getSimpleName())) {
         return true;
       }
@@ -486,11 +557,33 @@ public final class NullPointerTester {
   }
 
   private boolean isIgnored(Member member) {
-    return member.isSynthetic() || ignoredMembers.contains(member) || isEquals(member);
+    return member.isSynthetic()
+        || ignoredMembers.contains(member)
+        || isEquals(member)
+        /*
+         * We can assume that Kotlin code is performing the null checks that we want, since kotlinc
+         * inserts checks automatically for non-private functions (which are the only kind that we
+         * check).
+         *
+         * We *would* just check such functions redundantly, but kotlinc emits its nullness
+         * annotations in the form of JetBrains annotations, which have only class retention and
+         * thus are invisible at runtime. Thus, we conclude that the parameter types are
+         * *non*-nullable, even when they are declared as `Foo?`.
+         */
+        || hasAutomaticNullChecksFromKotlin(member);
+  }
+
+  private static boolean hasAutomaticNullChecksFromKotlin(Member member) {
+    for (Annotation annotation : member.getDeclaringClass().getAnnotations()) {
+      if (annotation.annotationType().getName().equals("kotlin.Metadata")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Returns true if the the given member is a method that overrides {@link Object#equals(Object)}.
+   * Returns true if the given member is a method that overrides {@link Object#equals(Object)}.
    *
    * <p>The documentation for {@link Object#equals} says it should accept null, so don't require an
    * explicit {@code @NullableDecl} annotation (see <a
@@ -506,7 +599,7 @@ public final class NullPointerTester {
       return false;
     }
     Method method = (Method) member;
-    if (!method.getName().contentEquals("equals")) {
+    if (!method.getName().equals("equals")) {
       return false;
     }
     Class<?>[] parameters = method.getParameterTypes();
@@ -527,7 +620,7 @@ public final class NullPointerTester {
      */
     NPE_OR_UOE() {
       @Override
-      public boolean isExpectedType(Throwable cause) {
+      boolean isExpectedType(Throwable cause) {
         return cause instanceof NullPointerException
             || cause instanceof UnsupportedOperationException;
       }
@@ -539,13 +632,70 @@ public final class NullPointerTester {
      */
     NPE_IAE_OR_UOE() {
       @Override
-      public boolean isExpectedType(Throwable cause) {
+      boolean isExpectedType(Throwable cause) {
         return cause instanceof NullPointerException
             || cause instanceof IllegalArgumentException
             || cause instanceof UnsupportedOperationException;
       }
     };
 
-    public abstract boolean isExpectedType(Throwable cause);
+    abstract boolean isExpectedType(Throwable cause);
+  }
+
+  private static boolean annotatedTypeExists() {
+    try {
+      Class.forName("java.lang.reflect.AnnotatedType");
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+    return true;
+  }
+
+  private static final NullnessAnnotationReader NULLNESS_ANNOTATION_READER =
+      annotatedTypeExists()
+          ? NullnessAnnotationReader.FROM_DECLARATION_AND_TYPE_USE_ANNOTATIONS
+          : NullnessAnnotationReader.FROM_DECLARATION_ANNOTATIONS_ONLY;
+
+  /**
+   * Looks for declaration nullness annotations and, if supported, type-use nullness annotations.
+   *
+   * <p>Under Android VMs, the methods for retrieving type-use annotations don't exist. This means
+   * that {@link NullPointerTester} may misbehave under Android when used on classes that rely on
+   * type-use annotations.
+   *
+   * <p>Under j2objc, the necessary APIs exist, but some (perhaps all) return stub values, like
+   * empty arrays. Presumably {@link NullPointerTester} could likewise misbehave under j2objc, but I
+   * don't know that anyone uses it there, anyway.
+   */
+  private enum NullnessAnnotationReader {
+    FROM_DECLARATION_AND_TYPE_USE_ANNOTATIONS {
+      @Override
+      boolean isNullable(Invokable<?, ?> invokable) {
+        return FROM_DECLARATION_ANNOTATIONS_ONLY.isNullable(invokable)
+        ;
+        // TODO(cpovirk): Should we also check isNullableTypeVariable?
+      }
+
+      @Override
+      boolean isNullable(Parameter param) {
+        return FROM_DECLARATION_ANNOTATIONS_ONLY.isNullable(param)
+        ;
+      }
+    },
+    FROM_DECLARATION_ANNOTATIONS_ONLY {
+      @Override
+      boolean isNullable(Invokable<?, ?> invokable) {
+        return containsNullable(invokable.getAnnotations());
+      }
+
+      @Override
+      boolean isNullable(Parameter param) {
+        return containsNullable(param.getAnnotations());
+      }
+    };
+
+    abstract boolean isNullable(Invokable<?, ?> invokable);
+
+    abstract boolean isNullable(Parameter param);
   }
 }

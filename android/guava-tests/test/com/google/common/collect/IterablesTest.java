@@ -16,20 +16,42 @@
 
 package com.google.common.collect;
 
+import static com.google.common.base.Predicates.alwaysFalse;
+import static com.google.common.base.Predicates.alwaysTrue;
+import static com.google.common.base.Predicates.equalTo;
+import static com.google.common.collect.Iterables.all;
+import static com.google.common.collect.Iterables.any;
+import static com.google.common.collect.Iterables.concat;
+import static com.google.common.collect.Iterables.elementsEqual;
+import static com.google.common.collect.Iterables.filter;
+import static com.google.common.collect.Iterables.find;
+import static com.google.common.collect.Iterables.frequency;
+import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.collect.Iterables.mergeSorted;
+import static com.google.common.collect.Iterables.removeIf;
 import static com.google.common.collect.Iterables.skip;
+import static com.google.common.collect.Iterables.tryFind;
 import static com.google.common.collect.Lists.newArrayList;
-import static com.google.common.collect.Sets.newLinkedHashSet;
+import static com.google.common.collect.Lists.newLinkedList;
+import static com.google.common.collect.Lists.transform;
+import static com.google.common.collect.Sets.newHashSet;
 import static com.google.common.collect.testing.IteratorFeature.MODIFIABLE;
 import static com.google.common.collect.testing.IteratorFeature.UNMODIFIABLE;
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
+import static java.util.Collections.nCopies;
+import static java.util.Collections.singleton;
+import static java.util.Collections.singletonList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
+import com.google.common.collect.ForwardingQueue.SimpleForwardingQueue;
 import com.google.common.collect.testing.IteratorTester;
 import com.google.common.testing.ClassSanityTester;
 import com.google.common.testing.NullPointerTester;
@@ -37,8 +59,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.ConcurrentModificationException;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
@@ -47,6 +73,8 @@ import java.util.Set;
 import java.util.SortedSet;
 import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@code Iterables}.
@@ -54,16 +82,17 @@ import junit.framework.TestCase;
  * @author Kevin Bourrillion
  * @author Jared Levy
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class IterablesTest extends TestCase {
 
   public void testSize0() {
-    Iterable<String> iterable = Collections.emptySet();
+    Iterable<String> iterable = emptySet();
     assertEquals(0, Iterables.size(iterable));
   }
 
   public void testSize1Collection() {
-    Iterable<String> iterable = Collections.singleton("a");
+    Iterable<String> iterable = singleton("a");
     assertEquals(1, Iterables.size(iterable));
   }
 
@@ -91,28 +120,28 @@ public class IterablesTest extends TestCase {
     assertEquals(5, Iterables.size(collection));
   }
 
-  private static Iterable<String> iterable(String... elements) {
-    final List<String> list = asList(elements);
-    return new Iterable<String>() {
+  private static <T extends @Nullable Object> Iterable<T> iterable(T... elements) {
+    List<T> list = asList(elements);
+    return new Iterable<T>() {
       @Override
-      public Iterator<String> iterator() {
+      public Iterator<T> iterator() {
         return list.iterator();
       }
     };
   }
 
   public void test_contains_null_set_yes() {
-    Iterable<String> set = Sets.newHashSet("a", null, "b");
+    Iterable<@Nullable String> set = newHashSet("a", null, "b");
     assertTrue(Iterables.contains(set, null));
   }
 
   public void test_contains_null_set_no() {
-    Iterable<String> set = Sets.newHashSet("a", "b");
+    Iterable<String> set = newHashSet("a", "b");
     assertFalse(Iterables.contains(set, null));
   }
 
   public void test_contains_null_iterable_yes() {
-    Iterable<String> set = iterable("a", null, "b");
+    Iterable<@Nullable String> set = iterable("a", null, "b");
     assertTrue(Iterables.contains(set, null));
   }
 
@@ -122,17 +151,17 @@ public class IterablesTest extends TestCase {
   }
 
   public void test_contains_nonnull_set_yes() {
-    Iterable<String> set = Sets.newHashSet("a", null, "b");
+    Iterable<@Nullable String> set = newHashSet("a", null, "b");
     assertTrue(Iterables.contains(set, "b"));
   }
 
   public void test_contains_nonnull_set_no() {
-    Iterable<String> set = Sets.newHashSet("a", "b");
+    Iterable<String> set = newHashSet("a", "b");
     assertFalse(Iterables.contains(set, "c"));
   }
 
   public void test_contains_nonnull_iterable_yes() {
-    Iterable<String> set = iterable("a", null, "b");
+    Iterable<@Nullable String> set = iterable("a", null, "b");
     assertTrue(Iterables.contains(set, "b"));
   }
 
@@ -142,64 +171,52 @@ public class IterablesTest extends TestCase {
   }
 
   public void testGetOnlyElement_noDefault_valid() {
-    Iterable<String> iterable = Collections.singletonList("foo");
-    assertEquals("foo", Iterables.getOnlyElement(iterable));
+    Iterable<String> iterable = singletonList("foo");
+    assertThat(getOnlyElement(iterable)).isEqualTo("foo");
   }
 
   public void testGetOnlyElement_noDefault_empty() {
-    Iterable<String> iterable = Collections.emptyList();
-    try {
-      Iterables.getOnlyElement(iterable);
-      fail();
-    } catch (NoSuchElementException expected) {
-    }
+    Iterable<String> iterable = emptyList();
+    assertThrows(NoSuchElementException.class, () -> getOnlyElement(iterable));
   }
 
   public void testGetOnlyElement_noDefault_multiple() {
     Iterable<String> iterable = asList("foo", "bar");
-    try {
-      Iterables.getOnlyElement(iterable);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> getOnlyElement(iterable));
   }
 
   public void testGetOnlyElement_withDefault_singleton() {
-    Iterable<String> iterable = Collections.singletonList("foo");
-    assertEquals("foo", Iterables.getOnlyElement(iterable, "bar"));
+    Iterable<String> iterable = singletonList("foo");
+    assertThat(getOnlyElement(iterable, "bar")).isEqualTo("foo");
   }
 
   public void testGetOnlyElement_withDefault_empty() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertEquals("bar", Iterables.getOnlyElement(iterable, "bar"));
+    Iterable<String> iterable = emptyList();
+    assertThat(getOnlyElement(iterable, "bar")).isEqualTo("bar");
   }
 
   public void testGetOnlyElement_withDefault_empty_null() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertNull(Iterables.getOnlyElement(iterable, null));
+    Iterable<String> iterable = emptyList();
+    assertThat(Iterables.<@Nullable String>getOnlyElement(iterable, null)).isNull();
   }
 
   public void testGetOnlyElement_withDefault_multiple() {
     Iterable<String> iterable = asList("foo", "bar");
-    try {
-      Iterables.getOnlyElement(iterable, "x");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> getOnlyElement(iterable, "x"));
   }
 
   @GwtIncompatible // Iterables.toArray(Iterable, Class)
   public void testToArrayEmpty() {
-    Iterable<String> iterable = Collections.emptyList();
+    Iterable<String> iterable = emptyList();
     String[] array = Iterables.toArray(iterable, String.class);
-    assertTrue(Arrays.equals(new String[0], array));
+    assertThat(array).isEmpty();
   }
 
   @GwtIncompatible // Iterables.toArray(Iterable, Class)
   public void testToArraySingleton() {
-    Iterable<String> iterable = Collections.singletonList("a");
+    Iterable<String> iterable = singletonList("a");
     String[] array = Iterables.toArray(iterable, String.class);
-    assertTrue(Arrays.equals(new String[] {"a"}, array));
+    assertThat(array).isEqualTo(new String[] {"a"});
   }
 
   @GwtIncompatible // Iterables.toArray(Iterable, Class)
@@ -207,60 +224,56 @@ public class IterablesTest extends TestCase {
     String[] sourceArray = new String[] {"a", "b", "c"};
     Iterable<String> iterable = asList(sourceArray);
     String[] newArray = Iterables.toArray(iterable, String.class);
-    assertTrue(Arrays.equals(sourceArray, newArray));
+    assertThat(newArray).isEqualTo(sourceArray);
   }
 
   public void testAny() {
-    List<String> list = newArrayList();
-    Predicate<String> predicate = Predicates.equalTo("pants");
+    List<String> list = new ArrayList<>();
+    Predicate<String> predicate = equalTo("pants");
 
-    assertFalse(Iterables.any(list, predicate));
+    assertFalse(any(list, predicate));
     list.add("cool");
-    assertFalse(Iterables.any(list, predicate));
+    assertFalse(any(list, predicate));
     list.add("pants");
-    assertTrue(Iterables.any(list, predicate));
+    assertTrue(any(list, predicate));
   }
 
   public void testAll() {
-    List<String> list = newArrayList();
-    Predicate<String> predicate = Predicates.equalTo("cool");
+    List<String> list = new ArrayList<>();
+    Predicate<String> predicate = equalTo("cool");
 
-    assertTrue(Iterables.all(list, predicate));
+    assertTrue(all(list, predicate));
     list.add("cool");
-    assertTrue(Iterables.all(list, predicate));
+    assertTrue(all(list, predicate));
     list.add("pants");
-    assertFalse(Iterables.all(list, predicate));
+    assertFalse(all(list, predicate));
   }
 
   public void testFind() {
     Iterable<String> list = newArrayList("cool", "pants");
-    assertEquals("cool", Iterables.find(list, Predicates.equalTo("cool")));
-    assertEquals("pants", Iterables.find(list, Predicates.equalTo("pants")));
-    try {
-      Iterables.find(list, Predicates.alwaysFalse());
-      fail();
-    } catch (NoSuchElementException e) {
-    }
-    assertEquals("cool", Iterables.find(list, Predicates.alwaysTrue()));
+    assertThat(find(list, equalTo("cool"))).isEqualTo("cool");
+    assertThat(find(list, equalTo("pants"))).isEqualTo("pants");
+    assertThrows(NoSuchElementException.class, () -> find(list, alwaysFalse()));
+    assertThat(find(list, alwaysTrue())).isEqualTo("cool");
     assertCanIterateAgain(list);
   }
 
   public void testFind_withDefault() {
-    Iterable<String> list = Lists.newArrayList("cool", "pants");
-    assertEquals("cool", Iterables.find(list, Predicates.equalTo("cool"), "woot"));
-    assertEquals("pants", Iterables.find(list, Predicates.equalTo("pants"), "woot"));
-    assertEquals("woot", Iterables.find(list, Predicates.alwaysFalse(), "woot"));
-    assertNull(Iterables.find(list, Predicates.alwaysFalse(), null));
-    assertEquals("cool", Iterables.find(list, Predicates.alwaysTrue(), "woot"));
+    Iterable<String> list = newArrayList("cool", "pants");
+    assertThat(find(list, equalTo("cool"), "woot")).isEqualTo("cool");
+    assertThat(find(list, equalTo("pants"), "woot")).isEqualTo("pants");
+    assertThat(find(list, alwaysFalse(), "woot")).isEqualTo("woot");
+    assertThat(find(list, alwaysFalse(), null)).isNull();
+    assertThat(find(list, alwaysTrue(), "woot")).isEqualTo("cool");
     assertCanIterateAgain(list);
   }
 
   public void testTryFind() {
     Iterable<String> list = newArrayList("cool", "pants");
-    assertThat(Iterables.tryFind(list, Predicates.equalTo("cool"))).hasValue("cool");
-    assertThat(Iterables.tryFind(list, Predicates.equalTo("pants"))).hasValue("pants");
-    assertThat(Iterables.tryFind(list, Predicates.alwaysTrue())).hasValue("cool");
-    assertThat(Iterables.tryFind(list, Predicates.alwaysFalse())).isAbsent();
+    assertThat(tryFind(list, equalTo("cool"))).hasValue("cool");
+    assertThat(tryFind(list, equalTo("pants"))).hasValue("pants");
+    assertThat(tryFind(list, alwaysTrue())).hasValue("cool");
+    assertThat(tryFind(list, alwaysFalse())).isAbsent();
     assertCanIterateAgain(list);
   }
 
@@ -271,10 +284,10 @@ public class IterablesTest extends TestCase {
   private static class HasBoth extends TypeA implements TypeB {}
 
   @GwtIncompatible // Iterables.filter(Iterable, Class)
-  public void testFilterByType_iterator() throws Exception {
+  public void testFilterByType_iterator() {
     HasBoth hasBoth = new HasBoth();
-    Iterable<TypeA> alist = Lists.newArrayList(new TypeA(), new TypeA(), hasBoth, new TypeA());
-    Iterable<TypeB> blist = Iterables.filter(alist, TypeB.class);
+    Iterable<TypeA> alist = newArrayList(new TypeA(), new TypeA(), hasBoth, new TypeA());
+    Iterable<TypeB> blist = filter(alist, TypeB.class);
     assertThat(blist).containsExactly(hasBoth).inOrder();
   }
 
@@ -294,11 +307,11 @@ public class IterablesTest extends TestCase {
     List<Integer> expected = asList(1, 2, 3);
     assertEquals(expected, actual);
     assertCanIterateAgain(result);
-    assertEquals("[1, 2, 3]", result.toString());
+    assertThat(result.toString()).isEqualTo("[1, 2, 3]");
   }
 
   public void testPoorlyBehavedTransform() {
-    List<String> input = asList("1", null, "3");
+    List<String> input = asList("1", "not a number", "3");
     Iterable<Integer> result =
         Iterables.transform(
             input,
@@ -312,21 +325,17 @@ public class IterablesTest extends TestCase {
     Iterator<Integer> resultIterator = result.iterator();
     resultIterator.next();
 
-    try {
-      resultIterator.next();
-      fail("Expected NFE");
-    } catch (NumberFormatException expected) {
-    }
+    assertThrows(NumberFormatException.class, () -> resultIterator.next());
   }
 
   public void testNullFriendlyTransform() {
-    List<Integer> input = asList(1, 2, null, 3);
+    List<@Nullable Integer> input = asList(1, 2, null, 3);
     Iterable<String> result =
         Iterables.transform(
             input,
-            new Function<Integer, String>() {
+            new Function<@Nullable Integer, String>() {
               @Override
-              public String apply(Integer from) {
+              public String apply(@Nullable Integer from) {
                 return String.valueOf(from);
               }
             });
@@ -343,7 +352,7 @@ public class IterablesTest extends TestCase {
     int howManyChecked = 0;
     for (String string : cycle) {
       String expected = (howManyChecked % 2 == 0) ? "a" : "b";
-      assertEquals(expected, string);
+      assertThat(string).isEqualTo(expected);
       if (howManyChecked++ == 5) {
         break;
       }
@@ -352,11 +361,11 @@ public class IterablesTest extends TestCase {
     // We left the last iterator pointing to "b". But a new iterator should
     // always point to "a".
     for (String string : cycle) {
-      assertEquals("a", string);
+      assertThat(string).isEqualTo("a");
       break;
     }
 
-    assertEquals("[a, b] (cycled)", cycle.toString());
+    assertThat(cycle.toString()).isEqualTo("[a, b] (cycled)");
   }
 
   // Again, the exhaustive tests are in IteratorsTest
@@ -364,10 +373,9 @@ public class IterablesTest extends TestCase {
     List<Integer> list1 = newArrayList(1);
     List<Integer> list2 = newArrayList(4);
 
-    @SuppressWarnings("unchecked")
     List<List<Integer>> input = newArrayList(list1, list2);
 
-    Iterable<Integer> result = Iterables.concat(input);
+    Iterable<Integer> result = concat(input);
     assertEquals(asList(1, 4), newArrayList(result));
 
     // Now change the inputs and see result dynamically change as well
@@ -377,7 +385,7 @@ public class IterablesTest extends TestCase {
     input.add(1, list3);
 
     assertEquals(asList(1, 2, 3, 4), newArrayList(result));
-    assertEquals("[1, 2, 3, 4]", result.toString());
+    assertThat(result.toString()).isEqualTo("[1, 2, 3, 4]");
   }
 
   public void testConcatVarargs() {
@@ -386,50 +394,41 @@ public class IterablesTest extends TestCase {
     List<Integer> list3 = newArrayList(7, 8);
     List<Integer> list4 = newArrayList(9);
     List<Integer> list5 = newArrayList(10);
-    @SuppressWarnings("unchecked")
-    Iterable<Integer> result = Iterables.concat(list1, list2, list3, list4, list5);
+    Iterable<Integer> result = concat(list1, list2, list3, list4, list5);
     assertEquals(asList(1, 4, 7, 8, 9, 10), newArrayList(result));
-    assertEquals("[1, 4, 7, 8, 9, 10]", result.toString());
+    assertThat(result.toString()).isEqualTo("[1, 4, 7, 8, 9, 10]");
   }
 
   public void testConcatNullPointerException() {
     List<Integer> list1 = newArrayList(1);
     List<Integer> list2 = newArrayList(4);
 
-    try {
-      Iterables.concat(list1, null, list2);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> concat(list1, null, list2));
   }
 
   public void testConcatPeformingFiniteCycle() {
     Iterable<Integer> iterable = asList(1, 2, 3);
     int n = 4;
-    Iterable<Integer> repeated = Iterables.concat(Collections.nCopies(n, iterable));
+    Iterable<Integer> repeated = concat(nCopies(n, iterable));
     assertThat(repeated).containsExactly(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3).inOrder();
   }
 
   public void testPartition_badSize() {
-    Iterable<Integer> source = Collections.singleton(1);
-    try {
-      Iterables.partition(source, 0);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    Iterable<Integer> source = singleton(1);
+    assertThrows(IllegalArgumentException.class, () -> Iterables.partition(source, 0));
   }
 
   public void testPartition_empty() {
-    Iterable<Integer> source = Collections.emptySet();
+    Iterable<Integer> source = emptySet();
     Iterable<List<Integer>> partitions = Iterables.partition(source, 1);
     assertTrue(Iterables.isEmpty(partitions));
   }
 
   public void testPartition_singleton1() {
-    Iterable<Integer> source = Collections.singleton(1);
+    Iterable<Integer> source = singleton(1);
     Iterable<List<Integer>> partitions = Iterables.partition(source, 1);
     assertEquals(1, Iterables.size(partitions));
-    assertEquals(Collections.singletonList(1), partitions.iterator().next());
+    assertEquals(singletonList(1), partitions.iterator().next());
   }
 
   public void testPartition_view() {
@@ -452,8 +451,8 @@ public class IterablesTest extends TestCase {
     assertEquals(ImmutableList.of(3, 4), first);
   }
 
-  @GwtIncompatible // ?
-  // TODO: Figure out why this is failing in GWT.
+  @J2ktIncompatible // Arrays.asList(...).subList() doesn't implement RandomAccess in J2KT.
+  @GwtIncompatible // Arrays.asList(...).subList doesn't implement RandomAccess in GWT
   public void testPartitionRandomAccessInput() {
     Iterable<Integer> source = asList(1, 2, 3);
     Iterable<List<Integer>> partitions = Iterables.partition(source, 2);
@@ -462,10 +461,10 @@ public class IterablesTest extends TestCase {
     assertTrue(iterator.next() instanceof RandomAccess);
   }
 
-  @GwtIncompatible // ?
-  // TODO: Figure out why this is failing in GWT.
+  @J2ktIncompatible // Arrays.asList(...).subList() doesn't implement RandomAccess in J2KT.
+  @GwtIncompatible // Arrays.asList(...).subList() doesn't implement RandomAccess in GWT
   public void testPartitionNonRandomAccessInput() {
-    Iterable<Integer> source = Lists.newLinkedList(asList(1, 2, 3));
+    Iterable<Integer> source = new LinkedList<>(asList(1, 2, 3));
     Iterable<List<Integer>> partitions = Iterables.partition(source, 2);
     Iterator<List<Integer>> iterator = partitions.iterator();
     // Even though the input list doesn't implement RandomAccess, the output
@@ -476,9 +475,9 @@ public class IterablesTest extends TestCase {
 
   public void testPaddedPartition_basic() {
     List<Integer> list = asList(1, 2, 3, 4, 5);
-    Iterable<List<Integer>> partitions = Iterables.paddedPartition(list, 2);
+    Iterable<List<@Nullable Integer>> partitions = Iterables.paddedPartition(list, 2);
     assertEquals(3, Iterables.size(partitions));
-    assertEquals(asList(5, null), Iterables.getLast(partitions));
+    assertEquals(Arrays.<@Nullable Integer>asList(5, null), Iterables.getLast(partitions));
   }
 
   public void testPaddedPartitionRandomAccessInput() {
@@ -490,7 +489,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testPaddedPartitionNonRandomAccessInput() {
-    Iterable<Integer> source = Lists.newLinkedList(asList(1, 2, 3));
+    Iterable<Integer> source = new LinkedList<>(asList(1, 2, 3));
     Iterable<List<Integer>> partitions = Iterables.paddedPartition(source, 2);
     Iterator<List<Integer>> iterator = partitions.iterator();
     // Even though the input list doesn't implement RandomAccess, the output
@@ -513,6 +512,7 @@ public class IterablesTest extends TestCase {
     for (@SuppressWarnings("unused") Object obj : iterable) {}
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointerExceptions() {
     NullPointerTester tester = new NullPointerTester();
@@ -520,39 +520,39 @@ public class IterablesTest extends TestCase {
   }
 
   // More exhaustive tests are in IteratorsTest.
-  public void testElementsEqual() throws Exception {
+  public void testElementsEqual() {
     Iterable<?> a;
     Iterable<?> b;
 
     // A few elements.
     a = asList(4, 8, 15, 16, 23, 42);
     b = asList(4, 8, 15, 16, 23, 42);
-    assertTrue(Iterables.elementsEqual(a, b));
+    assertTrue(elementsEqual(a, b));
 
     // An element differs.
     a = asList(4, 8, 15, 12, 23, 42);
     b = asList(4, 8, 15, 16, 23, 42);
-    assertFalse(Iterables.elementsEqual(a, b));
+    assertFalse(elementsEqual(a, b));
 
     // null versus non-null.
-    a = asList(4, 8, 15, null, 23, 42);
+    a = Arrays.<@Nullable Integer>asList(4, 8, 15, null, 23, 42);
     b = asList(4, 8, 15, 16, 23, 42);
-    assertFalse(Iterables.elementsEqual(a, b));
-    assertFalse(Iterables.elementsEqual(b, a));
+    assertFalse(elementsEqual(a, b));
+    assertFalse(elementsEqual(b, a));
 
     // Different lengths.
     a = asList(4, 8, 15, 16, 23);
     b = asList(4, 8, 15, 16, 23, 42);
-    assertFalse(Iterables.elementsEqual(a, b));
-    assertFalse(Iterables.elementsEqual(b, a));
+    assertFalse(elementsEqual(a, b));
+    assertFalse(elementsEqual(b, a));
   }
 
   public void testToString() {
-    List<String> list = Collections.emptyList();
-    assertEquals("[]", Iterables.toString(list));
+    List<String> list = emptyList();
+    assertThat(Iterables.toString(list)).isEqualTo("[]");
 
     list = newArrayList("yam", "bam", "jam", "ham");
-    assertEquals("[yam, bam, jam, ham]", Iterables.toString(list));
+    assertThat(Iterables.toString(list)).isEqualTo("[yam, bam, jam, ham]");
   }
 
   public void testLimit() {
@@ -563,36 +563,32 @@ public class IterablesTest extends TestCase {
     List<String> actual = newArrayList(limited);
     assertEquals(expected, actual);
     assertCanIterateAgain(limited);
-    assertEquals("[foo, bar]", limited.toString());
+    assertThat(limited.toString()).isEqualTo("[foo, bar]");
   }
 
   public void testLimit_illegalArgument() {
     List<String> list = newArrayList("a", "b", "c");
-    try {
-      Iterables.limit(list, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Iterables.limit(list, -1));
   }
 
   public void testIsEmpty() {
-    Iterable<String> emptyList = Collections.emptyList();
+    Iterable<String> emptyList = emptyList();
     assertTrue(Iterables.isEmpty(emptyList));
 
-    Iterable<String> singletonList = Collections.singletonList("foo");
+    Iterable<String> singletonList = singletonList("foo");
     assertFalse(Iterables.isEmpty(singletonList));
   }
 
   public void testSkip_simple() {
     Collection<String> set = ImmutableSet.of("a", "b", "c", "d", "e");
     assertEquals(newArrayList("c", "d", "e"), newArrayList(skip(set, 2)));
-    assertEquals("[c, d, e]", skip(set, 2).toString());
+    assertThat(skip(set, 2).toString()).isEqualTo("[c, d, e]");
   }
 
   public void testSkip_simpleList() {
     Collection<String> list = newArrayList("a", "b", "c", "d", "e");
     assertEquals(newArrayList("c", "d", "e"), newArrayList(skip(list, 2)));
-    assertEquals("[c, d, e]", skip(list, 2).toString());
+    assertThat(skip(list, 2).toString()).isEqualTo("[c, d, e]");
   }
 
   public void testSkip_pastEnd() {
@@ -616,38 +612,26 @@ public class IterablesTest extends TestCase {
   }
 
   public void testSkip_removal() {
-    Collection<String> set = Sets.newHashSet("a", "b");
+    Collection<String> set = newHashSet("a", "b");
     Iterator<String> iterator = skip(set, 2).iterator();
     try {
       iterator.next();
     } catch (NoSuchElementException suppressed) {
       // We want remove() to fail even after a failed call to next().
     }
-    try {
-      iterator.remove();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> iterator.remove());
   }
 
   public void testSkip_allOfMutableList_modifiable() {
     List<String> list = newArrayList("a", "b");
     Iterator<String> iterator = skip(list, 2).iterator();
-    try {
-      iterator.remove();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> iterator.remove());
   }
 
   public void testSkip_allOfImmutableList_modifiable() {
     List<String> list = ImmutableList.of("a", "b");
     Iterator<String> iterator = skip(list, 2).iterator();
-    try {
-      iterator.remove();
-      fail("Expected UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> iterator.remove());
   }
 
   @GwtIncompatible // slow (~35s)
@@ -656,7 +640,7 @@ public class IterablesTest extends TestCase {
         5, MODIFIABLE, newArrayList(2, 3), IteratorTester.KnownOrder.KNOWN_ORDER) {
       @Override
       protected Iterator<Integer> newTargetIterator() {
-        return skip(newLinkedHashSet(asList(1, 2, 3)), 1).iterator();
+        return skip(new LinkedHashSet<>(asList(1, 2, 3)), 1).iterator();
       }
     }.test();
   }
@@ -672,25 +656,25 @@ public class IterablesTest extends TestCase {
     }.test();
   }
 
-  public void testSkip_nonStructurallyModifiedList() throws Exception {
+  public void testSkip_nonStructurallyModifiedList() {
     List<String> list = newArrayList("a", "b", "c");
     Iterable<String> tail = skip(list, 1);
     Iterator<String> tailIterator = tail.iterator();
     list.set(2, "C");
-    assertEquals("b", tailIterator.next());
-    assertEquals("C", tailIterator.next());
+    assertThat(tailIterator.next()).isEqualTo("b");
+    assertThat(tailIterator.next()).isEqualTo("C");
     assertFalse(tailIterator.hasNext());
   }
 
-  public void testSkip_structurallyModifiedSkipSome() throws Exception {
-    Collection<String> set = newLinkedHashSet(asList("a", "b", "c"));
+  public void testSkip_structurallyModifiedSkipSome() {
+    Collection<String> set = new LinkedHashSet<>(asList("a", "b", "c"));
     Iterable<String> tail = skip(set, 1);
     set.remove("b");
     set.addAll(newArrayList("A", "B", "C"));
     assertThat(tail).containsExactly("c", "A", "B", "C").inOrder();
   }
 
-  public void testSkip_structurallyModifiedSkipSomeList() throws Exception {
+  public void testSkip_structurallyModifiedSkipSomeList() {
     List<String> list = newArrayList("a", "b", "c");
     Iterable<String> tail = skip(list, 1);
     list.subList(1, 3).clear();
@@ -698,15 +682,15 @@ public class IterablesTest extends TestCase {
     assertThat(tail).containsExactly("B", "C", "a").inOrder();
   }
 
-  public void testSkip_structurallyModifiedSkipAll() throws Exception {
-    Collection<String> set = newLinkedHashSet(asList("a", "b", "c"));
+  public void testSkip_structurallyModifiedSkipAll() {
+    Collection<String> set = new LinkedHashSet<>(asList("a", "b", "c"));
     Iterable<String> tail = skip(set, 2);
     set.remove("a");
     set.remove("b");
     assertFalse(tail.iterator().hasNext());
   }
 
-  public void testSkip_structurallyModifiedSkipAllList() throws Exception {
+  public void testSkip_structurallyModifiedSkipAllList() {
     List<String> list = newArrayList("a", "b", "c");
     Iterable<String> tail = skip(list, 2);
     list.subList(0, 2).clear();
@@ -715,40 +699,20 @@ public class IterablesTest extends TestCase {
 
   public void testSkip_illegalArgument() {
     List<String> list = newArrayList("a", "b", "c");
-    try {
-      skip(list, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> skip(list, -1));
   }
 
-  private void testGetOnAbc(Iterable<String> iterable) {
-    try {
-      Iterables.get(iterable, -1);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
-    assertEquals("a", Iterables.get(iterable, 0));
-    assertEquals("b", Iterables.get(iterable, 1));
-    assertEquals("c", Iterables.get(iterable, 2));
-    try {
-      Iterables.get(iterable, 3);
-      fail();
-    } catch (IndexOutOfBoundsException nsee) {
-    }
-    try {
-      Iterables.get(iterable, 4);
-      fail();
-    } catch (IndexOutOfBoundsException nsee) {
-    }
+  private static void testGetOnAbc(Iterable<String> iterable) {
+    assertThrows(IndexOutOfBoundsException.class, () -> Iterables.get(iterable, -1));
+    assertThat(Iterables.get(iterable, 0)).isEqualTo("a");
+    assertThat(Iterables.get(iterable, 1)).isEqualTo("b");
+    assertThat(Iterables.get(iterable, 2)).isEqualTo("c");
+    assertThrows(IndexOutOfBoundsException.class, () -> Iterables.get(iterable, 3));
+    assertThrows(IndexOutOfBoundsException.class, () -> Iterables.get(iterable, 4));
   }
 
-  private void testGetOnEmpty(Iterable<String> iterable) {
-    try {
-      Iterables.get(iterable, 0);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+  private static void testGetOnEmpty(Iterable<String> iterable) {
+    assertThrows(IndexOutOfBoundsException.class, () -> Iterables.get(iterable, 0));
   }
 
   public void testGet_list() {
@@ -756,7 +720,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testGet_emptyList() {
-    testGetOnEmpty(Collections.<String>emptyList());
+    testGetOnEmpty(Collections.emptyList());
   }
 
   public void testGet_sortedSet() {
@@ -764,7 +728,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testGet_emptySortedSet() {
-    testGetOnEmpty(ImmutableSortedSet.<String>of());
+    testGetOnEmpty(ImmutableSortedSet.of());
   }
 
   public void testGet_iterable() {
@@ -772,101 +736,93 @@ public class IterablesTest extends TestCase {
   }
 
   public void testGet_emptyIterable() {
-    testGetOnEmpty(Sets.<String>newHashSet());
+    testGetOnEmpty(new HashSet<String>());
   }
 
   public void testGet_withDefault_negativePosition() {
-    try {
-      Iterables.get(newArrayList("a", "b", "c"), -1, "d");
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-      // pass
-    }
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> Iterables.get(newArrayList("a", "b", "c"), -1, "d"));
   }
 
   public void testGet_withDefault_simple() {
     ArrayList<String> list = newArrayList("a", "b", "c");
-    assertEquals("b", Iterables.get(list, 1, "d"));
+    assertThat(Iterables.get(list, 1, "d")).isEqualTo("b");
   }
 
   public void testGet_withDefault_iterable() {
     Set<String> set = ImmutableSet.of("a", "b", "c");
-    assertEquals("b", Iterables.get(set, 1, "d"));
+    assertThat(Iterables.get(set, 1, "d")).isEqualTo("b");
   }
 
   public void testGet_withDefault_last() {
     ArrayList<String> list = newArrayList("a", "b", "c");
-    assertEquals("c", Iterables.get(list, 2, "d"));
+    assertThat(Iterables.get(list, 2, "d")).isEqualTo("c");
   }
 
   public void testGet_withDefault_lastPlusOne() {
     ArrayList<String> list = newArrayList("a", "b", "c");
-    assertEquals("d", Iterables.get(list, 3, "d"));
+    assertThat(Iterables.get(list, 3, "d")).isEqualTo("d");
   }
 
   public void testGet_withDefault_doesntIterate() {
     List<String> list = new DiesOnIteratorArrayList();
     list.add("a");
-    assertEquals("a", Iterables.get(list, 0, "b"));
+    assertThat(Iterables.get(list, 0, "b")).isEqualTo("a");
   }
 
   public void testGetFirst_withDefault_singleton() {
-    Iterable<String> iterable = Collections.singletonList("foo");
-    assertEquals("foo", Iterables.getFirst(iterable, "bar"));
+    Iterable<String> iterable = singletonList("foo");
+    assertThat(Iterables.getFirst(iterable, "bar")).isEqualTo("foo");
   }
 
   public void testGetFirst_withDefault_empty() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertEquals("bar", Iterables.getFirst(iterable, "bar"));
+    Iterable<String> iterable = emptyList();
+    assertThat(Iterables.getFirst(iterable, "bar")).isEqualTo("bar");
   }
 
   public void testGetFirst_withDefault_empty_null() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertNull(Iterables.getFirst(iterable, null));
+    Iterable<String> iterable = emptyList();
+    assertThat(Iterables.<@Nullable String>getFirst(iterable, null)).isNull();
   }
 
   public void testGetFirst_withDefault_multiple() {
     Iterable<String> iterable = asList("foo", "bar");
-    assertEquals("foo", Iterables.getFirst(iterable, "qux"));
+    assertThat(Iterables.getFirst(iterable, "qux")).isEqualTo("foo");
   }
 
   public void testGetLast_list() {
     List<String> list = newArrayList("a", "b", "c");
-    assertEquals("c", Iterables.getLast(list));
+    assertThat(Iterables.getLast(list)).isEqualTo("c");
   }
 
   public void testGetLast_emptyList() {
-    List<String> list = Collections.emptyList();
-    try {
-      Iterables.getLast(list);
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    List<String> list = emptyList();
+    assertThrows(NoSuchElementException.class, () -> Iterables.getLast(list));
   }
 
   public void testGetLast_sortedSet() {
     SortedSet<String> sortedSet = ImmutableSortedSet.of("b", "c", "a");
-    assertEquals("c", Iterables.getLast(sortedSet));
+    assertThat(Iterables.getLast(sortedSet)).isEqualTo("c");
   }
 
   public void testGetLast_withDefault_singleton() {
-    Iterable<String> iterable = Collections.singletonList("foo");
-    assertEquals("foo", Iterables.getLast(iterable, "bar"));
+    Iterable<String> iterable = singletonList("foo");
+    assertThat(Iterables.getLast(iterable, "bar")).isEqualTo("foo");
   }
 
   public void testGetLast_withDefault_empty() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertEquals("bar", Iterables.getLast(iterable, "bar"));
+    Iterable<String> iterable = emptyList();
+    assertThat(Iterables.getLast(iterable, "bar")).isEqualTo("bar");
   }
 
   public void testGetLast_withDefault_empty_null() {
-    Iterable<String> iterable = Collections.emptyList();
-    assertNull(Iterables.getLast(iterable, null));
+    Iterable<String> iterable = emptyList();
+    assertThat(Iterables.<@Nullable String>getLast(iterable, null)).isNull();
   }
 
   public void testGetLast_withDefault_multiple() {
     Iterable<String> iterable = asList("foo", "bar");
-    assertEquals("bar", Iterables.getLast(iterable, "qux"));
+    assertThat(Iterables.getLast(iterable, "qux")).isEqualTo("bar");
   }
 
   /**
@@ -874,7 +830,9 @@ public class IterablesTest extends TestCase {
    * need to prove that it isn't called.
    */
   private static class DiesOnIteratorArrayList extends ArrayList<String> {
-    /** @throws UnsupportedOperationException all the time */
+    /**
+     * @throws UnsupportedOperationException all the time
+     */
     @Override
     public Iterator<String> iterator() {
       throw new UnsupportedOperationException();
@@ -886,30 +844,23 @@ public class IterablesTest extends TestCase {
     List<String> diesOnIteratorList = new DiesOnIteratorArrayList();
     diesOnIteratorList.add("bar");
 
-    assertEquals("bar", Iterables.getLast(diesOnIteratorList, "qux"));
+    assertThat(Iterables.getLast(diesOnIteratorList, "qux")).isEqualTo("bar");
   }
 
   public void testGetLast_emptySortedSet() {
     SortedSet<String> sortedSet = ImmutableSortedSet.of();
-    try {
-      Iterables.getLast(sortedSet);
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    assertThrows(NoSuchElementException.class, () -> Iterables.getLast(sortedSet));
+    assertThat(Iterables.getLast(sortedSet, "c")).isEqualTo("c");
   }
 
   public void testGetLast_iterable() {
     Set<String> set = ImmutableSet.of("a", "b", "c");
-    assertEquals("c", Iterables.getLast(set));
+    assertThat(Iterables.getLast(set)).isEqualTo("c");
   }
 
   public void testGetLast_emptyIterable() {
-    Set<String> set = Sets.newHashSet();
-    try {
-      Iterables.getLast(set);
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    Set<String> set = new HashSet<>();
+    assertThrows(NoSuchElementException.class, () -> Iterables.getLast(set));
   }
 
   public void testUnmodifiableIterable() {
@@ -917,53 +868,50 @@ public class IterablesTest extends TestCase {
     Iterable<String> iterable = Iterables.unmodifiableIterable(list);
     Iterator<String> iterator = iterable.iterator();
     iterator.next();
-    try {
-      iterator.remove();
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
-    assertEquals("[a, b, c]", iterable.toString());
+    assertThrows(UnsupportedOperationException.class, () -> iterator.remove());
+    assertThat(iterable.toString()).isEqualTo("[a, b, c]");
   }
 
-  @SuppressWarnings("deprecation") // test of deprecated method
+  @SuppressWarnings({"deprecation", "InlineMeInliner"}) // test of a deprecated method
   public void testUnmodifiableIterableShortCircuit() {
     List<String> list = newArrayList("a", "b", "c");
     Iterable<String> iterable = Iterables.unmodifiableIterable(list);
     Iterable<String> iterable2 = Iterables.unmodifiableIterable(iterable);
-    assertSame(iterable, iterable2);
+    assertThat(iterable2).isSameInstanceAs(iterable);
     ImmutableList<String> immutableList = ImmutableList.of("a", "b", "c");
-    assertSame(immutableList, Iterables.unmodifiableIterable(immutableList));
-    assertSame(immutableList, Iterables.unmodifiableIterable((List<String>) immutableList));
+    assertThat(Iterables.unmodifiableIterable(immutableList)).isSameInstanceAs(immutableList);
+    assertThat(Iterables.unmodifiableIterable((List<String>) immutableList))
+        .isSameInstanceAs(immutableList);
   }
 
   public void testFrequency_multiset() {
     Multiset<String> multiset = ImmutableMultiset.of("a", "b", "a", "c", "b", "a");
-    assertEquals(3, Iterables.frequency(multiset, "a"));
-    assertEquals(2, Iterables.frequency(multiset, "b"));
-    assertEquals(1, Iterables.frequency(multiset, "c"));
-    assertEquals(0, Iterables.frequency(multiset, "d"));
-    assertEquals(0, Iterables.frequency(multiset, 4.2));
-    assertEquals(0, Iterables.frequency(multiset, null));
+    assertEquals(3, frequency(multiset, "a"));
+    assertEquals(2, frequency(multiset, "b"));
+    assertEquals(1, frequency(multiset, "c"));
+    assertEquals(0, frequency(multiset, "d"));
+    assertEquals(0, frequency(multiset, 4.2));
+    assertEquals(0, frequency(multiset, null));
   }
 
   public void testFrequency_set() {
-    Set<String> set = Sets.newHashSet("a", "b", "c");
-    assertEquals(1, Iterables.frequency(set, "a"));
-    assertEquals(1, Iterables.frequency(set, "b"));
-    assertEquals(1, Iterables.frequency(set, "c"));
-    assertEquals(0, Iterables.frequency(set, "d"));
-    assertEquals(0, Iterables.frequency(set, 4.2));
-    assertEquals(0, Iterables.frequency(set, null));
+    Set<String> set = newHashSet("a", "b", "c");
+    assertEquals(1, frequency(set, "a"));
+    assertEquals(1, frequency(set, "b"));
+    assertEquals(1, frequency(set, "c"));
+    assertEquals(0, frequency(set, "d"));
+    assertEquals(0, frequency(set, 4.2));
+    assertEquals(0, frequency(set, null));
   }
 
   public void testFrequency_list() {
     List<String> list = newArrayList("a", "b", "a", "c", "b", "a");
-    assertEquals(3, Iterables.frequency(list, "a"));
-    assertEquals(2, Iterables.frequency(list, "b"));
-    assertEquals(1, Iterables.frequency(list, "c"));
-    assertEquals(0, Iterables.frequency(list, "d"));
-    assertEquals(0, Iterables.frequency(list, 4.2));
-    assertEquals(0, Iterables.frequency(list, null));
+    assertEquals(3, frequency(list, "a"));
+    assertEquals(2, frequency(list, "b"));
+    assertEquals(1, frequency(list, "c"));
+    assertEquals(0, frequency(list, "d"));
+    assertEquals(0, frequency(list, 4.2));
+    assertEquals(0, frequency(list, null));
   }
 
   public void testRemoveAll_collection() {
@@ -975,7 +923,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testRemoveAll_iterable() {
-    final List<String> list = newArrayList("a", "b", "c", "d", "e");
+    List<String> list = newArrayList("a", "b", "c", "d", "e");
     Iterable<String> iterable =
         new Iterable<String>() {
           @Override
@@ -998,7 +946,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testRetainAll_iterable() {
-    final List<String> list = newArrayList("a", "b", "c", "d", "e");
+    List<String> list = newArrayList("a", "b", "c", "d", "e");
     Iterable<String> iterable =
         new Iterable<String>() {
           @Override
@@ -1015,7 +963,7 @@ public class IterablesTest extends TestCase {
   public void testRemoveIf_randomAccess() {
     List<String> list = newArrayList("a", "b", "c", "d", "e");
     assertTrue(
-        Iterables.removeIf(
+        removeIf(
             list,
             new Predicate<String>() {
               @Override
@@ -1025,7 +973,7 @@ public class IterablesTest extends TestCase {
             }));
     assertEquals(newArrayList("a", "c", "e"), list);
     assertFalse(
-        Iterables.removeIf(
+        removeIf(
             list,
             new Predicate<String>() {
               @Override
@@ -1043,7 +991,7 @@ public class IterablesTest extends TestCase {
 
     assertTrue(uniqueList instanceof RandomAccess);
     assertTrue(
-        Iterables.removeIf(
+        removeIf(
             uniqueList,
             new Predicate<String>() {
               @Override
@@ -1053,7 +1001,7 @@ public class IterablesTest extends TestCase {
             }));
     assertEquals(newArrayList("a", "c", "e"), uniqueList);
     assertFalse(
-        Iterables.removeIf(
+        removeIf(
             uniqueList,
             new Predicate<String>() {
               @Override
@@ -1067,7 +1015,7 @@ public class IterablesTest extends TestCase {
   public void testRemoveIf_transformedList() {
     List<String> list = newArrayList("1", "2", "3", "4", "5");
     List<Integer> transformed =
-        Lists.transform(
+        transform(
             list,
             new Function<String, Integer>() {
               @Override
@@ -1076,7 +1024,7 @@ public class IterablesTest extends TestCase {
               }
             });
     assertTrue(
-        Iterables.removeIf(
+        removeIf(
             transformed,
             new Predicate<Integer>() {
               @Override
@@ -1086,7 +1034,7 @@ public class IterablesTest extends TestCase {
             }));
     assertEquals(newArrayList("1", "3", "5"), list);
     assertFalse(
-        Iterables.removeIf(
+        removeIf(
             transformed,
             new Predicate<Integer>() {
               @Override
@@ -1098,9 +1046,9 @@ public class IterablesTest extends TestCase {
   }
 
   public void testRemoveIf_noRandomAccess() {
-    List<String> list = Lists.newLinkedList(asList("a", "b", "c", "d", "e"));
+    List<String> list = new LinkedList<>(asList("a", "b", "c", "d", "e"));
     assertTrue(
-        Iterables.removeIf(
+        removeIf(
             list,
             new Predicate<String>() {
               @Override
@@ -1110,7 +1058,7 @@ public class IterablesTest extends TestCase {
             }));
     assertEquals(newArrayList("a", "c", "e"), list);
     assertFalse(
-        Iterables.removeIf(
+        removeIf(
             list,
             new Predicate<String>() {
               @Override
@@ -1122,7 +1070,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testRemoveIf_iterable() {
-    final List<String> list = Lists.newLinkedList(asList("a", "b", "c", "d", "e"));
+    List<String> list = new LinkedList<>(asList("a", "b", "c", "d", "e"));
     Iterable<String> iterable =
         new Iterable<String>() {
           @Override
@@ -1131,7 +1079,7 @@ public class IterablesTest extends TestCase {
           }
         };
     assertTrue(
-        Iterables.removeIf(
+        removeIf(
             iterable,
             new Predicate<String>() {
               @Override
@@ -1141,7 +1089,7 @@ public class IterablesTest extends TestCase {
             }));
     assertEquals(newArrayList("a", "c", "e"), list);
     assertFalse(
-        Iterables.removeIf(
+        removeIf(
             iterable,
             new Predicate<String>() {
               @Override
@@ -1157,48 +1105,24 @@ public class IterablesTest extends TestCase {
   // Iterable.  Those returned by Iterators.filter() and Iterables.filter()
   // are not tested because they are unmodifiable.
 
-  public void testIterableWithToString() {
-    assertEquals("[]", create().toString());
-    assertEquals("[a]", create("a").toString());
-    assertEquals("[a, b, c]", create("a", "b", "c").toString());
-    assertEquals("[c, a, a]", create("c", "a", "a").toString());
-  }
-
-  public void testIterableWithToStringNull() {
-    assertEquals("[null]", create((String) null).toString());
-    assertEquals("[null, null]", create(null, null).toString());
-    assertEquals("[, null, a]", create("", null, "a").toString());
-  }
-
-  /** Returns a new iterable over the specified strings. */
-  private static Iterable<String> create(String... strings) {
-    final List<String> list = asList(strings);
-    return new FluentIterable<String>() {
-      @Override
-      public Iterator<String> iterator() {
-        return list.iterator();
-      }
-    };
-  }
-
   public void testConsumingIterable() {
     // Test data
-    List<String> list = Lists.newArrayList(asList("a", "b"));
+    List<String> list = new ArrayList<>(asList("a", "b"));
 
     // Test & Verify
     Iterable<String> consumingIterable = Iterables.consumingIterable(list);
-    assertEquals("Iterables.consumingIterable(...)", consumingIterable.toString());
+    assertThat(consumingIterable.toString()).isEqualTo("Iterables.consumingIterable(...)");
     Iterator<String> consumingIterator = consumingIterable.iterator();
 
     assertThat(list).containsExactly("a", "b").inOrder();
 
     assertTrue(consumingIterator.hasNext());
     assertThat(list).containsExactly("a", "b").inOrder();
-    assertEquals("a", consumingIterator.next());
+    assertThat(consumingIterator.next()).isEqualTo("a");
     assertThat(list).contains("b");
 
     assertTrue(consumingIterator.hasNext());
-    assertEquals("b", consumingIterator.next());
+    assertThat(consumingIterator.next()).isEqualTo("b");
     assertThat(list).isEmpty();
 
     assertFalse(consumingIterator.hasNext());
@@ -1208,33 +1132,28 @@ public class IterablesTest extends TestCase {
   // TODO: Figure out why this is failing in GWT.
   public void testConsumingIterable_duelingIterators() {
     // Test data
-    List<String> list = Lists.newArrayList(asList("a", "b"));
+    List<String> list = new ArrayList<>(asList("a", "b"));
 
     // Test & Verify
     Iterator<String> i1 = Iterables.consumingIterable(list).iterator();
     Iterator<String> i2 = Iterables.consumingIterable(list).iterator();
 
     i1.next();
-    try {
-      i2.next();
-      fail("Concurrent modification should throw an exception.");
-    } catch (ConcurrentModificationException cme) {
-      // Pass
-    }
+    assertThrows(ConcurrentModificationException.class, () -> i2.next());
   }
 
   public void testConsumingIterable_queue_iterator() {
-    final List<Integer> items = ImmutableList.of(4, 8, 15, 16, 23, 42);
+    List<Integer> items = ImmutableList.of(4, 8, 15, 16, 23, 42);
     new IteratorTester<Integer>(3, UNMODIFIABLE, items, IteratorTester.KnownOrder.KNOWN_ORDER) {
       @Override
       protected Iterator<Integer> newTargetIterator() {
-        return Iterables.consumingIterable(Lists.newLinkedList(items)).iterator();
+        return Iterables.consumingIterable(new LinkedList<>(items)).iterator();
       }
     }.test();
   }
 
   public void testConsumingIterable_queue_removesFromQueue() {
-    Queue<Integer> queue = Lists.newLinkedList(asList(5, 14));
+    Queue<Integer> queue = new LinkedList<>(asList(5, 14));
 
     Iterator<Integer> consumingIterator = Iterables.consumingIterable(queue).iterator();
 
@@ -1247,7 +1166,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testConsumingIterable_noIteratorCall() {
-    Queue<Integer> queue = new UnIterableQueue<>(Lists.newLinkedList(asList(5, 14)));
+    Queue<Integer> queue = new UnIterableQueue<>(new LinkedList<>(asList(5, 14)));
 
     Iterator<Integer> consumingIterator = Iterables.consumingIterable(queue).iterator();
     /*
@@ -1257,48 +1176,41 @@ public class IterablesTest extends TestCase {
     assertEquals(5, consumingIterator.next().intValue());
   }
 
-  private static class UnIterableQueue<T> extends ForwardingQueue<T> {
-    private final Queue<T> queue;
-
+  private static class UnIterableQueue<T> extends SimpleForwardingQueue<T> {
     UnIterableQueue(Queue<T> queue) {
-      this.queue = queue;
+      super(queue);
     }
 
     @Override
     public Iterator<T> iterator() {
       throw new UnsupportedOperationException();
     }
-
-    @Override
-    protected Queue<T> delegate() {
-      return queue;
-    }
   }
 
   public void testIndexOf_empty() {
     List<String> list = new ArrayList<>();
-    assertEquals(-1, Iterables.indexOf(list, Predicates.equalTo("")));
+    assertEquals(-1, Iterables.indexOf(list, equalTo("")));
   }
 
   public void testIndexOf_oneElement() {
-    List<String> list = Lists.newArrayList("bob");
-    assertEquals(0, Iterables.indexOf(list, Predicates.equalTo("bob")));
-    assertEquals(-1, Iterables.indexOf(list, Predicates.equalTo("jack")));
+    List<String> list = newArrayList("bob");
+    assertEquals(0, Iterables.indexOf(list, equalTo("bob")));
+    assertEquals(-1, Iterables.indexOf(list, equalTo("jack")));
   }
 
   public void testIndexOf_twoElements() {
-    List<String> list = Lists.newArrayList("mary", "bob");
-    assertEquals(0, Iterables.indexOf(list, Predicates.equalTo("mary")));
-    assertEquals(1, Iterables.indexOf(list, Predicates.equalTo("bob")));
-    assertEquals(-1, Iterables.indexOf(list, Predicates.equalTo("jack")));
+    List<String> list = newArrayList("mary", "bob");
+    assertEquals(0, Iterables.indexOf(list, equalTo("mary")));
+    assertEquals(1, Iterables.indexOf(list, equalTo("bob")));
+    assertEquals(-1, Iterables.indexOf(list, equalTo("jack")));
   }
 
   public void testIndexOf_withDuplicates() {
-    List<String> list = Lists.newArrayList("mary", "bob", "bob", "bob", "sam");
-    assertEquals(0, Iterables.indexOf(list, Predicates.equalTo("mary")));
-    assertEquals(1, Iterables.indexOf(list, Predicates.equalTo("bob")));
-    assertEquals(4, Iterables.indexOf(list, Predicates.equalTo("sam")));
-    assertEquals(-1, Iterables.indexOf(list, Predicates.equalTo("jack")));
+    List<String> list = newArrayList("mary", "bob", "bob", "bob", "sam");
+    assertEquals(0, Iterables.indexOf(list, equalTo("mary")));
+    assertEquals(1, Iterables.indexOf(list, equalTo("bob")));
+    assertEquals(4, Iterables.indexOf(list, equalTo("sam")));
+    assertEquals(-1, Iterables.indexOf(list, equalTo("jack")));
   }
 
   private static final Predicate<CharSequence> STARTSWITH_A =
@@ -1309,11 +1221,12 @@ public class IterablesTest extends TestCase {
         }
       };
 
+  @SuppressWarnings("UnnecessaryStringBuilder") // false positive in a weird case
   public void testIndexOf_genericPredicate() {
-    List<CharSequence> sequences = Lists.newArrayList();
+    List<CharSequence> sequences = new ArrayList<>();
     sequences.add("bob");
     sequences.add(new StringBuilder("charlie"));
-    sequences.add(new StringBuffer("henry"));
+    sequences.add(new StringBuilder("henry"));
     sequences.add(new StringBuilder("apple"));
     sequences.add("lemon");
 
@@ -1321,7 +1234,7 @@ public class IterablesTest extends TestCase {
   }
 
   public void testIndexOf_genericPredicate2() {
-    List<String> sequences = Lists.newArrayList("bob", "charlie", "henry", "apple", "lemon");
+    List<String> sequences = newArrayList("bob", "charlie", "henry", "apple", "lemon");
     assertEquals(3, Iterables.indexOf(sequences, STARTSWITH_A));
   }
 
@@ -1330,17 +1243,12 @@ public class IterablesTest extends TestCase {
     Iterable<Iterable<Integer>> elements = ImmutableList.of();
 
     // Test
-    Iterable<Integer> iterable = Iterables.mergeSorted(elements, Ordering.natural());
+    Iterable<Integer> iterable = mergeSorted(elements, Ordering.natural());
 
     // Verify
     Iterator<Integer> iterator = iterable.iterator();
     assertFalse(iterator.hasNext());
-    try {
-      iterator.next();
-      fail("next() on empty iterator should throw NoSuchElementException");
-    } catch (NoSuchElementException e) {
-      // Huzzah!
-    }
+    assertThrows(NoSuchElementException.class, () -> iterator.next());
   }
 
   public void testMergeSorted_single_empty() {
@@ -1349,7 +1257,7 @@ public class IterablesTest extends TestCase {
     Iterable<Iterable<Integer>> iterables = ImmutableList.of(iterable0);
 
     // Test & Verify
-    verifyMergeSorted(iterables, ImmutableList.<Integer>of());
+    verifyMergeSorted(iterables, ImmutableList.of());
   }
 
   public void testMergeSorted_single() {
@@ -1362,17 +1270,17 @@ public class IterablesTest extends TestCase {
   }
 
   public void testMergeSorted_pyramid() {
-    List<Iterable<Integer>> iterables = Lists.newLinkedList();
-    List<Integer> allIntegers = Lists.newArrayList();
+    List<Iterable<Integer>> iterables = new LinkedList<>();
+    List<Integer> allIntegers = new ArrayList<>();
 
     // Creates iterators like: {{}, {0}, {0, 1}, {0, 1, 2}, ...}
     for (int i = 0; i < 10; i++) {
-      List<Integer> list = Lists.newLinkedList();
+      List<Integer> list = new LinkedList<>();
       for (int j = 0; j < i; j++) {
         list.add(j);
         allIntegers.add(j);
       }
-      iterables.add(Ordering.natural().sortedCopy(list));
+      iterables.add(Ordering.<Integer>natural().sortedCopy(list));
     }
 
     verifyMergeSorted(iterables, allIntegers);
@@ -1380,21 +1288,22 @@ public class IterablesTest extends TestCase {
 
   // Like the pyramid, but creates more unique values, along with repeated ones.
   public void testMergeSorted_skipping_pyramid() {
-    List<Iterable<Integer>> iterables = Lists.newLinkedList();
-    List<Integer> allIntegers = Lists.newArrayList();
+    List<Iterable<Integer>> iterables = new LinkedList<>();
+    List<Integer> allIntegers = new ArrayList<>();
 
     for (int i = 0; i < 20; i++) {
-      List<Integer> list = Lists.newLinkedList();
+      List<Integer> list = new LinkedList<>();
       for (int j = 0; j < i; j++) {
         list.add(j * i);
         allIntegers.add(j * i);
       }
-      iterables.add(Ordering.natural().sortedCopy(list));
+      iterables.add(Ordering.<Integer>natural().sortedCopy(list));
     }
 
     verifyMergeSorted(iterables, allIntegers);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public void testIterables_nullCheck() throws Exception {
     new ClassSanityTester()
@@ -1405,10 +1314,20 @@ public class IterablesTest extends TestCase {
 
   private static void verifyMergeSorted(
       Iterable<Iterable<Integer>> iterables, Iterable<Integer> unsortedExpected) {
-    Iterable<Integer> expected = Ordering.natural().sortedCopy(unsortedExpected);
+    Iterable<Integer> expected = Ordering.<Integer>natural().sortedCopy(unsortedExpected);
 
-    Iterable<Integer> mergedIterator = Iterables.mergeSorted(iterables, Ordering.natural());
+    Iterable<Integer> mergedIterator = mergeSorted(iterables, Ordering.natural());
 
-    assertEquals(Lists.newLinkedList(expected), Lists.newLinkedList(mergedIterator));
+    assertEquals(newLinkedList(expected), newLinkedList(mergedIterator));
+  }
+
+  public void testMergeSorted_stable_allEqual() {
+    ImmutableList<Integer> first = ImmutableList.of(0, 2, 4, 6, 8);
+    ImmutableList<Integer> second = ImmutableList.of(1, 3, 5, 7, 9);
+
+    Comparator<Object> comparator = Ordering.allEqual();
+    Iterable<Integer> merged = mergeSorted(ImmutableList.of(first, second), comparator);
+
+    assertThat(merged).containsExactly(0, 2, 4, 6, 8, 1, 3, 5, 7, 9).inOrder();
   }
 }

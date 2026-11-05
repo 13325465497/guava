@@ -21,14 +21,15 @@ import static java.lang.Double.NaN;
 import static java.lang.Double.doubleToLongBits;
 import static java.lang.Double.isNaN;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
+import com.google.common.primitives.Doubles;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable value object capturing some basic statistics about a collection of paired double
@@ -37,7 +38,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Pete Gillin
  * @since 20.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 public final class PairedStats implements Serializable {
 
@@ -85,7 +86,7 @@ public final class PairedStats implements Serializable {
    * is not guaranteed to return zero when the dataset consists of the same pair of values multiple
    * times, due to numerical errors.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
@@ -103,7 +104,7 @@ public final class PairedStats implements Serializable {
    * <p>This is not guaranteed to return zero when the dataset consists of the same pair of values
    * multiple times, due to numerical errors.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
@@ -123,7 +124,7 @@ public final class PairedStats implements Serializable {
    * guaranteed to be exactly +/-1 even when the data are perfectly (anti-)correlated, due to
    * numerical errors. However, it is guaranteed to be in the inclusive range [-1, +1].
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
@@ -169,7 +170,7 @@ public final class PairedStats implements Serializable {
    * does not normally minimize that error: to do that, you should swap the roles of {@code x} and
    * {@code y}.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link
@@ -213,7 +214,7 @@ public final class PairedStats implements Serializable {
    * guarantees {@code strictfp}-like semantics.)
    */
   @Override
-  public boolean equals(@NullableDecl Object obj) {
+  public boolean equals(@Nullable Object obj) {
     if (obj == null) {
       return false;
     }
@@ -234,7 +235,7 @@ public final class PairedStats implements Serializable {
    */
   @Override
   public int hashCode() {
-    return Objects.hashCode(xStats, yStats, sumOfProductsOfDeltas);
+    return Objects.hash(xStats, yStats, sumOfProductsOfDeltas);
   }
 
   @Override
@@ -261,7 +262,7 @@ public final class PairedStats implements Serializable {
     if (value > 0.0) {
       return value;
     } else {
-      return Double.MIN_VALUE;
+      return Doubles.MIN_POSITIVE_VALUE;
     }
   }
 

@@ -18,10 +18,12 @@ package com.google.common.graph;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static java.util.Collections.unmodifiableSet;
+import static java.util.Objects.requireNonNull;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A base implementation of {@link NetworkConnections} for undirected networks.
@@ -32,9 +34,9 @@ import java.util.Set;
  */
 abstract class AbstractUndirectedNetworkConnections<N, E> implements NetworkConnections<N, E> {
   /** Keys are edges incident to the origin node, values are the node at the other end. */
-  protected final Map<E, N> incidentEdgeMap;
+  final Map<E, N> incidentEdgeMap;
 
-  protected AbstractUndirectedNetworkConnections(Map<E, N> incidentEdgeMap) {
+  AbstractUndirectedNetworkConnections(Map<E, N> incidentEdgeMap) {
     this.incidentEdgeMap = checkNotNull(incidentEdgeMap);
   }
 
@@ -49,8 +51,8 @@ abstract class AbstractUndirectedNetworkConnections<N, E> implements NetworkConn
   }
 
   @Override
-  public Set<E> incidentEdges() {
-    return Collections.unmodifiableSet(incidentEdgeMap.keySet());
+  public final Set<E> incidentEdges() {
+    return unmodifiableSet(incidentEdgeMap.keySet());
   }
 
   @Override
@@ -65,11 +67,13 @@ abstract class AbstractUndirectedNetworkConnections<N, E> implements NetworkConn
 
   @Override
   public N adjacentNode(E edge) {
-    return checkNotNull(incidentEdgeMap.get(edge));
+    // We're relying on callers to call this method only with an edge that's in the graph.
+    return requireNonNull(incidentEdgeMap.get(edge));
   }
 
   @Override
-  public N removeInEdge(E edge, boolean isSelfLoop) {
+  public @Nullable N removeInEdge(E edge, boolean isSelfLoop) {
+    checkNotNull(edge);
     if (!isSelfLoop) {
       return removeOutEdge(edge);
     }
@@ -79,11 +83,14 @@ abstract class AbstractUndirectedNetworkConnections<N, E> implements NetworkConn
   @Override
   public N removeOutEdge(E edge) {
     N previousNode = incidentEdgeMap.remove(edge);
-    return checkNotNull(previousNode);
+    // We're relying on callers to call this method only with an edge that's in the graph.
+    return requireNonNull(previousNode);
   }
 
   @Override
   public void addInEdge(E edge, N node, boolean isSelfLoop) {
+    checkNotNull(edge);
+    checkNotNull(node);
     if (!isSelfLoop) {
       addOutEdge(edge, node);
     }
@@ -91,6 +98,8 @@ abstract class AbstractUndirectedNetworkConnections<N, E> implements NetworkConn
 
   @Override
   public void addOutEdge(E edge, N node) {
+    checkNotNull(edge);
+    checkNotNull(node);
     N previousNode = incidentEdgeMap.put(edge, node);
     checkState(previousNode == null);
   }

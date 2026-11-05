@@ -16,11 +16,14 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Sets.equalsImpl;
+import static com.google.common.collect.Sets.hashCodeImpl;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Predicate;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link Multimaps#filterKeys(SetMultimap, Predicate)}.
@@ -28,8 +31,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Louis Wasserman
  */
 @GwtCompatible
-final class FilteredKeySetMultimap<K, V> extends FilteredKeyMultimap<K, V>
-    implements FilteredSetMultimap<K, V> {
+final class FilteredKeySetMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends FilteredKeyMultimap<K, V> implements FilteredSetMultimap<K, V> {
 
   FilteredKeySetMultimap(SetMultimap<K, V> unfiltered, Predicate<? super K> keyPredicate) {
     super(unfiltered, keyPredicate);
@@ -41,39 +44,34 @@ final class FilteredKeySetMultimap<K, V> extends FilteredKeyMultimap<K, V>
   }
 
   @Override
-  public Set<V> get(K key) {
+  public Set<V> get(@ParametricNullness K key) {
     return (Set<V>) super.get(key);
   }
 
   @Override
-  public Set<V> removeAll(Object key) {
+  public Set<V> removeAll(@Nullable Object key) {
     return (Set<V>) super.removeAll(key);
   }
 
   @Override
-  public Set<V> replaceValues(K key, Iterable<? extends V> values) {
+  public Set<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values) {
     return (Set<V>) super.replaceValues(key, values);
   }
 
   @Override
   public Set<Entry<K, V>> entries() {
-    return (Set<Entry<K, V>>) super.entries();
-  }
-
-  @Override
-  Set<Entry<K, V>> createEntries() {
     return new EntrySet();
   }
 
-  class EntrySet extends Entries implements Set<Entry<K, V>> {
+  private final class EntrySet extends Entries implements Set<Entry<K, V>> {
     @Override
     public int hashCode() {
-      return Sets.hashCodeImpl(this);
+      return hashCodeImpl(this);
     }
 
     @Override
-    public boolean equals(@NullableDecl Object o) {
-      return Sets.equalsImpl(this, o);
+    public boolean equals(@Nullable Object o) {
+      return equalsImpl(this, o);
     }
   }
 }

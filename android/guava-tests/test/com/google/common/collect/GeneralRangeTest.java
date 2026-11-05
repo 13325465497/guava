@@ -16,51 +16,55 @@ package com.google.common.collect;
 
 import static com.google.common.collect.BoundType.CLOSED;
 import static com.google.common.collect.BoundType.OPEN;
+import static java.util.Collections.unmodifiableList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Objects;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@code GeneralRange}.
  *
  * @author Louis Wasserman
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class GeneralRangeTest extends TestCase {
-  private static final Ordering<Integer> ORDERING = Ordering.natural().nullsFirst();
+  private static final Ordering<@Nullable Integer> ORDERING =
+      Ordering.<Integer>natural().nullsFirst();
 
-  private static final List<Integer> IN_ORDER_VALUES = Arrays.asList(null, 1, 2, 3, 4, 5);
+  private static final List<@Nullable Integer> IN_ORDER_VALUES =
+      unmodifiableList(Arrays.<@Nullable Integer>asList(null, 1, 2, 3, 4, 5));
 
   public void testCreateEmptyRangeFails() {
     for (BoundType lboundType : BoundType.values()) {
       for (BoundType uboundType : BoundType.values()) {
-        try {
-          GeneralRange.range(ORDERING, 4, lboundType, 2, uboundType);
-          fail("Expected IAE");
-        } catch (IllegalArgumentException expected) {
-        }
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> GeneralRange.range(ORDERING, 4, lboundType, 2, uboundType));
       }
     }
   }
 
   public void testCreateEmptyRangeOpenOpenFails() {
     for (Integer i : IN_ORDER_VALUES) {
-      try {
-        GeneralRange.range(ORDERING, i, OPEN, i, OPEN);
-        fail("Expected IAE");
-      } catch (IllegalArgumentException expected) {
-      }
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> GeneralRange.<@Nullable Integer>range(ORDERING, i, OPEN, i, OPEN));
     }
   }
 
   public void testCreateEmptyRangeClosedOpenSucceeds() {
     for (Integer i : IN_ORDER_VALUES) {
-      GeneralRange<Integer> range = GeneralRange.range(ORDERING, i, CLOSED, i, OPEN);
+      GeneralRange<@Nullable Integer> range = GeneralRange.range(ORDERING, i, CLOSED, i, OPEN);
       for (Integer j : IN_ORDER_VALUES) {
         assertFalse(range.contains(j));
       }
@@ -69,7 +73,7 @@ public class GeneralRangeTest extends TestCase {
 
   public void testCreateEmptyRangeOpenClosedSucceeds() {
     for (Integer i : IN_ORDER_VALUES) {
-      GeneralRange<Integer> range = GeneralRange.range(ORDERING, i, OPEN, i, CLOSED);
+      GeneralRange<@Nullable Integer> range = GeneralRange.range(ORDERING, i, OPEN, i, CLOSED);
       for (Integer j : IN_ORDER_VALUES) {
         assertFalse(range.contains(j));
       }
@@ -78,15 +82,15 @@ public class GeneralRangeTest extends TestCase {
 
   public void testCreateSingletonRangeSucceeds() {
     for (Integer i : IN_ORDER_VALUES) {
-      GeneralRange<Integer> range = GeneralRange.range(ORDERING, i, CLOSED, i, CLOSED);
+      GeneralRange<@Nullable Integer> range = GeneralRange.range(ORDERING, i, CLOSED, i, CLOSED);
       for (Integer j : IN_ORDER_VALUES) {
-        assertEquals(Objects.equal(i, j), range.contains(j));
+        assertEquals(Objects.equals(i, j), range.contains(j));
       }
     }
   }
 
   public void testSingletonRange() {
-    GeneralRange<Integer> range = GeneralRange.range(ORDERING, 3, CLOSED, 3, CLOSED);
+    GeneralRange<@Nullable Integer> range = GeneralRange.range(ORDERING, 3, CLOSED, 3, CLOSED);
     for (Integer i : IN_ORDER_VALUES) {
       assertEquals(ORDERING.compare(i, 3) == 0, range.contains(i));
     }
@@ -94,7 +98,7 @@ public class GeneralRangeTest extends TestCase {
 
   public void testLowerRange() {
     for (BoundType lBoundType : BoundType.values()) {
-      GeneralRange<Integer> range = GeneralRange.downTo(ORDERING, 3, lBoundType);
+      GeneralRange<@Nullable Integer> range = GeneralRange.downTo(ORDERING, 3, lBoundType);
       for (Integer i : IN_ORDER_VALUES) {
         assertEquals(
             ORDERING.compare(i, 3) > 0 || (ORDERING.compare(i, 3) == 0 && lBoundType == CLOSED),
@@ -109,7 +113,7 @@ public class GeneralRangeTest extends TestCase {
 
   public void testUpperRange() {
     for (BoundType lBoundType : BoundType.values()) {
-      GeneralRange<Integer> range = GeneralRange.upTo(ORDERING, 3, lBoundType);
+      GeneralRange<@Nullable Integer> range = GeneralRange.upTo(ORDERING, 3, lBoundType);
       for (Integer i : IN_ORDER_VALUES) {
         assertEquals(
             ORDERING.compare(i, 3) < 0 || (ORDERING.compare(i, 3) == 0 && lBoundType == CLOSED),
@@ -126,7 +130,8 @@ public class GeneralRangeTest extends TestCase {
     for (BoundType lboundType : BoundType.values()) {
       for (BoundType uboundType : BoundType.values()) {
         Range<Integer> range = Range.range(2, lboundType, 4, uboundType);
-        GeneralRange<Integer> gRange = GeneralRange.range(ORDERING, 2, lboundType, 4, uboundType);
+        GeneralRange<@Nullable Integer> gRange =
+            GeneralRange.range(ORDERING, 2, lboundType, 4, uboundType);
         for (Integer i : IN_ORDER_VALUES) {
           assertEquals(i != null && range.contains(i), gRange.contains(i));
         }
@@ -146,7 +151,7 @@ public class GeneralRangeTest extends TestCase {
 
     assertEquals(
         GeneralRange.range(ORDERING, 2, CLOSED, 4, OPEN),
-        range.intersect(GeneralRange.range(ORDERING, null, OPEN, 5, CLOSED)));
+        range.intersect(GeneralRange.<@Nullable Integer>range(ORDERING, null, OPEN, 5, CLOSED)));
 
     assertEquals(
         GeneralRange.range(ORDERING, 2, OPEN, 4, OPEN),
@@ -219,6 +224,7 @@ public class GeneralRangeTest extends TestCase {
         GeneralRange.range(ORDERING, 3, CLOSED, 5, OPEN).reverse());
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointers() {
     new NullPointerTester().testAllPublicStaticMethods(GeneralRange.class);

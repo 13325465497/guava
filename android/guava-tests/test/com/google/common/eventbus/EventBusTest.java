@@ -16,20 +16,28 @@
 
 package com.google.common.eventbus;
 
+import static com.google.common.collect.Lists.newArrayList;
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+import static java.util.concurrent.Executors.newFixedThreadPool;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Test case for {@link EventBus}.
  *
  * @author Cliff Biffle
  */
+@NullUnmarked
 public class EventBusTest extends TestCase {
   private static final String EVENT = "Hello";
   private static final String BUS_IDENTIFIER = "test-bus";
@@ -49,7 +57,7 @@ public class EventBusTest extends TestCase {
 
     List<String> events = catcher.getEvents();
     assertEquals("Only one event should be delivered.", 1, events.size());
-    assertEquals("Correct string should be delivered.", EVENT, events.get(0));
+    assertWithMessage("Correct string should be delivered.").that(events.get(0)).isEqualTo(EVENT);
   }
 
   /**
@@ -65,20 +73,18 @@ public class EventBusTest extends TestCase {
     // Comparable<?> isa Object
     StringCatcher stringCatcher = new StringCatcher();
 
-    final List<Object> objectEvents = Lists.newArrayList();
+    List<Object> objectEvents = new ArrayList<>();
     Object objCatcher =
         new Object() {
-          @SuppressWarnings("unused")
           @Subscribe
           public void eat(Object food) {
             objectEvents.add(food);
           }
         };
 
-    final List<Comparable<?>> compEvents = Lists.newArrayList();
+    List<Comparable<?>> compEvents = new ArrayList<>();
     Object compCatcher =
         new Object() {
-          @SuppressWarnings("unused")
           @Subscribe
           public void eat(Comparable<?> food) {
             compEvents.add(food);
@@ -90,7 +96,7 @@ public class EventBusTest extends TestCase {
 
     // Two additional event types: Object and Comparable<?> (played by Integer)
     Object objEvent = new Object();
-    Object compEvent = new Integer(6);
+    Object compEvent = 6;
 
     bus.post(EVENT);
     bus.post(objEvent);
@@ -99,7 +105,9 @@ public class EventBusTest extends TestCase {
     // Check the StringCatcher...
     List<String> stringEvents = stringCatcher.getEvents();
     assertEquals("Only one String should be delivered.", 1, stringEvents.size());
-    assertEquals("Correct string should be delivered.", EVENT, stringEvents.get(0));
+    assertWithMessage("Correct string should be delivered.")
+        .that(stringEvents.get(0))
+        .isEqualTo(EVENT);
 
     // Check the Catcher<Object>...
     assertEquals("Three Objects should be delivered.", 3, objectEvents.size());
@@ -116,11 +124,10 @@ public class EventBusTest extends TestCase {
   }
 
   public void testSubscriberThrowsException() throws Exception {
-    final RecordingSubscriberExceptionHandler handler = new RecordingSubscriberExceptionHandler();
-    final EventBus eventBus = new EventBus(handler);
-    final RuntimeException exception =
-        new RuntimeException("but culottes have a tendancy to ride up!");
-    final Object subscriber =
+    RecordingSubscriberExceptionHandler handler = new RecordingSubscriberExceptionHandler();
+    EventBus eventBus = new EventBus(handler);
+    RuntimeException exception = new RuntimeException("but culottes have a tendency to ride up!");
+    Object subscriber =
         new Object() {
           @Subscribe
           public void throwExceptionOn(String message) {
@@ -140,8 +147,8 @@ public class EventBusTest extends TestCase {
         handler.context.getSubscriberMethod());
   }
 
-  public void testSubscriberThrowsExceptionHandlerThrowsException() throws Exception {
-    final EventBus eventBus =
+  public void testSubscriberThrowsExceptionHandlerThrowsException() {
+    EventBus eventBus =
         new EventBus(
             new SubscriberExceptionHandler() {
               @Override
@@ -149,7 +156,7 @@ public class EventBusTest extends TestCase {
                 throw new RuntimeException();
               }
             });
-    final Object subscriber =
+    Object subscriber =
         new Object() {
           @Subscribe
           public void throwExceptionOn(String message) {
@@ -157,18 +164,14 @@ public class EventBusTest extends TestCase {
           }
         };
     eventBus.register(subscriber);
-    try {
-      eventBus.post(EVENT);
-    } catch (RuntimeException e) {
-      fail("Exception should not be thrown.");
-    }
+    eventBus.post(EVENT);
   }
 
   public void testDeadEventForwarding() {
     GhostCatcher catcher = new GhostCatcher();
     bus.register(catcher);
 
-    // A String -- an event for which noone has registered.
+    // A String -- an event for which no one has registered.
     bus.post(EVENT);
 
     List<DeadEvent> events = catcher.getEvents();
@@ -194,26 +197,21 @@ public class EventBusTest extends TestCase {
   public void testUnregister() {
     StringCatcher catcher1 = new StringCatcher();
     StringCatcher catcher2 = new StringCatcher();
-    try {
-      bus.unregister(catcher1);
-      fail("Attempting to unregister an unregistered object succeeded");
-    } catch (IllegalArgumentException expected) {
-      // OK.
-    }
+    assertThrows(IllegalArgumentException.class, () -> bus.unregister(catcher1));
 
     bus.register(catcher1);
     bus.post(EVENT);
     bus.register(catcher2);
     bus.post(EVENT);
 
-    List<String> expectedEvents = Lists.newArrayList();
+    List<String> expectedEvents = new ArrayList<>();
     expectedEvents.add(EVENT);
     expectedEvents.add(EVENT);
 
     assertEquals("Two correct events should be delivered.", expectedEvents, catcher1.getEvents());
 
     assertEquals(
-        "One correct event should be delivered.", Lists.newArrayList(EVENT), catcher2.getEvents());
+        "One correct event should be delivered.", newArrayList(EVENT), catcher2.getEvents());
 
     bus.unregister(catcher1);
     bus.post(EVENT);
@@ -222,12 +220,7 @@ public class EventBusTest extends TestCase {
         "Shouldn't catch any more events when unregistered.", expectedEvents, catcher1.getEvents());
     assertEquals("Two correct events should be delivered.", expectedEvents, catcher2.getEvents());
 
-    try {
-      bus.unregister(catcher1);
-      fail("Attempting to unregister an unregistered object succeeded");
-    } catch (IllegalArgumentException expected) {
-      // OK.
-    }
+    assertThrows(IllegalArgumentException.class, () -> bus.unregister(catcher1));
 
     bus.unregister(catcher2);
     bus.post(EVENT);
@@ -239,11 +232,10 @@ public class EventBusTest extends TestCase {
 
   // NOTE: This test will always pass if register() is thread-safe but may also
   // pass if it isn't, though this is unlikely.
-
   public void testRegisterThreadSafety() throws Exception {
-    List<StringCatcher> catchers = Lists.newCopyOnWriteArrayList();
-    List<Future<?>> futures = Lists.newArrayList();
-    ExecutorService executor = Executors.newFixedThreadPool(10);
+    List<StringCatcher> catchers = new CopyOnWriteArrayList<>();
+    List<Future<?>> futures = new ArrayList<>();
+    ExecutorService executor = newFixedThreadPool(10);
     int numberOfCatchers = 10000;
     for (int i = 0; i < numberOfCatchers; i++) {
       futures.add(executor.submit(new Registrator(bus, catchers)));
@@ -262,9 +254,9 @@ public class EventBusTest extends TestCase {
     }
   }
 
-  public void testToString() throws Exception {
+  public void testToString() {
     EventBus eventBus = new EventBus("a b ; - \" < > / \\ €");
-    assertEquals("EventBus{a b ; - \" < > / \\ €}", eventBus.toString());
+    assertThat(eventBus.toString()).isEqualTo("EventBus{a b ; - \" < > / \\ €}");
   }
 
   /**
@@ -273,8 +265,10 @@ public class EventBusTest extends TestCase {
    * methods to be subscribed (since both are annotated @Subscribe) without specifically checking
    * for bridge methods.
    */
+  // We use an anonymous class to be sure that we generate two methods (bridge and original).
+  @SuppressWarnings("AnonymousToLambda")
   public void testRegistrationWithBridgeMethod() {
-    final AtomicInteger calls = new AtomicInteger();
+    AtomicInteger calls = new AtomicInteger();
     bus.register(
         new Callback<String>() {
           @Subscribe
@@ -289,12 +283,19 @@ public class EventBusTest extends TestCase {
     assertEquals(1, calls.get());
   }
 
+  public void testPrimitiveSubscribeFails() {
+    class SubscribesToPrimitive {
+      @Subscribe
+      public void toInt(int i) {}
+    }
+    assertThrows(IllegalArgumentException.class, () -> bus.register(new SubscribesToPrimitive()));
+  }
+
   /** Records thrown exception information. */
   private static final class RecordingSubscriberExceptionHandler
       implements SubscriberExceptionHandler {
-
-    public SubscriberExceptionContext context;
-    public Throwable exception;
+    private SubscriberExceptionContext context;
+    private Throwable exception;
 
     @Override
     public void handleException(Throwable exception, SubscriberExceptionContext context) {
@@ -327,7 +328,7 @@ public class EventBusTest extends TestCase {
    * @author cbiffle
    */
   public static class GhostCatcher {
-    private List<DeadEvent> events = Lists.newArrayList();
+    private final List<DeadEvent> events = new ArrayList<>();
 
     @Subscribe
     public void ohNoesIHaveDied(DeadEvent event) {
@@ -340,6 +341,8 @@ public class EventBusTest extends TestCase {
   }
 
   private interface Callback<T> {
+    // See note about bridge methods on testRegistrationWithBridgeMethod.
+    @SuppressWarnings("UnusedMethod")
     void call(T t);
   }
 }

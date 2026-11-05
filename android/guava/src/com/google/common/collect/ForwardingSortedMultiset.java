@@ -14,11 +14,13 @@
 
 package com.google.common.collect;
 
-import com.google.common.annotations.Beta;
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.annotations.GwtCompatible;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NavigableSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A sorted multiset which forwards all its method calls to another sorted multiset. Subclasses
@@ -42,10 +44,9 @@ import java.util.NavigableSet;
  * @author Louis Wasserman
  * @since 15.0
  */
-@Beta
-@GwtCompatible(emulated = true)
-public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
-    implements SortedMultiset<E> {
+@GwtCompatible
+public abstract class ForwardingSortedMultiset<E extends @Nullable Object>
+    extends ForwardingMultiset<E> implements SortedMultiset<E> {
   /** Constructor for use by subclasses. */
   protected ForwardingSortedMultiset() {}
 
@@ -101,16 +102,16 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    */
   protected abstract class StandardDescendingMultiset extends DescendingMultiset<E> {
     /** Constructor for use by subclasses. */
-    public StandardDescendingMultiset() {}
+    protected StandardDescendingMultiset() {}
 
     @Override
-    SortedMultiset<E> forwardMultiset() {
+    final SortedMultiset<E> forwardMultiset() {
       return ForwardingSortedMultiset.this;
     }
   }
 
   @Override
-  public Entry<E> firstEntry() {
+  public @Nullable Entry<E> firstEntry() {
     return delegate().firstEntry();
   }
 
@@ -120,7 +121,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    * <p>If you override {@link #entrySet()}, you may wish to override {@link #firstEntry()} to
    * forward to this implementation.
    */
-  protected Entry<E> standardFirstEntry() {
+  protected @Nullable Entry<E> standardFirstEntry() {
     Iterator<Entry<E>> entryIterator = entrySet().iterator();
     if (!entryIterator.hasNext()) {
       return null;
@@ -130,7 +131,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
   }
 
   @Override
-  public Entry<E> lastEntry() {
+  public @Nullable Entry<E> lastEntry() {
     return delegate().lastEntry();
   }
 
@@ -141,7 +142,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    * <p>If you override {@link #descendingMultiset} or {@link #entrySet()}, you may wish to override
    * {@link #firstEntry()} to forward to this implementation.
    */
-  protected Entry<E> standardLastEntry() {
+  protected @Nullable Entry<E> standardLastEntry() {
     Iterator<Entry<E>> entryIterator = descendingMultiset().entrySet().iterator();
     if (!entryIterator.hasNext()) {
       return null;
@@ -151,7 +152,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
   }
 
   @Override
-  public Entry<E> pollFirstEntry() {
+  public @Nullable Entry<E> pollFirstEntry() {
     return delegate().pollFirstEntry();
   }
 
@@ -161,7 +162,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    * <p>If you override {@link #entrySet()}, you may wish to override {@link #pollFirstEntry()} to
    * forward to this implementation.
    */
-  protected Entry<E> standardPollFirstEntry() {
+  protected @Nullable Entry<E> standardPollFirstEntry() {
     Iterator<Entry<E>> entryIterator = entrySet().iterator();
     if (!entryIterator.hasNext()) {
       return null;
@@ -173,7 +174,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
   }
 
   @Override
-  public Entry<E> pollLastEntry() {
+  public @Nullable Entry<E> pollLastEntry() {
     return delegate().pollLastEntry();
   }
 
@@ -184,7 +185,7 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    * <p>If you override {@link #descendingMultiset()} or {@link #entrySet()}, you may wish to
    * override {@link #pollLastEntry()} to forward to this implementation.
    */
-  protected Entry<E> standardPollLastEntry() {
+  protected @Nullable Entry<E> standardPollLastEntry() {
     Iterator<Entry<E>> entryIterator = descendingMultiset().entrySet().iterator();
     if (!entryIterator.hasNext()) {
       return null;
@@ -196,13 +197,16 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
   }
 
   @Override
-  public SortedMultiset<E> headMultiset(E upperBound, BoundType boundType) {
+  public SortedMultiset<E> headMultiset(@ParametricNullness E upperBound, BoundType boundType) {
     return delegate().headMultiset(upperBound, boundType);
   }
 
   @Override
   public SortedMultiset<E> subMultiset(
-      E lowerBound, BoundType lowerBoundType, E upperBound, BoundType upperBoundType) {
+      @ParametricNullness E lowerBound,
+      BoundType lowerBoundType,
+      @ParametricNullness E upperBound,
+      BoundType upperBoundType) {
     return delegate().subMultiset(lowerBound, lowerBoundType, upperBound, upperBoundType);
   }
 
@@ -215,12 +219,37 @@ public abstract class ForwardingSortedMultiset<E> extends ForwardingMultiset<E>
    * #subMultiset(Object, BoundType, Object, BoundType)} to forward to this implementation.
    */
   protected SortedMultiset<E> standardSubMultiset(
-      E lowerBound, BoundType lowerBoundType, E upperBound, BoundType upperBoundType) {
+      @ParametricNullness E lowerBound,
+      BoundType lowerBoundType,
+      @ParametricNullness E upperBound,
+      BoundType upperBoundType) {
     return tailMultiset(lowerBound, lowerBoundType).headMultiset(upperBound, upperBoundType);
   }
 
   @Override
-  public SortedMultiset<E> tailMultiset(E lowerBound, BoundType boundType) {
+  public SortedMultiset<E> tailMultiset(@ParametricNullness E lowerBound, BoundType boundType) {
     return delegate().tailMultiset(lowerBound, boundType);
+  }
+
+  /**
+   * A simplified version of {@link ForwardingSortedMultiset} where subclasses can pass in an
+   * already constructed {@link SortedMultiset} as the delegate.
+   *
+   * <p>TODO(b/3417232): Consider making this public, but take into consideration whether it would
+   * then appear as a user-visible supertype for any classes.
+   */
+  abstract static class SimpleForwardingSortedMultiset<E extends @Nullable Object>
+      extends ForwardingSortedMultiset<E> {
+    private final SortedMultiset<E> delegate;
+
+    /** Constructor for use by subclasses. */
+    SimpleForwardingSortedMultiset(SortedMultiset<E> delegate) {
+      this.delegate = checkNotNull(delegate);
+    }
+
+    @Override
+    protected final SortedMultiset<E> delegate() {
+      return delegate;
+    }
   }
 }

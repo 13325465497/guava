@@ -17,8 +17,10 @@ package com.google.common.cache;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.AbstractMap.SimpleImmutableEntry;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A notification of the removal of a single entry. The key and/or value may be null if they were
@@ -32,7 +34,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @since 10.0
  */
 @GwtCompatible
-public final class RemovalNotification<K, V> extends SimpleImmutableEntry<K, V> {
+public final class RemovalNotification<K, V>
+    extends SimpleImmutableEntry<@Nullable K, @Nullable V> {
   private final RemovalCause cause;
 
   /**
@@ -43,11 +46,11 @@ public final class RemovalNotification<K, V> extends SimpleImmutableEntry<K, V> 
    * @since 19.0
    */
   public static <K, V> RemovalNotification<K, V> create(
-      @NullableDecl K key, @NullableDecl V value, RemovalCause cause) {
-    return new RemovalNotification(key, value, cause);
+      @Nullable K key, @Nullable V value, RemovalCause cause) {
+    return new RemovalNotification<>(key, value, cause);
   }
 
-  private RemovalNotification(@NullableDecl K key, @NullableDecl V value, RemovalCause cause) {
+  private RemovalNotification(@Nullable K key, @Nullable V value, RemovalCause cause) {
     super(key, value);
     this.cause = checkNotNull(cause);
   }
@@ -65,5 +68,5 @@ public final class RemovalNotification<K, V> extends SimpleImmutableEntry<K, V> 
     return cause.wasEvicted();
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

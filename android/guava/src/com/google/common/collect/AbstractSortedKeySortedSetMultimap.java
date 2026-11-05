@@ -17,10 +17,12 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.Collection;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Basic implementation of a {@link SortedSetMultimap} with a sorted key set.
@@ -31,7 +33,9 @@ import java.util.SortedSet;
  * @author Louis Wasserman
  */
 @GwtCompatible
-abstract class AbstractSortedKeySortedSetMultimap<K, V> extends AbstractSortedSetMultimap<K, V> {
+abstract class AbstractSortedKeySortedSetMultimap<
+        K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractSortedSetMultimap<K, V> {
 
   AbstractSortedKeySortedSetMultimap(SortedMap<K, Collection<V>> map) {
     super(map);
@@ -39,21 +43,18 @@ abstract class AbstractSortedKeySortedSetMultimap<K, V> extends AbstractSortedSe
 
   @Override
   public SortedMap<K, Collection<V>> asMap() {
-    return (SortedMap<K, Collection<V>>) super.asMap();
+    return (SortedMap<K, Collection<V>>) createMaybeNavigableAsMap();
   }
 
   @Override
-  SortedMap<K, Collection<V>> backingMap() {
+  final SortedMap<K, Collection<V>> backingMap() {
     return (SortedMap<K, Collection<V>>) super.backingMap();
   }
 
   @Override
   public SortedSet<K> keySet() {
-    return (SortedSet<K>) super.keySet();
+    return (SortedSet<K>) createMaybeNavigableKeySet();
   }
 
-  @Override
-  Set<K> createKeySet() {
-    return createMaybeNavigableKeySet();
-  }
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 5771213879749501946L;
 }

@@ -17,22 +17,27 @@
 package com.google.common.collect;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Objects;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.NullPointerTester;
+import java.util.Objects;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Test cases for {@link Table} read operations.
  *
  * @author Jared Levy
  */
-@GwtCompatible(emulated = true)
-public abstract class AbstractTableReadTest extends TestCase {
-  protected Table<String, Integer, Character> table;
+@GwtCompatible
+@NullMarked
+public abstract class AbstractTableReadTest<C extends @Nullable Character> extends TestCase {
+  Table<String, Integer, C> table;
 
   /**
    * Creates a table with the specified data.
@@ -41,14 +46,14 @@ public abstract class AbstractTableReadTest extends TestCase {
    * @throws IllegalArgumentException if the size of {@code data} isn't a multiple of 3
    * @throws ClassCastException if a data element has the wrong type
    */
-  protected abstract Table<String, Integer, Character> create(Object... data);
+  abstract Table<String, Integer, C> create(@Nullable Object... data);
 
-  protected void assertSize(int expectedSize) {
+  void assertSize(int expectedSize) {
     assertEquals(expectedSize, table.size());
   }
 
   @Override
-  public void setUp() throws Exception {
+  protected void setUp() throws Exception {
     super.setUp();
     table = create();
   }
@@ -96,12 +101,12 @@ public abstract class AbstractTableReadTest extends TestCase {
     assertEquals((Character) 'a', table.get("foo", 1));
     assertEquals((Character) 'b', table.get("bar", 1));
     assertEquals((Character) 'c', table.get("foo", 3));
-    assertNull(table.get("foo", 2));
-    assertNull(table.get("bar", 3));
-    assertNull(table.get("cat", 1));
-    assertNull(table.get("foo", null));
-    assertNull(table.get(null, 1));
-    assertNull(table.get(null, null));
+    assertThat(table.get("foo", 2)).isNull();
+    assertThat(table.get("bar", 3)).isNull();
+    assertThat(table.get("cat", 1)).isNull();
+    assertThat(table.get("foo", null)).isNull();
+    assertThat(table.get(null, 1)).isNull();
+    assertThat(table.get(null, null)).isNull();
   }
 
   public void testIsEmpty() {
@@ -118,14 +123,12 @@ public abstract class AbstractTableReadTest extends TestCase {
 
   public void testEquals() {
     table = create("foo", 1, 'a', "bar", 1, 'b', "foo", 3, 'c');
+    // We know that we have only added non-null Characters.
     Table<String, Integer, Character> hashCopy = HashBasedTable.create(table);
-    Table<String, Integer, Character> reordered =
-        create("foo", 3, 'c', "foo", 1, 'a', "bar", 1, 'b');
-    Table<String, Integer, Character> smaller = create("foo", 1, 'a', "bar", 1, 'b');
-    Table<String, Integer, Character> swapOuter =
-        create("bar", 1, 'a', "foo", 1, 'b', "bar", 3, 'c');
-    Table<String, Integer, Character> swapValues =
-        create("foo", 1, 'c', "bar", 1, 'b', "foo", 3, 'a');
+    Table<String, Integer, C> reordered = create("foo", 3, 'c', "foo", 1, 'a', "bar", 1, 'b');
+    Table<String, Integer, C> smaller = create("foo", 1, 'a', "bar", 1, 'b');
+    Table<String, Integer, C> swapOuter = create("bar", 1, 'a', "foo", 1, 'b', "bar", 3, 'c');
+    Table<String, Integer, C> swapValues = create("foo", 1, 'c', "bar", 1, 'b', "foo", 3, 'a');
 
     new EqualsTester()
         .addEqualityGroup(table, hashCopy, reordered)
@@ -138,15 +141,13 @@ public abstract class AbstractTableReadTest extends TestCase {
   public void testHashCode() {
     table = create("foo", 1, 'a', "bar", 1, 'b', "foo", 3, 'c');
     int expected =
-        Objects.hashCode("foo", 1, 'a')
-            + Objects.hashCode("bar", 1, 'b')
-            + Objects.hashCode("foo", 3, 'c');
+        Objects.hash("foo", 1, 'a') + Objects.hash("bar", 1, 'b') + Objects.hash("foo", 3, 'c');
     assertEquals(expected, table.hashCode());
   }
 
   public void testToStringSize1() {
     table = create("foo", 1, 'a');
-    assertEquals("{foo={1=a}}", table.toString());
+    assertThat(table.toString()).isEqualTo("{foo={1=a}}");
   }
 
   public void testRow() {
@@ -157,11 +158,7 @@ public abstract class AbstractTableReadTest extends TestCase {
   // This test assumes that the implementation does not support null keys.
   public void testRowNull() {
     table = create("foo", 1, 'a', "bar", 1, 'b', "foo", 3, 'c');
-    try {
-      table.row(null);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> table.row(null));
   }
 
   public void testColumn() {
@@ -172,11 +169,7 @@ public abstract class AbstractTableReadTest extends TestCase {
   // This test assumes that the implementation does not support null keys.
   public void testColumnNull() {
     table = create("foo", 1, 'a', "bar", 1, 'b', "foo", 3, 'c');
-    try {
-      table.column(null);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> table.column(null));
   }
 
   public void testColumnSetPartialOverlap() {
@@ -184,6 +177,7 @@ public abstract class AbstractTableReadTest extends TestCase {
     assertThat(table.columnKeySet()).containsExactly(1, 2, 3);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointerInstance() {
     table = create("foo", 1, 'a', "bar", 1, 'b', "foo", 2, 'c', "bar", 3, 'd');

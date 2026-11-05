@@ -25,7 +25,6 @@ import com.google.common.collect.testing.AbstractCollectionTester;
 import com.google.common.collect.testing.WrongType;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
-import org.junit.Ignore;
 
 /**
  * A generic JUnit test which tests {@code contains()} operations on a collection. Can't be invoked
@@ -35,7 +34,6 @@ import org.junit.Ignore;
  * @author Chris Povirk
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class CollectionContainsTester<E> extends AbstractCollectionTester<E> {
   @CollectionSize.Require(absent = ZERO)
   public void testContains_yes() {

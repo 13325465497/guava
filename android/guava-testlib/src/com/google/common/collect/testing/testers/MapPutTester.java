@@ -16,23 +16,26 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.getMethod;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 import static com.google.common.collect.testing.features.MapFeature.FAILS_FAST_ON_CONCURRENT_MODIFICATION;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_PUT;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.AbstractMapTester;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.reflect.Method;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.Map.Entry;
-import org.junit.Ignore;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A generic JUnit test which tests {@code put} operations on a map. Can't be invoked directly;
@@ -41,9 +44,7 @@ import org.junit.Ignore;
  * @author Chris Povirk
  * @author Kevin Bourrillion
  */
-@SuppressWarnings("unchecked") // too many "unchecked generic array creations"
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
   private Entry<K, V> nullKeyEntry;
   private Entry<K, V> nullValueEntry;
@@ -75,49 +76,30 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require({FAILS_FAST_ON_CONCURRENT_MODIFICATION, SUPPORTS_PUT})
   @CollectionSize.Require(absent = ZERO)
   public void testPutAbsentConcurrentWithEntrySetIteration() {
-    try {
-      Iterator<Entry<K, V>> iterator = getMap().entrySet().iterator();
-      put(e3());
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<Entry<K, V>> iterator = getMap().entrySet().iterator();
+    put(e3());
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @MapFeature.Require({FAILS_FAST_ON_CONCURRENT_MODIFICATION, SUPPORTS_PUT})
   @CollectionSize.Require(absent = ZERO)
   public void testPutAbsentConcurrentWithKeySetIteration() {
-    try {
-      Iterator<K> iterator = getMap().keySet().iterator();
-      put(e3());
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<K> iterator = getMap().keySet().iterator();
+    put(e3());
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @MapFeature.Require({FAILS_FAST_ON_CONCURRENT_MODIFICATION, SUPPORTS_PUT})
   @CollectionSize.Require(absent = ZERO)
   public void testPutAbsentConcurrentWithValueIteration() {
-    try {
-      Iterator<V> iterator = getMap().values().iterator();
-      put(e3());
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<V> iterator = getMap().values().iterator();
+    put(e3());
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @MapFeature.Require(absent = SUPPORTS_PUT)
   public void testPut_unsupportedNotPresent() {
-    try {
-      put(e3());
-      fail("put(notPresent, value) should throw");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> put(e3()));
     expectUnchanged();
     expectMissing(e3());
   }
@@ -135,11 +117,7 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(absent = SUPPORTS_PUT)
   @CollectionSize.Require(absent = ZERO)
   public void testPut_unsupportedPresentDifferentValue() {
-    try {
-      getMap().put(k0(), v3());
-      fail("put(present, differentValue) should throw");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> getMap().put(k0(), v3()));
     expectUnchanged();
   }
 
@@ -166,11 +144,7 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_KEYS)
   public void testPut_nullKeyUnsupported() {
-    try {
-      put(nullKeyEntry);
-      fail("put(null, value) should throw");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> put(nullKeyEntry));
     expectUnchanged();
     expectNullKeyMissingWhenNullKeysUnsupported(
         "Should not contain null key after unsupported put(null, value)");
@@ -184,11 +158,7 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_VALUES)
   public void testPut_nullValueUnsupported() {
-    try {
-      put(nullValueEntry);
-      fail("put(key, null) should throw");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> put(nullValueEntry));
     expectUnchanged();
     expectNullValueMissingWhenNullValuesUnsupported(
         "Should not contain null value after unsupported put(key, null)");
@@ -207,11 +177,7 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_VALUES)
   @CollectionSize.Require(absent = ZERO)
   public void testPut_replaceWithNullValueUnsupported() {
-    try {
-      put(presentKeyNullValueEntry);
-      fail("put(present, null) should throw");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> put(presentKeyNullValueEntry));
     expectUnchanged();
     expectNullValueMissingWhenNullValuesUnsupported(
         "Should not contain null after unsupported put(present, null)");
@@ -245,7 +211,8 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
     expectAdded(nullKeyValueEntry);
   }
 
-  private V put(Entry<K, V> entry) {
+  @CanIgnoreReturnValue
+  private @Nullable V put(Entry<K, V> entry) {
     return getMap().put(entry.getKey(), entry.getValue());
   }
 
@@ -253,10 +220,11 @@ public class MapPutTester<K, V> extends AbstractMapTester<K, V> {
    * Returns the {@link Method} instance for {@link #testPut_nullKeyUnsupported()} so that tests of
    * {@link java.util.TreeMap} can suppress it with {@code
    * FeatureSpecificTestSuiteBuilder.suppressing()} until <a
-   * href="http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5045147">Sun bug 5045147</a> is fixed.
+   * href="https://bugs.openjdk.org/browse/JDK-5045147">JDK-5045147</a> is fixed.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getPutNullKeyUnsupportedMethod() {
-    return Helpers.getMethod(MapPutTester.class, "testPut_nullKeyUnsupported");
+    return getMethod(MapPutTester.class, "testPut_nullKeyUnsupported");
   }
 }

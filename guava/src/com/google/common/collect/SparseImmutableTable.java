@@ -14,7 +14,12 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Maps.indexMap;
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.Immutable;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,8 +30,7 @@ import java.util.Map.Entry;
 @Immutable(containerOf = {"R", "C", "V"})
 final class SparseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> {
   static final ImmutableTable<Object, Object, Object> EMPTY =
-      new SparseImmutableTable<>(
-          ImmutableList.<Cell<Object, Object, Object>>of(), ImmutableSet.of(), ImmutableSet.of());
+      new SparseImmutableTable<>(ImmutableList.of(), ImmutableSet.of(), ImmutableSet.of());
 
   private final ImmutableMap<R, ImmutableMap<C, V>> rowMap;
   private final ImmutableMap<C, ImmutableMap<R, V>> columnMap;
@@ -44,12 +48,12 @@ final class SparseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V>
       ImmutableList<Cell<R, C, V>> cellList,
       ImmutableSet<R> rowSpace,
       ImmutableSet<C> columnSpace) {
-    Map<R, Integer> rowIndex = Maps.indexMap(rowSpace);
-    Map<R, Map<C, V>> rows = Maps.newLinkedHashMap();
+    Map<R, Integer> rowIndex = indexMap(rowSpace);
+    Map<R, Map<C, V>> rows = new LinkedHashMap<>();
     for (R row : rowSpace) {
       rows.put(row, new LinkedHashMap<C, V>());
     }
-    Map<C, Map<R, V>> columns = Maps.newLinkedHashMap();
+    Map<C, Map<R, V>> columns = new LinkedHashMap<>();
     for (C col : columnSpace) {
       columns.put(col, new LinkedHashMap<R, V>());
     }
@@ -61,12 +65,16 @@ final class SparseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V>
       C columnKey = cell.getColumnKey();
       V value = cell.getValue();
 
-      cellRowIndices[i] = rowIndex.get(rowKey);
-      Map<C, V> thisRow = rows.get(rowKey);
+      /*
+       * These requireNonNull calls are safe because we construct the maps to hold all the provided
+       * cells.
+       */
+      cellRowIndices[i] = requireNonNull(rowIndex.get(rowKey));
+      Map<C, V> thisRow = requireNonNull(rows.get(rowKey));
       cellColumnInRowIndices[i] = thisRow.size();
       V oldValue = thisRow.put(columnKey, value);
       checkNoDuplicate(rowKey, columnKey, oldValue, value);
-      columns.get(columnKey).put(rowKey, value);
+      requireNonNull(columns.get(columnKey)).put(rowKey, value);
     }
     this.cellRowIndices = cellRowIndices;
     this.cellColumnInRowIndices = cellColumnInRowIndices;
@@ -75,28 +83,26 @@ final class SparseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V>
     for (Entry<R, Map<C, V>> row : rows.entrySet()) {
       rowBuilder.put(row.getKey(), ImmutableMap.copyOf(row.getValue()));
     }
-    this.rowMap = rowBuilder.build();
+    this.rowMap = rowBuilder.buildOrThrow();
 
     ImmutableMap.Builder<C, ImmutableMap<R, V>> columnBuilder =
         new ImmutableMap.Builder<>(columns.size());
     for (Entry<C, Map<R, V>> col : columns.entrySet()) {
       columnBuilder.put(col.getKey(), ImmutableMap.copyOf(col.getValue()));
     }
-    this.columnMap = columnBuilder.build();
+    this.columnMap = columnBuilder.buildOrThrow();
   }
 
   @Override
   public ImmutableMap<C, Map<R, V>> columnMap() {
     // Casts without copying.
-    ImmutableMap<C, ImmutableMap<R, V>> columnMap = this.columnMap;
-    return ImmutableMap.<C, Map<R, V>>copyOf(columnMap);
+    return ImmutableMap.copyOf(columnMap);
   }
 
   @Override
   public ImmutableMap<R, Map<C, V>> rowMap() {
     // Casts without copying.
-    ImmutableMap<R, ImmutableMap<C, V>> rowMap = this.rowMap;
-    return ImmutableMap.<R, Map<C, V>>copyOf(rowMap);
+    return ImmutableMap.copyOf(rowMap);
   }
 
   @Override
@@ -123,12 +129,15 @@ final class SparseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V>
   }
 
   @Override
-  SerializedForm createSerializedForm() {
-    Map<C, Integer> columnKeyToIndex = Maps.indexMap(columnKeySet());
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
+    Map<C, Integer> columnKeyToIndex = indexMap(columnKeySet());
     int[] cellColumnIndices = new int[cellSet().size()];
     int i = 0;
     for (Cell<R, C, V> cell : cellSet()) {
-      cellColumnIndices[i++] = columnKeyToIndex.get(cell.getColumnKey());
+      // requireNonNull is safe because the cell exists in the table.
+      cellColumnIndices[i++] = requireNonNull(columnKeyToIndex.get(cell.getColumnKey()));
     }
     return SerializedForm.create(this, cellRowIndices, cellColumnIndices);
   }

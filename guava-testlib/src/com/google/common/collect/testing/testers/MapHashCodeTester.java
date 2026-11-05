@@ -25,7 +25,6 @@ import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import java.util.Collection;
 import java.util.Map.Entry;
-import org.junit.Ignore;
 
 /**
  * Tests {@link java.util.Map#hashCode}.
@@ -34,7 +33,6 @@ import org.junit.Ignore;
  * @author Chris Povirk
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MapHashCodeTester<K, V> extends AbstractMapTester<K, V> {
   public void testHashCode() {
     int expectedHashCode = 0;

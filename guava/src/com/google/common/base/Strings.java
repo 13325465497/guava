@@ -16,12 +16,16 @@ package com.google.common.base;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.Math.min;
+import static java.lang.System.arraycopy;
 import static java.util.logging.Level.WARNING;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.errorprone.annotations.InlineMe;
+import com.google.errorprone.annotations.InlineMeValidationDisabled;
 import java.util.logging.Logger;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@code String} or {@code CharSequence} instances.
@@ -59,7 +63,7 @@ public final class Strings {
    * <p>Consider normalizing your string references with {@link #nullToEmpty}. If you do, you can
    * use {@link String#isEmpty()} instead of this method, and you won't need special null-safe forms
    * of methods like {@link String#toUpperCase} either. Or, if you'd like to normalize "in the other
-   * direction," converting empty strings to {@code null}, you can use {@link #emptyToNull}.
+   * direction" (converting empty strings to {@code null}), you can use {@link #emptyToNull}.
    *
    * @param string a string reference to check
    * @return {@code true} if the string is null or is the empty string
@@ -134,12 +138,16 @@ public final class Strings {
    * Returns a string consisting of a specific number of concatenated copies of an input string. For
    * example, {@code repeat("hey", 3)} returns the string {@code "heyheyhey"}.
    *
+   * <p><b>Java 11+ users and Android users:</b> use {@code string.repeat(count)} instead.
+   *
    * @param string any non-null string
    * @param count the number of times to repeat it; a nonnegative integer
    * @return a string containing {@code string} repeated {@code count} times (the empty string if
    *     {@code count} is zero)
    * @throws IllegalArgumentException if {@code count} is negative
    */
+  @InlineMe(replacement = "string.repeat(count)")
+  @InlineMeValidationDisabled("Java 11+ API only")
   public static String repeat(String string, int count) {
     checkNotNull(string); // eager for GWT.
 
@@ -149,20 +157,20 @@ public final class Strings {
     }
 
     // IF YOU MODIFY THE CODE HERE, you must update StringsRepeatBenchmark
-    final int len = string.length();
-    final long longSize = (long) len * (long) count;
-    final int size = (int) longSize;
+    int len = string.length();
+    long longSize = (long) len * (long) count;
+    int size = (int) longSize;
     if (size != longSize) {
       throw new ArrayIndexOutOfBoundsException("Required array size too large: " + longSize);
     }
 
-    final char[] array = new char[size];
+    char[] array = new char[size];
     string.getChars(0, len, array, 0);
     int n;
     for (n = len; n < size - n; n <<= 1) {
-      System.arraycopy(array, 0, array, n, n);
+      arraycopy(array, 0, array, n, n);
     }
-    System.arraycopy(array, 0, array, n, size - n);
+    arraycopy(array, 0, array, n, size - n);
     return new String(array);
   }
 
@@ -177,7 +185,7 @@ public final class Strings {
     checkNotNull(a);
     checkNotNull(b);
 
-    int maxPrefixLength = Math.min(a.length(), b.length());
+    int maxPrefixLength = min(a.length(), b.length());
     int p = 0;
     while (p < maxPrefixLength && a.charAt(p) == b.charAt(p)) {
       p++;
@@ -199,7 +207,7 @@ public final class Strings {
     checkNotNull(a);
     checkNotNull(b);
 
-    int maxSuffixLength = Math.min(a.length(), b.length());
+    int maxSuffixLength = min(a.length(), b.length());
     int s = 0;
     while (s < maxSuffixLength && a.charAt(a.length() - s - 1) == b.charAt(b.length() - s - 1)) {
       s++;
@@ -231,10 +239,8 @@ public final class Strings {
    *
    * <p><b>Note:</b> For most string-formatting needs, use {@link String#format String.format},
    * {@link java.io.PrintWriter#format PrintWriter.format}, and related methods. These support the
-   * full range of <a
-   * href="https://docs.oracle.com/javase/9/docs/api/java/util/Formatter.html#syntax">format
-   * specifiers</a>, and alert you to usage errors by throwing {@link
-   * java.util.IllegalFormatException}.
+   * full range of {@linkplain java.util.Formatter##syntax format specifiers}, and alert you to
+   * usage errors by throwing {@link java.util.IllegalFormatException}.
    *
    * <p>In certain cases, such as outputting debugging information or constructing a message to be
    * used for another unchecked exception, an exception during string formatting would serve little
@@ -255,17 +261,13 @@ public final class Strings {
    *     non-null values are converted to strings using {@link Object#toString()}.
    * @since 25.1
    */
-  // TODO(diamondm) consider using Arrays.toString() for array parameters
+  // TODO(b/136042644): consider using Arrays.toString() for array parameters
   public static String lenientFormat(
       @Nullable String template, @Nullable Object @Nullable ... args) {
     template = String.valueOf(template); // null -> "null"
 
     if (args == null) {
       args = new Object[] {"(Object[])null"};
-    } else {
-      for (int i = 0; i < args.length; i++) {
-        args[i] = lenientToString(args[i]);
-      }
     }
 
     // start substituting the arguments into the '%s' placeholders
@@ -278,18 +280,18 @@ public final class Strings {
         break;
       }
       builder.append(template, templateStart, placeholderStart);
-      builder.append(args[i++]);
+      builder.append(lenientToString(args[i++]));
       templateStart = placeholderStart + 2;
     }
     builder.append(template, templateStart, template.length());
 
-    // if we run out of placeholders, append the extra args in square braces
+    // if we run out of placeholders, append the extra args in square brackets
     if (i < args.length) {
-      builder.append(" [");
-      builder.append(args[i++]);
-      while (i < args.length) {
-        builder.append(", ");
-        builder.append(args[i++]);
+      String prefix = " [";
+      for (; i < args.length; i++) {
+        builder.append(prefix);
+        builder.append(lenientToString(args[i]));
+        prefix = ", ";
       }
       builder.append(']');
     }
@@ -297,10 +299,14 @@ public final class Strings {
     return builder.toString();
   }
 
+  @SuppressWarnings("CatchingUnchecked") // sneaky checked exception
   private static String lenientToString(@Nullable Object o) {
+    if (o == null) {
+      return "null";
+    }
     try {
-      return String.valueOf(o);
-    } catch (Exception e) {
+      return o.toString();
+    } catch (Exception e) { // sneaky checked exception
       // Default toString() behavior - see Object.toString()
       String objectToString =
           o.getClass().getName() + '@' + Integer.toHexString(System.identityHashCode(o));

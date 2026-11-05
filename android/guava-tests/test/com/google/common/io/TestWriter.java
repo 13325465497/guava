@@ -16,14 +16,18 @@
 
 package com.google.common.io;
 
-import static com.google.common.base.Charsets.UTF_8;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.FilterWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import org.jspecify.annotations.NullUnmarked;
 
-/** @author Colin Decker */
+/**
+ * @author Colin Decker
+ */
+@NullUnmarked
 public class TestWriter extends FilterWriter {
 
   private final TestOutputStream out;

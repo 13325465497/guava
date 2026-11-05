@@ -17,9 +17,10 @@ package com.google.common.primitives;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
+import static com.google.common.primitives.Bytes.reverse;
+import static java.util.Arrays.sort;
 
 import com.google.common.annotations.GwtCompatible;
-import java.util.Arrays;
 import java.util.Comparator;
 
 /**
@@ -81,17 +82,15 @@ public final class SignedBytes {
    * Compares the two specified {@code byte} values. The sign of the value returned is the same as
    * that of {@code ((Byte) a).compareTo(b)}.
    *
-   * <p><b>Note:</b> this method behaves identically to the JDK 7 method {@link Byte#compare}.
+   * <p><b>Note:</b> this method behaves identically to {@link Byte#compare}.
    *
    * @param a the first {@code byte} to compare
    * @param b the second {@code byte} to compare
    * @return a negative value if {@code a} is less than {@code b}; a positive value if {@code a} is
    *     greater than {@code b}; or zero if they are equal
    */
-  // TODO(kevinb): if Ints.compare etc. are ever removed, *maybe* remove this
-  // one too, which would leave compare methods only on the Unsigned* classes.
   public static int compare(byte a, byte b) {
-    return a - b; // safe due to restricted range
+    return Byte.compare(a, b);
   }
 
   /**
@@ -180,7 +179,7 @@ public final class SignedBytes {
     public int compare(byte[] left, byte[] right) {
       int minLength = Math.min(left.length, right.length);
       for (int i = 0; i < minLength; i++) {
-        int result = SignedBytes.compare(left[i], right[i]);
+        int result = Byte.compare(left[i], right[i]);
         if (result != 0) {
           return result;
         }
@@ -213,7 +212,7 @@ public final class SignedBytes {
   public static void sortDescending(byte[] array, int fromIndex, int toIndex) {
     checkNotNull(array);
     checkPositionIndexes(fromIndex, toIndex, array.length);
-    Arrays.sort(array, fromIndex, toIndex);
-    Bytes.reverse(array, fromIndex, toIndex);
+    sort(array, fromIndex, toIndex);
+    reverse(array, fromIndex, toIndex);
   }
 }

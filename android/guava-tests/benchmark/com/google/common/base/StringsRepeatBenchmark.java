@@ -19,12 +19,14 @@ package com.google.common.base;
 import com.google.caliper.BeforeExperiment;
 import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Microbenchmark for {@link com.google.common.base.Strings#repeat}
  *
  * @author Mike Cripps
  */
+@NullUnmarked
 public class StringsRepeatBenchmark {
   @Param({"1", "5", "25", "125"})
   int count;
@@ -35,12 +37,13 @@ public class StringsRepeatBenchmark {
   private String originalString;
 
   @BeforeExperiment
+  @SuppressWarnings("InlineMeInliner") // String.repeat unavailable under Java 8
   void setUp() {
     originalString = Strings.repeat("x", length);
   }
 
   @Benchmark
-  void oldRepeat(int reps) {
+  void oldRepeat(long reps) {
     for (int i = 0; i < reps; i++) {
       String x = oldRepeat(originalString, count);
       if (x.length() != (originalString.length() * count)) {
@@ -52,8 +55,8 @@ public class StringsRepeatBenchmark {
   private static String oldRepeat(String string, int count) {
     // If this multiplication overflows, a NegativeArraySizeException or
     // OutOfMemoryError is not far behind
-    final int len = string.length();
-    final int size = len * count;
+    int len = string.length();
+    int size = len * count;
     char[] array = new char[size];
     for (int i = 0; i < size; i += len) {
       string.getChars(0, len, array, i);
@@ -62,7 +65,7 @@ public class StringsRepeatBenchmark {
   }
 
   @Benchmark
-  void mikeRepeat(int reps) {
+  void mikeRepeat(long reps) {
     for (int i = 0; i < reps; i++) {
       String x = mikeRepeat(originalString, count);
       if (x.length() != (originalString.length() * count)) {
@@ -72,7 +75,7 @@ public class StringsRepeatBenchmark {
   }
 
   private static String mikeRepeat(String string, int count) {
-    final int len = string.length();
+    int len = string.length();
     char[] strCopy = new char[len * Integer.highestOneBit(count)];
     string.getChars(0, len, strCopy, 0);
 
@@ -95,7 +98,7 @@ public class StringsRepeatBenchmark {
   }
 
   @Benchmark
-  void martinRepeat(int reps) {
+  void martinRepeat(long reps) {
     for (int i = 0; i < reps; i++) {
       String x = martinRepeat(originalString, count);
       if (x.length() != (originalString.length() * count)) {
@@ -105,9 +108,9 @@ public class StringsRepeatBenchmark {
   }
 
   private static String martinRepeat(String string, int count) {
-    final int len = string.length();
-    final int size = len * count;
-    final char[] array = new char[size];
+    int len = string.length();
+    int size = len * count;
+    char[] array = new char[size];
     string.getChars(0, len, array, 0);
     int n;
     for (n = len; n < size - n; n <<= 1) {

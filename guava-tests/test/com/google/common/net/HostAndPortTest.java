@@ -16,10 +16,15 @@
 
 package com.google.common.net;
 
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.testing.EqualsTester;
-import com.google.common.testing.SerializableTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link HostAndPort}
@@ -27,6 +32,7 @@ import junit.framework.TestCase;
  * @author Paul Marks
  */
 @GwtCompatible
+@NullUnmarked
 public class HostAndPortTest extends TestCase {
 
   public void testFromStringWellFormed() {
@@ -59,6 +65,13 @@ public class HostAndPortTest extends TestCase {
     checkFromStringCase("[2001::2]:85", 77, "2001::2", 85, true);
   }
 
+  public void testFromStringNonAsciiDigits() {
+    // Same as testFromStringUnusedDefaultPort but with Gujarati digits for port numbers.
+    checkFromStringCase("gmail.com:૮1", 77, null, -1, false);
+    checkFromStringCase("192.0.2.2:૮૩", 77, null, -1, false);
+    checkFromStringCase("[2001::2]:૮૫", 77, null, -1, false);
+  }
+
   public void testFromStringBadPort() {
     // Out-of-range ports.
     checkFromStringCase("google.com:65536", 1, null, 99, false);
@@ -80,11 +93,15 @@ public class HostAndPortTest extends TestCase {
     checkFromStringCase("[]:", 1, null, 99, false);
     checkFromStringCase("[]:80", 1, null, 99, false);
     checkFromStringCase("[]bad", 1, null, 99, false);
+    checkFromStringCase("[[:]]", 1, null, 99, false);
+    checkFromStringCase("[[:]]:108", 1, null, 99, false);
+    checkFromStringCase("[2001:db8::a]:25]:443", 1, null, 99, false);
+    checkFromStringCase("[::1]:22]", 1, null, 99, false);
   }
 
   public void testFromStringParseableNonsense() {
     // Examples of nonsense that gets through.
-    checkFromStringCase("[[:]]", 86, "[:]", 86, false);
+    checkFromStringCase("[[:]", 86, "[:", 86, false);
     checkFromStringCase("x:y:z", 87, "x:y:z", 87, false);
     checkFromStringCase("", 88, "", 88, false);
     checkFromStringCase(":", 99, "", 99, false);
@@ -92,10 +109,17 @@ public class HostAndPortTest extends TestCase {
     checkFromStringCase("\nOMG\t", 89, "\nOMG\t", 89, false);
   }
 
+  public void testFromStringParseableIncompleteAddresses() {
+    checkFromStringCase("1.2.3", 87, "1.2.3", 87, false);
+    checkFromStringCase("1.2.3:99", 87, "1.2.3", 99, true);
+    checkFromStringCase("2001:4860:4864:5", 87, "2001:4860:4864:5", 87, false);
+    checkFromStringCase("[2001:4860:4864:5]:99", 87, "2001:4860:4864:5", 99, true);
+  }
+
   private static void checkFromStringCase(
       String hpString,
       int defaultPort,
-      String expectHost,
+      @Nullable String expectHost,
       int expectPort,
       boolean expectHasExplicitPort) {
     HostAndPort hp;
@@ -103,19 +127,18 @@ public class HostAndPortTest extends TestCase {
       hp = HostAndPort.fromString(hpString);
     } catch (IllegalArgumentException e) {
       // Make sure we expected this.
-      assertNull(expectHost);
+      assertThat(expectHost).isNull();
       return;
     }
-    assertNotNull(expectHost);
+    assertThat(expectHost).isNotNull();
 
     // Apply withDefaultPort(), yielding hp2.
-    final boolean badDefaultPort = (defaultPort < 0 || defaultPort > 65535);
+    boolean badDefaultPort = defaultPort < 0 || defaultPort > 65535;
     HostAndPort hp2 = null;
-    try {
+    if (badDefaultPort) {
+      assertThrows(IllegalArgumentException.class, () -> hp.withDefaultPort(defaultPort));
+    } else {
       hp2 = hp.withDefaultPort(defaultPort);
-      assertFalse(badDefaultPort);
-    } catch (IllegalArgumentException e) {
-      assertTrue(badDefaultPort);
     }
 
     // Check the pre-withDefaultPort() instance.
@@ -124,67 +147,47 @@ public class HostAndPortTest extends TestCase {
       assertEquals(expectPort, hp.getPort());
     } else {
       assertFalse(hp.hasPort());
-      try {
-        hp.getPort();
-        fail("Expected IllegalStateException");
-      } catch (IllegalStateException expected) {
-      }
+      assertThrows(IllegalStateException.class, () -> hp.getPort());
     }
-    assertEquals(expectHost, hp.getHost());
+    assertThat(hp.getHost()).isEqualTo(expectHost);
 
     // Check the post-withDefaultPort() instance (if any).
     if (!badDefaultPort) {
-      try {
-        int port = hp2.getPort();
-        assertTrue(expectPort != -1);
-        assertEquals(expectPort, port);
-      } catch (IllegalStateException e) {
-        // Make sure we expected this to fail.
-        assertEquals(-1, expectPort);
+      if (expectPort != -1) {
+        assertEquals(expectPort, hp2.getPort());
+      } else {
+        HostAndPort finalHp2 = hp2;
+        assertThrows(IllegalStateException.class, () -> finalHp2.getPort());
       }
-      assertEquals(expectHost, hp2.getHost());
+      assertThat(hp2.getHost()).isEqualTo(expectHost);
     }
   }
 
   public void testFromParts() {
     HostAndPort hp = HostAndPort.fromParts("gmail.com", 81);
-    assertEquals("gmail.com", hp.getHost());
+    assertThat(hp.getHost()).isEqualTo("gmail.com");
     assertTrue(hp.hasPort());
     assertEquals(81, hp.getPort());
 
-    try {
-      HostAndPort.fromParts("gmail.com:80", 81);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HostAndPort.fromParts("gmail.com:80", 81));
 
-    try {
-      HostAndPort.fromParts("gmail.com", -1);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HostAndPort.fromParts("gmail.com", -1));
   }
 
   public void testFromHost() {
     HostAndPort hp = HostAndPort.fromHost("gmail.com");
-    assertEquals("gmail.com", hp.getHost());
+    assertThat(hp.getHost()).isEqualTo("gmail.com");
     assertFalse(hp.hasPort());
 
     hp = HostAndPort.fromHost("[::1]");
-    assertEquals("::1", hp.getHost());
+    assertThat(hp.getHost()).isEqualTo("::1");
     assertFalse(hp.hasPort());
 
-    try {
-      HostAndPort.fromHost("gmail.com:80");
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HostAndPort.fromHost("gmail.com:80"));
 
-    try {
-      HostAndPort.fromHost("[gmail.com]");
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HostAndPort.fromHost("[gmail.com]"));
+
+    assertThrows(IllegalArgumentException.class, () -> HostAndPort.fromHost("[::1]:22]"));
   }
 
   public void testGetPortOrDefault() {
@@ -211,43 +214,42 @@ public class HostAndPortTest extends TestCase {
 
   public void testRequireBracketsForIPv6() {
     // Bracketed IPv6 works fine.
-    assertEquals("::1", HostAndPort.fromString("[::1]").requireBracketsForIPv6().getHost());
-    assertEquals("::1", HostAndPort.fromString("[::1]:80").requireBracketsForIPv6().getHost());
+    assertThat(HostAndPort.fromString("[::1]").requireBracketsForIPv6().getHost()).isEqualTo("::1");
+    assertThat(HostAndPort.fromString("[::1]:80").requireBracketsForIPv6().getHost())
+        .isEqualTo("::1");
     // Non-bracketed non-IPv6 works fine.
-    assertEquals("x", HostAndPort.fromString("x").requireBracketsForIPv6().getHost());
-    assertEquals("x", HostAndPort.fromString("x:80").requireBracketsForIPv6().getHost());
+    assertThat(HostAndPort.fromString("x").requireBracketsForIPv6().getHost()).isEqualTo("x");
+    assertThat(HostAndPort.fromString("x:80").requireBracketsForIPv6().getHost()).isEqualTo("x");
 
     // Non-bracketed IPv6 fails.
-    try {
-      HostAndPort.fromString("::1").requireBracketsForIPv6();
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> HostAndPort.fromString("::1").requireBracketsForIPv6());
   }
 
   public void testToString() {
     // With ports.
-    assertEquals("foo:101", "" + HostAndPort.fromString("foo:101"));
-    assertEquals(":102", HostAndPort.fromString(":102").toString());
-    assertEquals("[1::2]:103", HostAndPort.fromParts("1::2", 103).toString());
-    assertEquals("[::1]:104", HostAndPort.fromString("[::1]:104").toString());
+    assertThat(HostAndPort.fromString("foo:101").toString()).isEqualTo("foo:101");
+    assertThat(HostAndPort.fromString(":102").toString()).isEqualTo(":102");
+    assertThat(HostAndPort.fromParts("1::2", 103).toString()).isEqualTo("[1::2]:103");
+    assertThat(HostAndPort.fromString("[::1]:104").toString()).isEqualTo("[::1]:104");
 
     // Without ports.
-    assertEquals("foo", "" + HostAndPort.fromString("foo"));
-    assertEquals("", HostAndPort.fromString("").toString());
-    assertEquals("[1::2]", HostAndPort.fromString("1::2").toString());
-    assertEquals("[::1]", HostAndPort.fromString("[::1]").toString());
+    assertThat(HostAndPort.fromString("foo").toString()).isEqualTo("foo");
+    assertThat(HostAndPort.fromString("").toString()).isEqualTo("");
+    assertThat(HostAndPort.fromString("1::2").toString()).isEqualTo("[1::2]");
+    assertThat(HostAndPort.fromString("[::1]").toString()).isEqualTo("[::1]");
 
     // Garbage in, garbage out.
-    assertEquals("[::]]:107", HostAndPort.fromParts("::]", 107).toString());
-    assertEquals("[[:]]:108", HostAndPort.fromString("[[:]]:108").toString());
+    assertThat(HostAndPort.fromParts("::]", 107).toString()).isEqualTo("[::]]:107");
+    assertThat(HostAndPort.fromString("[[:]:108").toString()).isEqualTo("[[:]:108");
   }
 
   public void testSerialization() {
-    SerializableTester.reserializeAndAssert(HostAndPort.fromParts("host", 80));
-    SerializableTester.reserializeAndAssert(HostAndPort.fromString("host"));
-    SerializableTester.reserializeAndAssert(HostAndPort.fromString("host:80"));
-    SerializableTester.reserializeAndAssert(HostAndPort.fromString("[::1]:104"));
-    SerializableTester.reserializeAndAssert(HostAndPort.fromParts("1::2", 103));
+    reserializeAndAssert(HostAndPort.fromParts("host", 80));
+    reserializeAndAssert(HostAndPort.fromString("host"));
+    reserializeAndAssert(HostAndPort.fromString("host:80"));
+    reserializeAndAssert(HostAndPort.fromString("[::1]:104"));
+    reserializeAndAssert(HostAndPort.fromParts("1::2", 103));
   }
 }

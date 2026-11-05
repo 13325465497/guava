@@ -16,27 +16,36 @@
 
 package com.google.common.cache;
 
+import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.errorprone.annotations.Keep;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link ForwardingLoadingCache}.
  *
  * @author Charles Fry
  */
+@GwtIncompatible
+@J2ktIncompatible
+@NullUnmarked
 public class ForwardingLoadingCacheTest extends TestCase {
   private LoadingCache<String, Boolean> forward;
   private LoadingCache<String, Boolean> mock;
 
-  @SuppressWarnings("unchecked") // mock
+  @SuppressWarnings({"unchecked", "DoNotMock"}) // mock
   @Override
-  public void setUp() throws Exception {
+  protected void setUp() throws Exception {
     super.setUp();
     /*
      * Class parameters must be raw, so we can't create a proxy with generic
@@ -54,23 +63,23 @@ public class ForwardingLoadingCacheTest extends TestCase {
   }
 
   public void testGet() throws ExecutionException {
-    when(mock.get("key")).thenReturn(Boolean.TRUE);
-    assertSame(Boolean.TRUE, forward.get("key"));
+    when(mock.get("key")).thenReturn(true);
+    assertThat(forward.get("key")).isEqualTo(true);
   }
 
   public void testGetUnchecked() {
-    when(mock.getUnchecked("key")).thenReturn(Boolean.TRUE);
-    assertSame(Boolean.TRUE, forward.getUnchecked("key"));
+    when(mock.getUnchecked("key")).thenReturn(true);
+    assertThat(forward.getUnchecked("key")).isEqualTo(true);
   }
 
   public void testGetAll() throws ExecutionException {
-    when(mock.getAll(ImmutableList.of("key"))).thenReturn(ImmutableMap.of("key", Boolean.TRUE));
-    assertEquals(ImmutableMap.of("key", Boolean.TRUE), forward.getAll(ImmutableList.of("key")));
+    when(mock.getAll(ImmutableList.of("key"))).thenReturn(ImmutableMap.of("key", true));
+    assertThat(forward.getAll(ImmutableList.of("key"))).containsExactly("key", true);
   }
 
   public void testApply() {
-    when(mock.apply("key")).thenReturn(Boolean.TRUE);
-    assertSame(Boolean.TRUE, forward.apply("key"));
+    when(mock.apply("key")).thenReturn(true);
+    assertThat(forward.apply("key")).isEqualTo(true);
   }
 
   public void testInvalidate() {
@@ -78,7 +87,7 @@ public class ForwardingLoadingCacheTest extends TestCase {
     verify(mock).invalidate("key");
   }
 
-  public void testRefresh() throws ExecutionException {
+  public void testRefresh() {
     forward.refresh("key");
     verify(mock).refresh("key");
   }
@@ -89,18 +98,19 @@ public class ForwardingLoadingCacheTest extends TestCase {
   }
 
   public void testSize() {
-    when(mock.size()).thenReturn(0L);
-    forward.size();
+    when(mock.size()).thenReturn(42L);
+    assertThat(forward.size()).isEqualTo(42);
   }
 
   public void testStats() {
-    when(mock.stats()).thenReturn(null);
-    assertNull(forward.stats());
+    CacheStats stats = new CacheStats(0, 0, 0, 0, 0, 0);
+    when(mock.stats()).thenReturn(stats);
+    assertThat(forward.stats()).isEqualTo(stats);
   }
 
   public void testAsMap() {
-    when(mock.asMap()).thenReturn(null);
-    assertNull(forward.asMap());
+    when(mock.asMap()).thenReturn(new ConcurrentHashMap<>(ImmutableMap.of("key", true)));
+    assertThat(forward.asMap()).containsExactly("key", true);
   }
 
   public void testCleanUp() {
@@ -109,10 +119,11 @@ public class ForwardingLoadingCacheTest extends TestCase {
   }
 
   /** Make sure that all methods are forwarded. */
+  @Keep
   private static class OnlyGet<K, V> extends ForwardingLoadingCache<K, V> {
     @Override
     protected LoadingCache<K, V> delegate() {
-      return null;
+      throw new AssertionError();
     }
   }
 }

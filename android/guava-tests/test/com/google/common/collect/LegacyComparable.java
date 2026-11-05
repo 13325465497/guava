@@ -16,9 +16,14 @@
 
 package com.google.common.collect;
 
+import static java.util.Arrays.asList;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
-import java.util.Arrays;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A class that implements {@code Comparable} without generics, such as those found in libraries
@@ -27,15 +32,16 @@ import java.util.Arrays;
  *
  * @author Kevin Bourrillion
  */
-@SuppressWarnings("ComparableType")
+@SuppressWarnings({"ComparableType", "rawtypes"}) // https://github.com/google/guava/issues/989
 @GwtCompatible
+@NullMarked
 class LegacyComparable implements Comparable, Serializable {
   static final LegacyComparable X = new LegacyComparable("x");
   static final LegacyComparable Y = new LegacyComparable("y");
   static final LegacyComparable Z = new LegacyComparable("z");
 
-  static final Iterable<LegacyComparable> VALUES_FORWARD = Arrays.asList(X, Y, Z);
-  static final Iterable<LegacyComparable> VALUES_BACKWARD = Arrays.asList(Z, Y, X);
+  static final Iterable<LegacyComparable> VALUES_FORWARD = asList(X, Y, Z);
+  static final Iterable<LegacyComparable> VALUES_BACKWARD = asList(Z, Y, X);
 
   private final String value;
 
@@ -51,7 +57,7 @@ class LegacyComparable implements Comparable, Serializable {
   }
 
   @Override
-  public boolean equals(Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object instanceof LegacyComparable) {
       LegacyComparable that = (LegacyComparable) object;
       return this.value.equals(that.value);
@@ -64,5 +70,5 @@ class LegacyComparable implements Comparable, Serializable {
     return value.hashCode();
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

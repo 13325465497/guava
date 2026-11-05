@@ -19,6 +19,7 @@ package com.google.common.graph;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.graph.GraphConstants.INNER_CAPACITY;
 import static com.google.common.graph.GraphConstants.INNER_LOAD_FACTOR;
+import static java.util.Collections.unmodifiableSet;
 
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableMap;
@@ -26,11 +27,10 @@ import com.google.common.collect.Multiset;
 import com.google.errorprone.annotations.concurrent.LazyInit;
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An implementation of {@link NetworkConnections} for directed networks with parallel edges.
@@ -59,11 +59,11 @@ final class DirectedMultiNetworkConnections<N, E> extends AbstractDirectedNetwor
         ImmutableMap.copyOf(inEdges), ImmutableMap.copyOf(outEdges), selfLoopCount);
   }
 
-  @LazyInit private transient Reference<Multiset<N>> predecessorsReference;
+  @LazyInit private @Nullable Reference<Multiset<N>> predecessorsReference;
 
   @Override
   public Set<N> predecessors() {
-    return Collections.unmodifiableSet(predecessorsMultiset().elementSet());
+    return unmodifiableSet(predecessorsMultiset().elementSet());
   }
 
   private Multiset<N> predecessorsMultiset() {
@@ -75,11 +75,11 @@ final class DirectedMultiNetworkConnections<N, E> extends AbstractDirectedNetwor
     return predecessors;
   }
 
-  @LazyInit private transient Reference<Multiset<N>> successorsReference;
+  @LazyInit private @Nullable Reference<Multiset<N>> successorsReference;
 
   @Override
   public Set<N> successors() {
-    return Collections.unmodifiableSet(successorsMultiset().elementSet());
+    return unmodifiableSet(successorsMultiset().elementSet());
   }
 
   private Multiset<N> successorsMultiset() {
@@ -92,7 +92,7 @@ final class DirectedMultiNetworkConnections<N, E> extends AbstractDirectedNetwor
   }
 
   @Override
-  public Set<E> edgesConnecting(final N node) {
+  public Set<E> edgesConnecting(N node) {
     return new MultiEdgesConnecting<E>(outEdgeMap, node) {
       @Override
       public int size() {

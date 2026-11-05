@@ -20,13 +20,14 @@ import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEY_QUERIES;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUE_QUERIES;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_REMOVE;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.AbstractMapTester;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import java.util.concurrent.ConcurrentMap;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Tester for {@link ConcurrentMap#remove}. Can't be invoked directly; please see {@link
@@ -35,7 +36,7 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@NullMarked
 public class ConcurrentMapRemoveTester<K, V> extends AbstractMapTester<K, V> {
   @Override
   protected ConcurrentMap<K, V> getMap() {
@@ -90,11 +91,7 @@ public class ConcurrentMapRemoveTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(absent = SUPPORTS_REMOVE)
   @CollectionSize.Require(absent = ZERO)
   public void testRemove_unsupportedPresent() {
-    try {
-      getMap().remove(k0(), v0());
-      fail("Expected UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> getMap().remove(k0(), v0()));
     expectUnchanged();
   }
 

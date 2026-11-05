@@ -29,12 +29,14 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A benchmark comparing the {@link MoreExecutors#newDirectExecutorService()} to {@link
  * MoreExecutors#directExecutor}.
  */
 @VmOptions({"-Xms12g", "-Xmx12g", "-d64"})
+@NullUnmarked
 public class MoreExecutorsDirectExecutorBenchmark {
   enum Impl {
     EXECUTOR_SERVICE {
@@ -103,8 +105,8 @@ public class MoreExecutorsDirectExecutorBenchmark {
 
   @Benchmark
   int timeUncontendedExecute(int reps) {
-    final Executor executor = this.executor;
-    final CountingRunnable countingRunnable = this.countingRunnable;
+    Executor executor = this.executor;
+    CountingRunnable countingRunnable = this.countingRunnable;
     for (int i = 0; i < reps; i++) {
       executor.execute(countingRunnable);
     }
@@ -113,13 +115,13 @@ public class MoreExecutorsDirectExecutorBenchmark {
 
   @Benchmark
   int timeContendedExecute(int reps) {
-    final Executor executor = this.executor;
+    Executor executor = this.executor;
     for (Thread thread : threads) {
       if (!thread.isAlive()) {
         thread.start();
       }
     }
-    final CountingRunnable countingRunnable = this.countingRunnable;
+    CountingRunnable countingRunnable = this.countingRunnable;
     for (int i = 0; i < reps; i++) {
       executor.execute(countingRunnable);
     }

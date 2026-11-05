@@ -16,13 +16,19 @@
 
 package com.google.common.util.concurrent;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link ForwardingListenableFuture}.
  *
  * @author Ben Yu
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class ForwardingListenableFutureTest extends TestCase {
   public void testForwarding() {
     ForwardingObjectTester.testForwardingObject(ForwardingListenableFuture.class);

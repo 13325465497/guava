@@ -16,12 +16,18 @@
 
 package com.google.common.util.concurrent;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.NullUnmarked;
+
 /**
  * Tests for {@link Monitor}'s interruptible methods.
  *
  * @author Justin T. Sampson
  */
-
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class InterruptibleMonitorTest extends MonitorTestCase {
 
   public InterruptibleMonitorTest() {

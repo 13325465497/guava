@@ -16,12 +16,15 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.copyToList;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.AbstractCollectionTester;
-import com.google.common.collect.testing.Helpers;
 import java.util.Collection;
 import java.util.List;
-import org.junit.Ignore;
+import java.util.Objects;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base class for list testers.
@@ -29,8 +32,8 @@ import org.junit.Ignore;
  * @author George van den Driessche
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public class AbstractListTester<E> extends AbstractCollectionTester<E> {
+@NullMarked
+public class AbstractListTester<E extends @Nullable Object> extends AbstractCollectionTester<E> {
   /*
    * Previously we had a field named list that was initialized to the value of
    * collection in setUp(), but that caused problems when a tester changed the
@@ -49,7 +52,7 @@ public class AbstractListTester<E> extends AbstractCollectionTester<E> {
    */
   @Override
   protected void expectContents(Collection<E> expectedCollection) {
-    List<E> expectedList = Helpers.copyToList(expectedCollection);
+    List<E> expectedList = copyToList(expectedCollection);
     // Avoid expectEquals() here to delay reason manufacture until necessary.
     if (getList().size() != expectedList.size()) {
       fail("size mismatch: " + reportContext(expectedList));
@@ -57,7 +60,7 @@ public class AbstractListTester<E> extends AbstractCollectionTester<E> {
     for (int i = 0; i < expectedList.size(); i++) {
       E expected = expectedList.get(i);
       E actual = getList().get(i);
-      if (expected != actual && (expected == null || !expected.equals(actual))) {
+      if (!Objects.equals(actual, expected)) {
         fail("mismatch at index " + i + ": " + reportContext(expectedList));
       }
     }

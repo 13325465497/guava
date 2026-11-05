@@ -16,35 +16,49 @@
 
 package com.google.common.hash;
 
-import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.hash.BloomFilter.toBloomFilter;
+import static com.google.common.hash.Funnels.byteArrayFunnel;
+import static com.google.common.hash.Funnels.integerFunnel;
+import static com.google.common.hash.Funnels.stringFunnel;
+import static com.google.common.hash.Funnels.unencodedCharsFunnel;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+import static com.google.common.util.concurrent.Uninterruptibles.joinUninterruptibly;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.hash.BloomFilterStrategies.LockFreeBitArray;
 import com.google.common.math.LongMath;
+import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Ints;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.SerializableTester;
-import com.google.common.util.concurrent.Uninterruptibles;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.lang.Thread.UncaughtExceptionHandler;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import junit.framework.TestCase;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for SimpleGenericBloomFilter and derived BloomFilter views.
  *
  * @author Dimitris Andreou
  */
+@NullUnmarked
+@J2ktIncompatible
 public class BloomFilterTest extends TestCase {
   private static final int NUM_PUTS = 100_000;
   private static final ThreadLocal<Random> random =
@@ -80,14 +94,12 @@ public class BloomFilterTest extends TestCase {
     assertThat(bf.approximateElementCount()).isAtMost((long) (sizeGuess * 1.01));
   }
 
+  // Android: takes ~20s
   public void testCreateAndCheckMitz32BloomFilterWithKnownFalsePositives() {
     int numInsertions = 1000000;
     BloomFilter<String> bf =
         BloomFilter.create(
-            Funnels.unencodedCharsFunnel(),
-            numInsertions,
-            0.03,
-            BloomFilterStrategies.MURMUR128_MITZ_32);
+            unencodedCharsFunnel(), numInsertions, 0.03, BloomFilterStrategies.MURMUR128_MITZ_32);
 
     // Insert "numInsertions" even numbers into the BF.
     for (int i = 0; i < numInsertions * 2; i += 2) {
@@ -122,17 +134,15 @@ public class BloomFilterTest extends TestCase {
     assertEquals(knownNumberOfFalsePositives, numFpp);
     double expectedReportedFpp = (double) knownNumberOfFalsePositives / numInsertions;
     double actualReportedFpp = bf.expectedFpp();
-    assertEquals(expectedReportedFpp, actualReportedFpp, 0.00015);
+    assertThat(actualReportedFpp).isWithin(0.00015).of(expectedReportedFpp);
   }
 
+  // Android: takes ~20s
   public void testCreateAndCheckBloomFilterWithKnownFalsePositives64() {
     int numInsertions = 1000000;
     BloomFilter<String> bf =
         BloomFilter.create(
-            Funnels.unencodedCharsFunnel(),
-            numInsertions,
-            0.03,
-            BloomFilterStrategies.MURMUR128_MITZ_64);
+            unencodedCharsFunnel(), numInsertions, 0.03, BloomFilterStrategies.MURMUR128_MITZ_64);
 
     // Insert "numInsertions" even numbers into the BF.
     for (int i = 0; i < numInsertions * 2; i += 2) {
@@ -166,17 +176,15 @@ public class BloomFilterTest extends TestCase {
     assertEquals(knownNumberOfFalsePositives, numFpp);
     double expectedReportedFpp = (double) knownNumberOfFalsePositives / numInsertions;
     double actualReportedFpp = bf.expectedFpp();
-    assertEquals(expectedReportedFpp, actualReportedFpp, 0.00033);
+    assertThat(actualReportedFpp).isWithin(0.00033).of(expectedReportedFpp);
   }
 
+  // Android: takes ~20s
   public void testCreateAndCheckBloomFilterWithKnownUtf8FalsePositives64() {
     int numInsertions = 1000000;
     BloomFilter<String> bf =
         BloomFilter.create(
-            Funnels.stringFunnel(UTF_8),
-            numInsertions,
-            0.03,
-            BloomFilterStrategies.MURMUR128_MITZ_64);
+            stringFunnel(UTF_8), numInsertions, 0.03, BloomFilterStrategies.MURMUR128_MITZ_64);
 
     // Insert "numInsertions" even numbers into the BF.
     for (int i = 0; i < numInsertions * 2; i += 2) {
@@ -209,7 +217,7 @@ public class BloomFilterTest extends TestCase {
     assertEquals(knownNumberOfFalsePositives, numFpp);
     double expectedReportedFpp = (double) knownNumberOfFalsePositives / numInsertions;
     double actualReportedFpp = bf.expectedFpp();
-    assertEquals(expectedReportedFpp, actualReportedFpp, 0.00033);
+    assertThat(actualReportedFpp).isWithin(0.00033).of(expectedReportedFpp);
   }
 
   /** Sanity checking with many combinations of false positive rates and expected insertions */
@@ -222,115 +230,106 @@ public class BloomFilterTest extends TestCase {
   }
 
   public void testPreconditions() {
-    try {
-      BloomFilter.create(Funnels.unencodedCharsFunnel(), -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      BloomFilter.create(Funnels.unencodedCharsFunnel(), -1, 0.03);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      BloomFilter.create(Funnels.unencodedCharsFunnel(), 1, 0.0);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      BloomFilter.create(Funnels.unencodedCharsFunnel(), 1, 1.0);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> BloomFilter.create(unencodedCharsFunnel(), -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> BloomFilter.create(unencodedCharsFunnel(), -1, 0.03));
+    assertThrows(
+        IllegalArgumentException.class, () -> BloomFilter.create(unencodedCharsFunnel(), 1, 0.0));
+    assertThrows(
+        IllegalArgumentException.class, () -> BloomFilter.create(unencodedCharsFunnel(), 1, 1.0));
   }
 
   public void testFailureWhenMoreThan255HashFunctionsAreNeeded() {
-    try {
-      int n = 1000;
-      double p = 0.00000000000000000000000000000000000000000000000000000000000000000000000000000001;
-      BloomFilter.create(Funnels.unencodedCharsFunnel(), n, p);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    int n = 1000;
+    double p = 0.00000000000000000000000000000000000000000000000000000000000000000000000000000001;
+    assertThrows(
+        IllegalArgumentException.class, () -> BloomFilter.create(unencodedCharsFunnel(), n, p));
   }
 
   public void testNullPointers() {
     NullPointerTester tester = new NullPointerTester();
-    tester.testAllPublicInstanceMethods(BloomFilter.create(Funnels.unencodedCharsFunnel(), 100));
+    tester.testAllPublicInstanceMethods(BloomFilter.create(unencodedCharsFunnel(), 100));
     tester.testAllPublicStaticMethods(BloomFilter.class);
   }
 
   /** Tests that we never get an optimal hashes number of zero. */
   public void testOptimalHashes() {
     for (int n = 1; n < 1000; n++) {
-      for (int m = 0; m < 1000; m++) {
-        assertTrue(BloomFilter.optimalNumOfHashFunctions(n, m) > 0);
+      for (double p = 0.1; p > 1e-10; p /= 10) {
+        assertThat(BloomFilter.optimalNumOfHashFunctions(p)).isGreaterThan(0);
       }
     }
   }
 
-  // https://code.google.com/p/guava-libraries/issues/detail?id=1781
+  // https://github.com/google/guava/issues/1781
   public void testOptimalNumOfHashFunctionsRounding() {
-    assertEquals(7, BloomFilter.optimalNumOfHashFunctions(319, 3072));
+    assertEquals(5, BloomFilter.optimalNumOfHashFunctions(0.03));
   }
 
   /** Tests that we always get a non-negative optimal size. */
   public void testOptimalSize() {
     for (int n = 1; n < 1000; n++) {
-      for (double fpp = Double.MIN_VALUE; fpp < 1.0; fpp += 0.001) {
-        assertTrue(BloomFilter.optimalNumOfBits(n, fpp) >= 0);
+      for (double fpp = Doubles.MIN_POSITIVE_VALUE; fpp < 1.0; fpp += 0.001) {
+        assertThat(BloomFilter.optimalNumOfBits(n, fpp)).isAtLeast(0);
       }
     }
 
     // some random values
     Random random = new Random(0);
     for (int repeats = 0; repeats < 10000; repeats++) {
-      assertTrue(BloomFilter.optimalNumOfBits(random.nextInt(1 << 16), random.nextDouble()) >= 0);
+      assertThat(BloomFilter.optimalNumOfBits(random.nextInt(1 << 16), random.nextDouble()))
+          .isAtLeast(0);
     }
 
-    // and some crazy values (this used to be capped to Integer.MAX_VALUE, now it can go bigger
-    assertEquals(3327428144502L, BloomFilter.optimalNumOfBits(Integer.MAX_VALUE, Double.MIN_VALUE));
-    try {
-      BloomFilter<String> unused =
-          BloomFilter.create(HashTestUtils.BAD_FUNNEL, Integer.MAX_VALUE, Double.MIN_VALUE);
-      fail("we can't represent such a large BF!");
-    } catch (IllegalArgumentException expected) {
-      assertThat(expected)
-          .hasMessageThat()
-          .isEqualTo("Could not create BloomFilter of 3327428144502 bits");
-    }
+    // and some crazy values (this used to be capped to Integer.MAX_VALUE; now it can go bigger)
+    assertEquals(
+        3327428144502L,
+        BloomFilter.optimalNumOfBits(Integer.MAX_VALUE, Doubles.MIN_POSITIVE_VALUE));
+    IllegalArgumentException expected =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                BloomFilter.create(
+                    HashTestUtils.BAD_FUNNEL, Integer.MAX_VALUE, Doubles.MIN_POSITIVE_VALUE));
+    assertThat(expected)
+        .hasMessageThat()
+        .isEqualTo("Could not create BloomFilter of 3327428144502 bits");
   }
 
   @AndroidIncompatible // OutOfMemoryError
   public void testLargeNumberOfInsertions() {
     // We use horrible FPPs here to keep Java from OOM'ing
     BloomFilter<String> unused =
-        BloomFilter.create(Funnels.unencodedCharsFunnel(), Integer.MAX_VALUE / 2, 0.30);
-    unused = BloomFilter.create(Funnels.unencodedCharsFunnel(), 45L * Integer.MAX_VALUE, 0.99);
+        BloomFilter.create(unencodedCharsFunnel(), Integer.MAX_VALUE / 2, 0.30);
+    unused = BloomFilter.create(unencodedCharsFunnel(), 45L * Integer.MAX_VALUE, 0.99);
   }
 
+  @SuppressWarnings({"deprecation", "InlineMeInliner"}) // test of a deprecated method
   private static void checkSanity(BloomFilter<Object> bf) {
     assertFalse(bf.mightContain(new Object()));
     assertFalse(bf.apply(new Object()));
+    assertFalse(bf.test(new Object()));
     for (int i = 0; i < 100; i++) {
       Object o = new Object();
       bf.put(o);
       assertTrue(bf.mightContain(o));
       assertTrue(bf.apply(o));
+      assertTrue(bf.test(o));
     }
   }
 
   public void testCopy() {
-    BloomFilter<String> original = BloomFilter.create(Funnels.unencodedCharsFunnel(), 100);
+    BloomFilter<String> original = BloomFilter.create(unencodedCharsFunnel(), 100);
     BloomFilter<String> copy = original.copy();
-    assertNotSame(original, copy);
+    assertThat(copy).isNotSameInstanceAs(original);
     assertEquals(original, copy);
   }
 
   public void testExpectedFpp() {
     BloomFilter<Object> bf = BloomFilter.create(HashTestUtils.BAD_FUNNEL, 10, 0.03);
     double fpp = bf.expectedFpp();
-    assertEquals(0.0, fpp);
+    assertThat(fpp).isEqualTo(0.0);
     // usually completed in less than 200 iterations
     while (fpp != 1.0) {
       boolean changed = bf.put(new Object());
@@ -341,21 +340,60 @@ public class BloomFilterTest extends TestCase {
     }
   }
 
-  @AndroidIncompatible // slow
   public void testBitSize() {
     double fpp = 0.03;
     for (int i = 1; i < 10000; i++) {
       long numBits = BloomFilter.optimalNumOfBits(i, fpp);
       int arraySize = Ints.checkedCast(LongMath.divide(numBits, 64, RoundingMode.CEILING));
       assertEquals(
-          arraySize * Long.SIZE,
-          BloomFilter.create(Funnels.unencodedCharsFunnel(), i, fpp).bitSize());
+          arraySize * Long.SIZE, BloomFilter.create(unencodedCharsFunnel(), i, fpp).bitSize());
+    }
+  }
+
+  /**
+   * Tests that bitSize() can be used to predict the serialization size produced by writeTo().
+   *
+   * <p>The serialization format consists of a 6-byte header (1 byte strategy, 1 byte hash
+   * functions, 4 bytes array length) followed by the bit array data (bitSize / 8 bytes).
+   */
+  public void testBitSizeMatchesSerializationSize() throws Exception {
+    int[] expectedInsertionValues = {1, 10, 100, 1000, 10000};
+    double[] fppValues = {0.01, 0.03, 0.1};
+
+    for (int expectedInsertions : expectedInsertionValues) {
+      for (double fpp : fppValues) {
+        BloomFilter<String> bf =
+            BloomFilter.create(unencodedCharsFunnel(), expectedInsertions, fpp);
+
+        // Add some elements
+        for (int i = 0; i < expectedInsertions / 2; i++) {
+          bf.put("element" + i);
+        }
+
+        // Calculate expected size based on bitSize()
+        // Header: 1 byte (strategy) + 1 byte (hash functions) + 4 bytes (array length) = 6 bytes
+        // Data: bitSize / 8 bytes
+        long predictedSize = bf.bitSize() / 8 + 6;
+        assertThat(bf.serializedSize()).isEqualTo(predictedSize);
+
+        // Serialize and measure actual size
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        bf.writeTo(out);
+        int actualSize = out.size();
+        assertThat(bf.serializedSize()).isEqualTo(actualSize);
+
+        assertWithMessage(
+                "Serialization size mismatch for expectedInsertions=%s, fpp=%s",
+                expectedInsertions, fpp)
+            .that(actualSize)
+            .isEqualTo(predictedSize);
+      }
     }
   }
 
   public void testApproximateElementCount() {
     int numInsertions = 1000;
-    BloomFilter<Integer> bf = BloomFilter.create(Funnels.integerFunnel(), numInsertions);
+    BloomFilter<Integer> bf = BloomFilter.create(integerFunnel(), numInsertions);
     bf.put(-1);
     for (int i = 0; i < numInsertions; i++) {
       bf.put(i);
@@ -365,38 +403,23 @@ public class BloomFilterTest extends TestCase {
 
   public void testEquals_empty() {
     new EqualsTester()
-        .addEqualityGroup(BloomFilter.create(Funnels.byteArrayFunnel(), 100, 0.01))
-        .addEqualityGroup(BloomFilter.create(Funnels.byteArrayFunnel(), 100, 0.02))
-        .addEqualityGroup(BloomFilter.create(Funnels.byteArrayFunnel(), 200, 0.01))
-        .addEqualityGroup(BloomFilter.create(Funnels.byteArrayFunnel(), 200, 0.02))
-        .addEqualityGroup(BloomFilter.create(Funnels.unencodedCharsFunnel(), 100, 0.01))
-        .addEqualityGroup(BloomFilter.create(Funnels.unencodedCharsFunnel(), 100, 0.02))
-        .addEqualityGroup(BloomFilter.create(Funnels.unencodedCharsFunnel(), 200, 0.01))
-        .addEqualityGroup(BloomFilter.create(Funnels.unencodedCharsFunnel(), 200, 0.02))
+        .addEqualityGroup(BloomFilter.create(byteArrayFunnel(), 100, 0.01))
+        .addEqualityGroup(BloomFilter.create(byteArrayFunnel(), 100, 0.02))
+        .addEqualityGroup(BloomFilter.create(byteArrayFunnel(), 200, 0.01))
+        .addEqualityGroup(BloomFilter.create(byteArrayFunnel(), 200, 0.02))
+        .addEqualityGroup(BloomFilter.create(unencodedCharsFunnel(), 100, 0.01))
+        .addEqualityGroup(BloomFilter.create(unencodedCharsFunnel(), 100, 0.02))
+        .addEqualityGroup(BloomFilter.create(unencodedCharsFunnel(), 200, 0.01))
+        .addEqualityGroup(BloomFilter.create(unencodedCharsFunnel(), 200, 0.02))
         .testEquals();
   }
 
-  public void testCollector() {
-    BloomFilter<String> bf1 = BloomFilter.create(Funnels.unencodedCharsFunnel(), 100);
-    bf1.put("1");
-    bf1.put("2");
-
-    assertEquals(
-        bf1,
-        Stream.of("1", "2")
-            .collect(BloomFilter.toBloomFilter(Funnels.unencodedCharsFunnel(), 100)));
-    assertEquals(
-        bf1,
-        Stream.of("2", "1")
-            .collect(BloomFilter.toBloomFilter(Funnels.unencodedCharsFunnel(), 100)));
-  }
-
   public void testEquals() {
-    BloomFilter<String> bf1 = BloomFilter.create(Funnels.unencodedCharsFunnel(), 100);
+    BloomFilter<String> bf1 = BloomFilter.create(unencodedCharsFunnel(), 100);
     bf1.put("1");
     bf1.put("2");
 
-    BloomFilter<String> bf2 = BloomFilter.create(Funnels.unencodedCharsFunnel(), 100);
+    BloomFilter<String> bf2 = BloomFilter.create(unencodedCharsFunnel(), 100);
     bf2.put("1");
     bf2.put("2");
 
@@ -414,7 +437,7 @@ public class BloomFilterTest extends TestCase {
   }
 
   public void testSerializationWithCustomFunnel() {
-    SerializableTester.reserializeAndAssert(BloomFilter.create(new CustomFunnel(), 100));
+    reserializeAndAssert(BloomFilter.create(new CustomFunnel(), 100));
   }
 
   private static final class CustomFunnel implements Funnel<Long> {
@@ -425,7 +448,7 @@ public class BloomFilterTest extends TestCase {
 
     @Override
     public boolean equals(@Nullable Object object) {
-      return (object instanceof CustomFunnel);
+      return object instanceof CustomFunnel;
     }
 
     @Override
@@ -436,7 +459,7 @@ public class BloomFilterTest extends TestCase {
 
   public void testPutReturnValue() {
     for (int i = 0; i < 10; i++) {
-      BloomFilter<String> bf = BloomFilter.create(Funnels.unencodedCharsFunnel(), 100);
+      BloomFilter<String> bf = BloomFilter.create(unencodedCharsFunnel(), 100);
       for (int j = 0; j < 10; j++) {
         String value = new Object().toString();
         boolean mightContain = bf.mightContain(value);
@@ -450,12 +473,12 @@ public class BloomFilterTest extends TestCase {
     int element1 = 1;
     int element2 = 2;
 
-    BloomFilter<Integer> bf1 = BloomFilter.create(Funnels.integerFunnel(), 100);
+    BloomFilter<Integer> bf1 = BloomFilter.create(integerFunnel(), 100);
     bf1.put(element1);
     assertTrue(bf1.mightContain(element1));
     assertFalse(bf1.mightContain(element2));
 
-    BloomFilter<Integer> bf2 = BloomFilter.create(Funnels.integerFunnel(), 100);
+    BloomFilter<Integer> bf2 = BloomFilter.create(integerFunnel(), 100);
     bf2.put(element2);
     assertFalse(bf2.mightContain(element1));
     assertTrue(bf2.mightContain(element2));
@@ -469,51 +492,39 @@ public class BloomFilterTest extends TestCase {
   }
 
   public void testPutAllDifferentSizes() {
-    BloomFilter<Integer> bf1 = BloomFilter.create(Funnels.integerFunnel(), 1);
-    BloomFilter<Integer> bf2 = BloomFilter.create(Funnels.integerFunnel(), 10);
+    BloomFilter<Integer> bf1 = BloomFilter.create(integerFunnel(), 1);
+    BloomFilter<Integer> bf2 = BloomFilter.create(integerFunnel(), 10);
 
-    try {
-      assertFalse(bf1.isCompatible(bf2));
-      bf1.putAll(bf2);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertFalse(bf1.isCompatible(bf2));
+    assertThrows(IllegalArgumentException.class, () -> bf1.putAll(bf2));
 
-    try {
-      assertFalse(bf2.isCompatible(bf1));
-      bf2.putAll(bf1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertFalse(bf2.isCompatible(bf1));
+    assertThrows(IllegalArgumentException.class, () -> bf2.putAll(bf1));
   }
 
   public void testPutAllWithSelf() {
-    BloomFilter<Integer> bf1 = BloomFilter.create(Funnels.integerFunnel(), 1);
-    try {
-      assertFalse(bf1.isCompatible(bf1));
-      bf1.putAll(bf1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    BloomFilter<Integer> bf1 = BloomFilter.create(integerFunnel(), 1);
+    assertFalse(bf1.isCompatible(bf1));
+    assertThrows(IllegalArgumentException.class, () -> bf1.putAll(bf1));
   }
 
   public void testJavaSerialization() {
-    BloomFilter<byte[]> bf = BloomFilter.create(Funnels.byteArrayFunnel(), 100);
+    BloomFilter<byte[]> bf = BloomFilter.create(byteArrayFunnel(), 100);
     for (int i = 0; i < 10; i++) {
       bf.put(Ints.toByteArray(i));
     }
 
-    BloomFilter<byte[]> copy = SerializableTester.reserialize(bf);
+    BloomFilter<byte[]> copy = reserialize(bf);
     for (int i = 0; i < 10; i++) {
       assertTrue(copy.mightContain(Ints.toByteArray(i)));
     }
-    assertEquals(bf.expectedFpp(), copy.expectedFpp());
+    assertThat(copy.expectedFpp()).isEqualTo(bf.expectedFpp());
 
-    SerializableTester.reserializeAndAssert(bf);
+    reserializeAndAssert(bf);
   }
 
   public void testCustomSerialization() throws Exception {
-    Funnel<byte[]> funnel = Funnels.byteArrayFunnel();
+    Funnel<byte[]> funnel = byteArrayFunnel();
     BloomFilter<byte[]> bf = BloomFilter.create(funnel, 100);
     for (int i = 0; i < 100; i++) {
       bf.put(Ints.toByteArray(i));
@@ -522,22 +533,105 @@ public class BloomFilterTest extends TestCase {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     bf.writeTo(out);
 
-    assertEquals(bf, BloomFilter.readFrom(new ByteArrayInputStream(out.toByteArray()), funnel));
+    BloomFilter<byte[]> read =
+        BloomFilter.readFrom(new ByteArrayInputStream(out.toByteArray()), funnel);
+    assertThat(read).isEqualTo(bf);
+    assertThat(read.expectedFpp()).isGreaterThan(0);
+  }
+
+  public void testCustomSerializationWithAllowedSize() throws Exception {
+    Funnel<byte[]> funnel = byteArrayFunnel();
+    BloomFilter<byte[]> bf = BloomFilter.create(funnel, 100);
+    for (int i = 0; i < 100; i++) {
+      bf.put(Ints.toByteArray(i));
+    }
+
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    bf.writeTo(out);
+
+    // Deserializing with a maxAllowedSizeInBits equal to the actual bit size should succeed
+    BloomFilter<byte[]> read =
+        BloomFilter.readFrom(new ByteArrayInputStream(out.toByteArray()), funnel, bf.bitSize());
+    assertThat(read).isEqualTo(bf);
+    assertThat(read.expectedFpp()).isGreaterThan(0);
+
+    // Deserializing with a maxAllowedSizeInBits larger than the actual bit size should succeed
+    BloomFilter<byte[]> readLarger =
+        BloomFilter.readFrom(
+            new ByteArrayInputStream(out.toByteArray()), funnel, bf.bitSize() + 100);
+    assertThat(readLarger).isEqualTo(bf);
+
+    // Deserializing with a maxAllowedSizeInBits smaller than the actual bit size should fail
+    long maxAllowedSizeInBits = bf.bitSize() - 1;
+    IOException expected =
+        assertThrows(
+            IOException.class,
+            () ->
+                BloomFilter.readFrom(
+                    new ByteArrayInputStream(out.toByteArray()), funnel, maxAllowedSizeInBits));
+    assertThat(expected).hasCauseThat().isInstanceOf(IllegalArgumentException.class);
+
+    int longArraySize = (out.toByteArray().length - 6) / 8;
+    assertThat(expected)
+        .hasCauseThat()
+        .hasMessageThat()
+        .isEqualTo(
+            String.format(
+                "longArraySize (%s) must be <= %s", longArraySize, maxAllowedSizeInBits / 64));
+  }
+
+  public void testCustomSerializationWithInvalidDataLength() throws Exception {
+    Funnel<byte[]> funnel = byteArrayFunnel();
+
+    // 1 byte strategy, 1 byte numHashFunctions, 4 bytes longArraySize (int), followed by longs.
+    // Let's write a stream where longArraySize is -1 (0xFFFFFFFF)
+    byte[] invalidDataLengthBytes;
+    try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+        DataOutputStream dataOut = new DataOutputStream(out)) {
+      dataOut.writeByte(0x01); // strategy ordinal
+      dataOut.writeByte(0x05); // numHashFunctions
+      dataOut.writeInt(-1); // longArraySize = -1
+      invalidDataLengthBytes = out.toByteArray();
+    }
+
+    IOException expected =
+        assertThrows(
+            IOException.class,
+            () -> BloomFilter.readFrom(new ByteArrayInputStream(invalidDataLengthBytes), funnel));
+    assertThat(expected).hasCauseThat().isInstanceOf(IllegalArgumentException.class);
+    assertThat(expected)
+        .hasCauseThat()
+        .hasMessageThat()
+        .isEqualTo("longArraySize (-1) must be >= 0");
+  }
+
+  public void testReadFromWithNegativeMaxAllowedSizeInBits() {
+    Funnel<byte[]> funnel = byteArrayFunnel();
+    ByteArrayInputStream emptyStream = new ByteArrayInputStream(new byte[] {});
+
+    IllegalArgumentException expected =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> BloomFilter.readFrom(emptyStream, funnel, /* maxAllowedSizeInBits= */ -1));
+    assertThat(expected).hasMessageThat().isEqualTo("maxAllowedSizeInBits (-1) must be >= 0");
   }
 
   /**
    * This test will fail whenever someone updates/reorders the BloomFilterStrategies constants. Only
    * appending a new constant is allowed.
    */
+  // This test ensures that our reliance on the ordering elsewhere is safe.
+  @SuppressWarnings("EnumOrdinal")
   public void testBloomFilterStrategies() {
-    assertThat(BloomFilterStrategies.values()).hasLength(2);
-    assertEquals(BloomFilterStrategies.MURMUR128_MITZ_32, BloomFilterStrategies.values()[0]);
-    assertEquals(BloomFilterStrategies.MURMUR128_MITZ_64, BloomFilterStrategies.values()[1]);
+    assertThat(BloomFilterStrategies.values())
+        .asList()
+        .containsExactly(
+            BloomFilterStrategies.MURMUR128_MITZ_32, BloomFilterStrategies.MURMUR128_MITZ_64);
   }
 
-  public void testNoRaceConditions() throws Exception {
-    final BloomFilter<Integer> bloomFilter =
-        BloomFilter.create(Funnels.integerFunnel(), 15_000_000, 0.01);
+
+  public void testNoRaceConditions() {
+    BloomFilter<Integer> bloomFilter = BloomFilter.create(integerFunnel(), 15_000_000, 0.01);
 
     // This check has to be BEFORE the loop because the random insertions can
     // flip GOLDEN_PRESENT_KEY to true even if it wasn't explicitly inserted
@@ -549,34 +643,31 @@ public class BloomFilterTest extends TestCase {
     bloomFilter.put(GOLDEN_PRESENT_KEY);
 
     int numThreads = 12;
-    final double safetyFalsePositiveRate = 0.1;
-    final Stopwatch stopwatch = Stopwatch.createStarted();
+    double safetyFalsePositiveRate = 0.1;
+    Stopwatch stopwatch = Stopwatch.createStarted();
 
     Runnable task =
-        new Runnable() {
-          @Override
-          public void run() {
-            do {
-              // We can't have a GOLDEN_NOT_PRESENT_KEY because false positives are
-              // possible! It's false negatives that can't happen.
-              assertThat(bloomFilter.mightContain(GOLDEN_PRESENT_KEY)).isTrue();
+        () -> {
+          do {
+            // We can't have a GOLDEN_NOT_PRESENT_KEY because false positives are
+            // possible! It's false negatives that can't happen.
+            assertThat(bloomFilter.mightContain(GOLDEN_PRESENT_KEY)).isTrue();
 
-              int key = getNonGoldenRandomKey();
-              // We can't check that the key is mightContain() == false before the
-              // put() because the key could have already been generated *or* the
-              // bloom filter might say true even when it's not there (false
-              // positive).
-              bloomFilter.put(key);
-              // False negative should *never* happen.
-              assertThat(bloomFilter.mightContain(key)).isTrue();
+            int key = getNonGoldenRandomKey();
+            // We can't check that the key is mightContain() == false before the
+            // put() because the key could have already been generated *or* the
+            // bloom filter might say true even when it's not there (false
+            // positive).
+            bloomFilter.put(key);
+            // False negative should *never* happen.
+            assertThat(bloomFilter.mightContain(key)).isTrue();
 
-              // If this check ever fails, that means we need to either bump the
-              // number of expected insertions or don't run the test for so long.
-              // Don't forget, the bloom filter slowly saturates over time and the
-              // expected false positive probability goes up!
-              assertThat(bloomFilter.expectedFpp()).isLessThan(safetyFalsePositiveRate);
-            } while (stopwatch.elapsed(TimeUnit.SECONDS) < 1);
-          }
+            // If this check ever fails, that means we need to either bump the
+            // number of expected insertions or don't run the test for so long.
+            // Don't forget, the bloom filter slowly saturates over time and the
+            // expected false positive probability goes up!
+            assertThat(bloomFilter.expectedFpp()).isLessThan(safetyFalsePositiveRate);
+          } while (stopwatch.elapsed(SECONDS) < 1);
         };
 
     List<Throwable> exceptions = runThreadsAndReturnExceptions(numThreads, task);
@@ -586,23 +677,17 @@ public class BloomFilterTest extends TestCase {
 
   private static List<Throwable> runThreadsAndReturnExceptions(int numThreads, Runnable task) {
     List<Thread> threads = new ArrayList<>(numThreads);
-    final List<Throwable> exceptions = new ArrayList<>(numThreads);
+    List<Throwable> exceptions = new ArrayList<>(numThreads);
     for (int i = 0; i < numThreads; i++) {
       Thread thread = new Thread(task);
-      thread.setUncaughtExceptionHandler(
-          new UncaughtExceptionHandler() {
-            @Override
-            public void uncaughtException(Thread t, Throwable e) {
-              exceptions.add(e);
-            }
-          });
+      thread.setUncaughtExceptionHandler((t, throwable) -> exceptions.add(throwable));
       threads.add(thread);
     }
     for (Thread t : threads) {
       t.start();
     }
     for (Thread t : threads) {
-      Uninterruptibles.joinUninterruptibly(t);
+      joinUninterruptibly(t);
     }
     return exceptions;
   }
@@ -613,5 +698,14 @@ public class BloomFilterTest extends TestCase {
       key = random.get().nextInt();
     } while (key == GOLDEN_PRESENT_KEY);
     return key;
+  }
+
+  public void testToBloomFilter() {
+    BloomFilter<String> bf1 = BloomFilter.create(unencodedCharsFunnel(), 2);
+    bf1.put("1");
+    bf1.put("2");
+
+    assertEquals(bf1, Stream.of("1", "2").collect(toBloomFilter(unencodedCharsFunnel(), 2)));
+    assertEquals(bf1, Stream.of("2", "1").collect(toBloomFilter(unencodedCharsFunnel(), 2)));
   }
 }

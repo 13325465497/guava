@@ -16,11 +16,16 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Sets.unmodifiableNavigableSet;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.Multisets.UnmodifiableMultiset;
+import com.google.errorprone.annotations.concurrent.LazyInit;
 import java.util.Comparator;
 import java.util.NavigableSet;
-import org.checkerframework.checker.nullness.compatqual.MonotonicNonNullDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link Multisets#unmodifiableSortedMultiset(SortedMultiset)}, split out into
@@ -29,8 +34,8 @@ import org.checkerframework.checker.nullness.compatqual.MonotonicNonNullDecl;
  *
  * @author Louis Wasserman
  */
-@GwtCompatible(emulated = true)
-final class UnmodifiableSortedMultiset<E> extends UnmodifiableMultiset<E>
+@GwtCompatible
+final class UnmodifiableSortedMultiset<E extends @Nullable Object> extends UnmodifiableMultiset<E>
     implements SortedMultiset<E> {
   UnmodifiableSortedMultiset(SortedMultiset<E> delegate) {
     super(delegate);
@@ -47,64 +52,66 @@ final class UnmodifiableSortedMultiset<E> extends UnmodifiableMultiset<E>
   }
 
   @Override
-  NavigableSet<E> createElementSet() {
-    return Sets.unmodifiableNavigableSet(delegate().elementSet());
-  }
-
-  @Override
   public NavigableSet<E> elementSet() {
-    return (NavigableSet<E>) super.elementSet();
+    return unmodifiableNavigableSet(delegate().elementSet());
   }
 
-  @MonotonicNonNullDecl private transient UnmodifiableSortedMultiset<E> descendingMultiset;
+  @LazyInit private transient @Nullable UnmodifiableSortedMultiset<E> descendingMultiset;
 
+  // TODO(b/418181860): This method creates retain cycles in J2ObjC. In order to break the cycle,
+  // there needs to be separate classes for primary and descending multiset, where the primary one
+  // would hold {@code @LazyInit @RetainedWith @Nullable} reference to its descending multiset, and
+  // the other {@code final} reference.
   @Override
   public SortedMultiset<E> descendingMultiset() {
     UnmodifiableSortedMultiset<E> result = descendingMultiset;
     if (result == null) {
-      result = new UnmodifiableSortedMultiset<E>(delegate().descendingMultiset());
+      result = new UnmodifiableSortedMultiset<>(delegate().descendingMultiset());
       result.descendingMultiset = this;
-      return descendingMultiset = result;
+      this.descendingMultiset = result;
     }
     return result;
   }
 
   @Override
-  public Entry<E> firstEntry() {
+  public @Nullable Entry<E> firstEntry() {
     return delegate().firstEntry();
   }
 
   @Override
-  public Entry<E> lastEntry() {
+  public @Nullable Entry<E> lastEntry() {
     return delegate().lastEntry();
   }
 
   @Override
-  public Entry<E> pollFirstEntry() {
+  public @Nullable Entry<E> pollFirstEntry() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public Entry<E> pollLastEntry() {
+  public @Nullable Entry<E> pollLastEntry() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public SortedMultiset<E> headMultiset(E upperBound, BoundType boundType) {
+  public SortedMultiset<E> headMultiset(@ParametricNullness E upperBound, BoundType boundType) {
     return Multisets.unmodifiableSortedMultiset(delegate().headMultiset(upperBound, boundType));
   }
 
   @Override
   public SortedMultiset<E> subMultiset(
-      E lowerBound, BoundType lowerBoundType, E upperBound, BoundType upperBoundType) {
+      @ParametricNullness E lowerBound,
+      BoundType lowerBoundType,
+      @ParametricNullness E upperBound,
+      BoundType upperBoundType) {
     return Multisets.unmodifiableSortedMultiset(
         delegate().subMultiset(lowerBound, lowerBoundType, upperBound, upperBoundType));
   }
 
   @Override
-  public SortedMultiset<E> tailMultiset(E lowerBound, BoundType boundType) {
+  public SortedMultiset<E> tailMultiset(@ParametricNullness E lowerBound, BoundType boundType) {
     return Multisets.unmodifiableSortedMultiset(delegate().tailMultiset(lowerBound, boundType));
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

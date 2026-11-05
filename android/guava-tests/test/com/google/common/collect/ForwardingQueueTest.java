@@ -19,16 +19,20 @@ package com.google.common.collect;
 import static java.util.Arrays.asList;
 
 import com.google.common.base.Function;
+import com.google.common.collect.ForwardingQueue.SimpleForwardingQueue;
 import com.google.common.collect.testing.QueueTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringQueueGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.testing.ForwardingWrapperTester;
 import java.util.Collection;
+import java.util.LinkedList;
 import java.util.Queue;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@code ForwardingQueue}.
@@ -36,18 +40,12 @@ import junit.framework.TestSuite;
  * @author Robert Konigsberg
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class ForwardingQueueTest extends TestCase {
 
-  static final class StandardImplForwardingQueue<T> extends ForwardingQueue<T> {
-    private final Queue<T> backingQueue;
-
+  static final class StandardImplForwardingQueue<T> extends SimpleForwardingQueue<T> {
     StandardImplForwardingQueue(Queue<T> backingQueue) {
-      this.backingQueue = backingQueue;
-    }
-
-    @Override
-    protected Queue<T> delegate() {
-      return backingQueue;
+      super(backingQueue);
     }
 
     @Override
@@ -106,16 +104,17 @@ public class ForwardingQueueTest extends TestCase {
     }
 
     @Override
-    public T peek() {
+    public @Nullable T peek() {
       return standardPeek();
     }
 
     @Override
-    public T poll() {
+    public @Nullable T poll() {
       return standardPoll();
     }
   }
 
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
 
@@ -126,7 +125,7 @@ public class ForwardingQueueTest extends TestCase {
 
                   @Override
                   protected Queue<String> create(String[] elements) {
-                    return new StandardImplForwardingQueue<>(Lists.newLinkedList(asList(elements)));
+                    return new StandardImplForwardingQueue<>(new LinkedList<>(asList(elements)));
                   }
                 })
             .named("ForwardingQueue[LinkedList] with standard implementations")
@@ -152,7 +151,7 @@ public class ForwardingQueueTest extends TestCase {
             });
   }
 
-  private static <T> Queue<T> wrap(final Queue<T> delegate) {
+  private static <T> Queue<T> wrap(Queue<T> delegate) {
     return new ForwardingQueue<T>() {
       @Override
       protected Queue<T> delegate() {

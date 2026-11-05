@@ -21,19 +21,29 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link FluentFuture} that forwards all calls to a delegate.
  *
- * <h3>Extension</h3>
+ * <p><b>Warning:</b> The methods of {@code ForwardingFluentFuture} forward <b>indiscriminately</b>
+ * to the methods of the delegate. For example, overriding {@link #get(long, TimeUnit)} alone
+ * <b>will not</b> change the behavior of {@link #get()}, which can lead to unexpected behavior. In
+ * this case, you should override {@code get()} as well.
  *
- * If you want a class like {@code FluentFuture} but with extra methods, we recommend declaring your
- * own subclass of {@link ListenableFuture}, complete with a method like {@link #from} to adapt an
- * existing {@code ListenableFuture}, implemented atop a {@link ForwardingListenableFuture} that
- * forwards to that future and adds the desired methods.
+ * <p><b>{@code default} method warning:</b> This class does <i>not</i> forward calls to {@code
+ * default} methods. Instead, it inherits their default implementations. When those implementations
+ * invoke methods, they invoke methods on the {@code ForwardingFluentFuture}.
+ *
+ * <h2>Extension</h2>
+ *
+ * This class is package-private. If you want a class like {@code FluentFuture} but with extra
+ * methods, we recommend declaring your own subclass of {@link ListenableFuture}, complete with a
+ * method like {@link #from} to adapt an existing {@code ListenableFuture}, implemented atop a
+ * {@link ForwardingListenableFuture} that forwards to that future and adds the desired methods.
  */
 @GwtCompatible
-final class ForwardingFluentFuture<V> extends FluentFuture<V> {
+final class ForwardingFluentFuture<V extends @Nullable Object> extends FluentFuture<V> {
   private final ListenableFuture<V> delegate;
 
   ForwardingFluentFuture(ListenableFuture<V> delegate) {
@@ -61,13 +71,20 @@ final class ForwardingFluentFuture<V> extends FluentFuture<V> {
   }
 
   @Override
+  @ParametricNullness
   public V get() throws InterruptedException, ExecutionException {
     return delegate.get();
   }
 
   @Override
+  @ParametricNullness
   public V get(long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
     return delegate.get(timeout, unit);
+  }
+
+  @Override
+  public String toString() {
+    return delegate.toString();
   }
 }

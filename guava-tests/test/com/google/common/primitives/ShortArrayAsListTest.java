@@ -17,9 +17,11 @@
 package com.google.common.primitives;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.System.arraycopy;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.testing.ListTestSuiteBuilder;
 import com.google.common.collect.testing.SampleElements;
@@ -31,13 +33,16 @@ import java.util.List;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Test suite covering {@link Shorts#asList(short[])}.
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
+@AndroidIncompatible // test-suite builders
 public class ShortArrayAsListTest extends TestCase {
 
   private static List<Short> asList(Short[] values) {
@@ -48,6 +53,7 @@ public class ShortArrayAsListTest extends TestCase {
     return Shorts.asList(temp);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // suite
   public static Test suite() {
     List<ListTestSuiteBuilder<Short>> builders =
@@ -79,14 +85,14 @@ public class ShortArrayAsListTest extends TestCase {
 
   public static final class ShortsAsListGenerator extends TestShortListGenerator {
     @Override
-    protected List<Short> create(Short[] elements) {
+    List<Short> create(Short[] elements) {
       return asList(elements);
     }
   }
 
   public static final class ShortsAsListHeadSubListGenerator extends TestShortListGenerator {
     @Override
-    protected List<Short> create(Short[] elements) {
+    List<Short> create(Short[] elements) {
       Short[] suffix = {Short.MIN_VALUE, Short.MAX_VALUE};
       Short[] all = concat(elements, suffix);
       return asList(all).subList(0, elements.length);
@@ -95,7 +101,7 @@ public class ShortArrayAsListTest extends TestCase {
 
   public static final class ShortsAsListTailSubListGenerator extends TestShortListGenerator {
     @Override
-    protected List<Short> create(Short[] elements) {
+    List<Short> create(Short[] elements) {
       Short[] prefix = {(short) 86, (short) 99};
       Short[] all = concat(prefix, elements);
       return asList(all).subList(2, elements.length + 2);
@@ -104,7 +110,7 @@ public class ShortArrayAsListTest extends TestCase {
 
   public static final class ShortsAsListMiddleSubListGenerator extends TestShortListGenerator {
     @Override
-    protected List<Short> create(Short[] elements) {
+    List<Short> create(Short[] elements) {
       Short[] prefix = {Short.MIN_VALUE, Short.MAX_VALUE};
       Short[] suffix = {(short) 86, (short) 99};
       Short[] all = concat(concat(prefix, elements), suffix);
@@ -114,8 +120,8 @@ public class ShortArrayAsListTest extends TestCase {
 
   private static Short[] concat(Short[] left, Short[] right) {
     Short[] result = new Short[left.length + right.length];
-    System.arraycopy(left, 0, result, 0, left.length);
-    System.arraycopy(right, 0, result, left.length, right.length);
+    arraycopy(left, 0, result, 0, left.length);
+    arraycopy(right, 0, result, left.length, right.length);
     return result;
   }
 
@@ -139,7 +145,7 @@ public class ShortArrayAsListTest extends TestCase {
      * Creates a new collection containing the given elements; implement this method instead of
      * {@link #create(Object...)}.
      */
-    protected abstract List<Short> create(Short[] elements);
+    abstract List<Short> create(Short[] elements);
 
     @Override
     public Short[] createArray(int length) {

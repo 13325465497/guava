@@ -16,14 +16,20 @@
 
 package com.google.common.hash;
 
+import static com.google.common.hash.Hashing.farmHashFingerprint64;
 import static com.google.common.io.BaseEncoding.base16;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static org.junit.Assert.assertThrows;
 
-import com.google.common.base.Charsets;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.BaseEncoding;
 import com.google.common.testing.ClassSanityTester;
 import java.util.Arrays;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit tests for {@link HashCode}.
@@ -31,6 +37,7 @@ import junit.framework.TestCase;
  * @author Dimitris Andreou
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
 public class HashCodeTest extends TestCase {
   // note: asInt(), asLong() are in little endian
   private static final ImmutableList<ExpectedHashCode> expectedHashCodes =
@@ -107,12 +114,12 @@ public class HashCodeTest extends TestCase {
     String expectedToString = "cdab0000";
 
     assertEquals(expectedInt, hashCode.asInt());
-    assertEquals(expectedToString, hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo(expectedToString);
 
     bytes[0] = (byte) 0x00;
 
     assertEquals(expectedInt, hashCode.asInt());
-    assertEquals(expectedToString, hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo(expectedToString);
   }
 
   public void testFromBytesNoCopy_noCopyOccurs() {
@@ -120,12 +127,12 @@ public class HashCodeTest extends TestCase {
     HashCode hashCode = HashCode.fromBytesNoCopy(bytes);
 
     assertEquals(0x0000abcd, hashCode.asInt());
-    assertEquals("cdab0000", hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo("cdab0000");
 
     bytes[0] = (byte) 0x00;
 
     assertEquals(0x0000ab00, hashCode.asInt());
-    assertEquals("00ab0000", hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo("00ab0000");
   }
 
   public void testGetBytesInternal_noCloneOccurs() {
@@ -133,12 +140,12 @@ public class HashCodeTest extends TestCase {
     HashCode hashCode = HashCode.fromBytes(bytes);
 
     assertEquals(0x0000abcd, hashCode.asInt());
-    assertEquals("cdab0000", hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo("cdab0000");
 
     hashCode.getBytesInternal()[0] = (byte) 0x00;
 
     assertEquals(0x0000ab00, hashCode.asInt());
-    assertEquals("00ab0000", hashCode.toString());
+    assertThat(hashCode.toString()).isEqualTo("00ab0000");
   }
 
   public void testPadToLong() {
@@ -168,20 +175,22 @@ public class HashCodeTest extends TestCase {
 
   public void testToString() {
     byte[] data = new byte[] {127, -128, 5, -1, 14};
-    assertEquals("7f8005ff0e", HashCode.fromBytes(data).toString());
-    assertEquals("7f8005ff0e", base16().lowerCase().encode(data));
+    assertThat(HashCode.fromBytes(data).toString()).isEqualTo("7f8005ff0e");
+    assertThat(base16().lowerCase().encode(data)).isEqualTo("7f8005ff0e");
   }
 
+  @J2ktIncompatible // ClassSanityTester
   public void testHashCode_nulls() throws Exception {
     sanityTester().testNulls();
   }
 
+  @J2ktIncompatible // ClassSanityTester
   public void testHashCode_equalsAndSerializable() throws Exception {
     sanityTester().testEqualsAndSerializable();
   }
 
   public void testRoundTripHashCodeUsingBaseEncoding() {
-    HashCode hash1 = Hashing.sha1().hashString("foo", Charsets.US_ASCII);
+    HashCode hash1 = farmHashFingerprint64().hashString("foo", US_ASCII);
     HashCode hash2 = HashCode.fromBytes(BaseEncoding.base16().lowerCase().decode(hash1.toString()));
     assertEquals(hash1, hash2);
   }
@@ -191,7 +200,7 @@ public class HashCodeTest extends TestCase {
     assertEquals(42, hashCode42.hashCode());
   }
 
-  // See https://code.google.com/p/guava-libraries/issues/detail?id=1494
+  // See https://github.com/google/guava/issues/1494
   public void testObjectHashCodeWithSameLowOrderBytes() {
     // These will have the same first 4 bytes (all 0).
     byte[] bytesA = new byte[5];
@@ -213,7 +222,7 @@ public class HashCodeTest extends TestCase {
   }
 
   public void testRoundTripHashCodeUsingFromString() {
-    HashCode hash1 = Hashing.sha1().hashString("foo", Charsets.US_ASCII);
+    HashCode hash1 = farmHashFingerprint64().hashString("foo", US_ASCII);
     HashCode hash2 = HashCode.fromString(hash1.toString());
     assertEquals(hash1, hash2);
   }
@@ -221,62 +230,41 @@ public class HashCodeTest extends TestCase {
   public void testRoundTrip() {
     for (ExpectedHashCode expected : expectedHashCodes) {
       String string = HashCode.fromBytes(expected.bytes).toString();
-      assertEquals(expected.toString, string);
-      assertEquals(
-          expected.toString,
-          HashCode.fromBytes(BaseEncoding.base16().lowerCase().decode(string)).toString());
+      assertThat(string).isEqualTo(expected.toString);
+      assertThat(HashCode.fromBytes(BaseEncoding.base16().lowerCase().decode(string)).toString())
+          .isEqualTo(expected.toString);
     }
   }
 
   public void testFromStringFailsWithInvalidHexChar() {
-    try {
-      HashCode.fromString("7f8005ff0z");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HashCode.fromString("7f8005ff0z"));
   }
 
   public void testFromStringFailsWithUpperCaseString() {
-    String string = Hashing.sha1().hashString("foo", Charsets.US_ASCII).toString().toUpperCase();
-    try {
-      HashCode.fromString(string);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    String string = farmHashFingerprint64().hashString("foo", US_ASCII).toString().toUpperCase();
+    assertThrows(IllegalArgumentException.class, () -> HashCode.fromString(string));
   }
 
   public void testFromStringFailsWithShortInputs() {
-    try {
-      HashCode.fromString("");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      HashCode.fromString("7");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HashCode.fromString(""));
+    assertThrows(IllegalArgumentException.class, () -> HashCode.fromString("7"));
     HashCode unused = HashCode.fromString("7f");
   }
 
   public void testFromStringFailsWithOddLengthInput() {
-    try {
-      HashCode.fromString("7f8");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> HashCode.fromString("7f8"));
   }
 
   public void testIntWriteBytesTo() {
     byte[] dest = new byte[4];
     HashCode.fromInt(42).writeBytesTo(dest, 0, 4);
-    assertTrue(Arrays.equals(HashCode.fromInt(42).asBytes(), dest));
+    assertThat(dest).isEqualTo(HashCode.fromInt(42).asBytes());
   }
 
   public void testLongWriteBytesTo() {
     byte[] dest = new byte[8];
     HashCode.fromLong(42).writeBytesTo(dest, 0, 8);
-    assertTrue(Arrays.equals(HashCode.fromLong(42).asBytes(), dest));
+    assertThat(dest).isEqualTo(HashCode.fromLong(42).asBytes());
   }
 
   private static final HashCode HASH_ABCD =
@@ -285,58 +273,47 @@ public class HashCodeTest extends TestCase {
   public void testWriteBytesTo() {
     byte[] dest = new byte[4];
     HASH_ABCD.writeBytesTo(dest, 0, 4);
-    assertTrue(
-        Arrays.equals(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd}, dest));
+    assertThat(dest).isEqualTo(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd});
   }
 
   public void testWriteBytesToOversizedArray() {
     byte[] dest = new byte[5];
     HASH_ABCD.writeBytesTo(dest, 0, 4);
-    assertTrue(
-        Arrays.equals(
-            new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0x00}, dest));
+    assertThat(dest)
+        .isEqualTo(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0x00});
   }
 
   public void testWriteBytesToOversizedArrayLongMaxLength() {
     byte[] dest = new byte[5];
     HASH_ABCD.writeBytesTo(dest, 0, 5);
-    assertTrue(
-        Arrays.equals(
-            new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0x00}, dest));
+    assertThat(dest)
+        .isEqualTo(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd, (byte) 0x00});
   }
 
   public void testWriteBytesToOversizedArrayShortMaxLength() {
     byte[] dest = new byte[5];
     HASH_ABCD.writeBytesTo(dest, 0, 3);
-    assertTrue(
-        Arrays.equals(
-            new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0x00, (byte) 0x00}, dest));
+    assertThat(dest)
+        .isEqualTo(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0x00, (byte) 0x00});
   }
 
   public void testWriteBytesToUndersizedArray() {
     byte[] dest = new byte[3];
-    try {
-      HASH_ABCD.writeBytesTo(dest, 0, 4);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> HASH_ABCD.writeBytesTo(dest, 0, 4));
   }
 
   public void testWriteBytesToUndersizedArrayLongMaxLength() {
     byte[] dest = new byte[3];
-    try {
-      HASH_ABCD.writeBytesTo(dest, 0, 5);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> HASH_ABCD.writeBytesTo(dest, 0, 5));
   }
 
   public void testWriteBytesToUndersizedArrayShortMaxLength() {
     byte[] dest = new byte[3];
     HASH_ABCD.writeBytesTo(dest, 0, 2);
-    assertTrue(Arrays.equals(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0x00}, dest));
+    assertThat(dest).isEqualTo(new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0x00});
   }
 
+  @J2ktIncompatible // ClassSanityTester
   private static ClassSanityTester.FactoryMethodReturnValueTester sanityTester() {
     return new ClassSanityTester()
         .setDefault(byte[].class, new byte[] {1, 2, 3, 4})
@@ -346,21 +323,17 @@ public class HashCodeTest extends TestCase {
   }
 
   private static void assertExpectedHashCode(ExpectedHashCode expectedHashCode, HashCode hash) {
-    assertTrue(Arrays.equals(expectedHashCode.bytes, hash.asBytes()));
+    assertThat(hash.asBytes()).isEqualTo(expectedHashCode.bytes);
     byte[] bb = new byte[hash.bits() / 8];
     hash.writeBytesTo(bb, 0, bb.length);
-    assertTrue(Arrays.equals(expectedHashCode.bytes, bb));
+    assertThat(bb).isEqualTo(expectedHashCode.bytes);
     assertEquals(expectedHashCode.asInt, hash.asInt());
     if (expectedHashCode.asLong == null) {
-      try {
-        hash.asLong();
-        fail();
-      } catch (IllegalStateException expected) {
-      }
+      assertThrows(IllegalStateException.class, () -> hash.asLong());
     } else {
       assertEquals(expectedHashCode.asLong.longValue(), hash.asLong());
     }
-    assertEquals(expectedHashCode.toString, hash.toString());
+    assertThat(hash.toString()).isEqualTo(expectedHashCode.toString);
     assertSideEffectFree(hash);
     assertReadableBytes(hash);
   }
@@ -369,11 +342,11 @@ public class HashCodeTest extends TestCase {
     byte[] original = hash.asBytes();
     byte[] mutated = hash.asBytes();
     mutated[0]++;
-    assertTrue(Arrays.equals(original, hash.asBytes()));
+    assertThat(hash.asBytes()).isEqualTo(original);
   }
 
   private static void assertReadableBytes(HashCode hashCode) {
-    assertTrue(hashCode.bits() >= 32); // sanity
+    assertThat(hashCode.bits()).isAtLeast(32); // sanity
     byte[] hashBytes = hashCode.asBytes();
     int totalBytes = hashCode.bits() / 8;
 
@@ -381,17 +354,17 @@ public class HashCodeTest extends TestCase {
       byte[] bb = new byte[bytes];
       hashCode.writeBytesTo(bb, 0, bb.length);
 
-      assertTrue(Arrays.equals(Arrays.copyOf(hashBytes, bytes), bb));
+      assertThat(bb).isEqualTo(Arrays.copyOf(hashBytes, bytes));
     }
   }
 
   private static class ExpectedHashCode {
     final byte[] bytes;
     final int asInt;
-    final Long asLong; // null means that asLong should throw an exception
+    final @Nullable Long asLong; // null means that asLong should throw an exception
     final String toString;
 
-    ExpectedHashCode(byte[] bytes, int asInt, Long asLong, String toString) {
+    ExpectedHashCode(byte[] bytes, int asInt, @Nullable Long asLong, String toString) {
       this.bytes = bytes;
       this.asInt = asInt;
       this.asLong = asLong;

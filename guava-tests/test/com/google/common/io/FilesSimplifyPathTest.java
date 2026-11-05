@@ -16,8 +16,9 @@
 
 package com.google.common.io;
 
-import static com.google.common.base.Charsets.UTF_8;
 import static com.google.common.io.Files.simplifyPath;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
@@ -25,152 +26,154 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.Iterator;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link Files#simplifyPath}.
  *
  * @author Pablo Bellver
  */
+@NullUnmarked
 public class FilesSimplifyPathTest extends TestCase {
 
   public void testSimplifyEmptyString() {
-    assertEquals(".", simplifyPath(""));
+    assertThat(simplifyPath("")).isEqualTo(".");
   }
 
   public void testSimplifyDot() {
-    assertEquals(".", simplifyPath("."));
+    assertThat(simplifyPath(".")).isEqualTo(".");
   }
 
   public void testSimplifyWhiteSpace() {
-    assertEquals(" ", simplifyPath(" "));
+    assertThat(simplifyPath(" ")).isEqualTo(" ");
   }
 
   public void testSimplify2() {
-    assertEquals("x", simplifyPath("x"));
+    assertThat(simplifyPath("x")).isEqualTo("x");
   }
 
   public void testSimplify3() {
-    assertEquals("/a/b/c/d", simplifyPath("/a/b/c/d"));
+    assertThat(simplifyPath("/a/b/c/d")).isEqualTo("/a/b/c/d");
   }
 
   public void testSimplify4() {
-    assertEquals("/a/b/c/d", simplifyPath("/a/b/c/d/"));
+    assertThat(simplifyPath("/a/b/c/d/")).isEqualTo("/a/b/c/d");
   }
 
   public void testSimplify5() {
-    assertEquals("/a/b", simplifyPath("/a//b"));
+    assertThat(simplifyPath("/a//b")).isEqualTo("/a/b");
   }
 
   public void testSimplify6() {
-    assertEquals("/a/b", simplifyPath("//a//b/"));
+    assertThat(simplifyPath("//a//b/")).isEqualTo("/a/b");
   }
 
   public void testSimplify7() {
-    assertEquals("/", simplifyPath("/.."));
+    assertThat(simplifyPath("/..")).isEqualTo("/");
   }
 
   public void testSimplify8() {
-    assertEquals("/", simplifyPath("/././././"));
+    assertThat(simplifyPath("/././././")).isEqualTo("/");
   }
 
   public void testSimplify9() {
-    assertEquals("/a", simplifyPath("/a/b/.."));
+    assertThat(simplifyPath("/a/b/..")).isEqualTo("/a");
   }
 
   public void testSimplify10() {
-    assertEquals("/", simplifyPath("/a/b/../../.."));
+    assertThat(simplifyPath("/a/b/../../..")).isEqualTo("/");
   }
 
   public void testSimplify11() {
-    assertEquals("/", simplifyPath("//a//b/..////../..//"));
+    assertThat(simplifyPath("//a//b/..////../..//")).isEqualTo("/");
   }
 
   public void testSimplify12() {
-    assertEquals("/x", simplifyPath("//a//../x//"));
+    assertThat(simplifyPath("//a//../x//")).isEqualTo("/x");
   }
 
   public void testSimplify13() {
-    assertEquals("../c", simplifyPath("a/b/../../../c"));
+    assertThat(simplifyPath("a/b/../../../c")).isEqualTo("../c");
   }
 
   public void testSimplifyDotDot() {
-    assertEquals("..", simplifyPath(".."));
+    assertThat(simplifyPath("..")).isEqualTo("..");
   }
 
   public void testSimplifyDotDotSlash() {
-    assertEquals("..", simplifyPath("../"));
-    assertEquals("..", simplifyPath("a/../.."));
-    assertEquals("..", simplifyPath("a/../../"));
+    assertThat(simplifyPath("../")).isEqualTo("..");
+    assertThat(simplifyPath("a/../..")).isEqualTo("..");
+    assertThat(simplifyPath("a/../../")).isEqualTo("..");
   }
 
   public void testSimplifyDotDots() {
-    assertEquals("../..", simplifyPath("a/../../.."));
-    assertEquals("../../..", simplifyPath("a/../../../.."));
+    assertThat(simplifyPath("a/../../..")).isEqualTo("../..");
+    assertThat(simplifyPath("a/../../../..")).isEqualTo("../../..");
   }
 
   public void testSimplifyRootedDotDots() {
-    assertEquals("/", simplifyPath("/../../.."));
-    assertEquals("/", simplifyPath("/../../../"));
+    assertThat(simplifyPath("/../../..")).isEqualTo("/");
+    assertThat(simplifyPath("/../../../")).isEqualTo("/");
   }
 
   // b/4558855
   public void testMadbotsBug() {
-    assertEquals("../this", simplifyPath("../this"));
-    assertEquals("../this/is/ok", simplifyPath("../this/is/ok"));
-    assertEquals("../ok", simplifyPath("../this/../ok"));
+    assertThat(simplifyPath("../this")).isEqualTo("../this");
+    assertThat(simplifyPath("../this/is/ok")).isEqualTo("../this/is/ok");
+    assertThat(simplifyPath("../this/../ok")).isEqualTo("../ok");
   }
 
-  // https://code.google.com/p/guava-libraries/issues/detail?id=705
+  // https://github.com/google/guava/issues/705
   public void test705() {
-    assertEquals("../b", simplifyPath("x/../../b"));
-    assertEquals("b", simplifyPath("x/../b"));
+    assertThat(simplifyPath("x/../../b")).isEqualTo("../b");
+    assertThat(simplifyPath("x/../b")).isEqualTo("b");
   }
 
-  // https://code.google.com/p/guava-libraries/issues/detail?id=716
+  // https://github.com/google/guava/issues/716
   public void test716() {
-    assertEquals("b", simplifyPath("./b"));
-    assertEquals("b", simplifyPath("./b/."));
-    assertEquals("b", simplifyPath("././b/./."));
-    assertEquals("b", simplifyPath("././b"));
-    assertEquals("a/b", simplifyPath("./a/b"));
+    assertThat(simplifyPath("./b")).isEqualTo("b");
+    assertThat(simplifyPath("./b/.")).isEqualTo("b");
+    assertThat(simplifyPath("././b/./.")).isEqualTo("b");
+    assertThat(simplifyPath("././b")).isEqualTo("b");
+    assertThat(simplifyPath("./a/b")).isEqualTo("a/b");
   }
 
   public void testHiddenFiles() {
-    assertEquals(".b", simplifyPath(".b"));
-    assertEquals(".b", simplifyPath("./.b"));
-    assertEquals(".metadata/b", simplifyPath(".metadata/b"));
-    assertEquals(".metadata/b", simplifyPath("./.metadata/b"));
+    assertThat(simplifyPath(".b")).isEqualTo(".b");
+    assertThat(simplifyPath("./.b")).isEqualTo(".b");
+    assertThat(simplifyPath(".metadata/b")).isEqualTo(".metadata/b");
+    assertThat(simplifyPath("./.metadata/b")).isEqualTo(".metadata/b");
   }
 
-  // https://code.google.com/p/guava-libraries/issues/detail?id=716
+  // https://github.com/google/guava/issues/716
   public void testMultipleDotFilenames() {
-    assertEquals("..a", simplifyPath("..a"));
-    assertEquals("/..a", simplifyPath("/..a"));
-    assertEquals("/..a/..b", simplifyPath("/..a/..b"));
-    assertEquals("/.....a/..b", simplifyPath("/.....a/..b"));
-    assertEquals("..../....", simplifyPath("..../...."));
-    assertEquals("..a../..b..", simplifyPath("..a../..b.."));
+    assertThat(simplifyPath("..a")).isEqualTo("..a");
+    assertThat(simplifyPath("/..a")).isEqualTo("/..a");
+    assertThat(simplifyPath("/..a/..b")).isEqualTo("/..a/..b");
+    assertThat(simplifyPath("/.....a/..b")).isEqualTo("/.....a/..b");
+    assertThat(simplifyPath("..../....")).isEqualTo("..../....");
+    assertThat(simplifyPath("..a../..b..")).isEqualTo("..a../..b..");
   }
 
   public void testSlashDot() {
-    assertEquals("/", simplifyPath("/."));
+    assertThat(simplifyPath("/.")).isEqualTo("/");
   }
 
-  // http://code.google.com/p/guava-libraries/issues/detail?id=722
+  // https://github.com/google/guava/issues/722
   public void testInitialSlashDotDot() {
-    assertEquals("/c", simplifyPath("/../c"));
+    assertThat(simplifyPath("/../c")).isEqualTo("/c");
   }
 
-  // http://code.google.com/p/guava-libraries/issues/detail?id=722
+  // https://github.com/google/guava/issues/722
   public void testInitialSlashDot() {
-    assertEquals("/a", simplifyPath("/./a"));
-    assertEquals("/.a", simplifyPath("/.a/a/.."));
+    assertThat(simplifyPath("/./a")).isEqualTo("/a");
+    assertThat(simplifyPath("/.a/a/..")).isEqualTo("/.a");
   }
 
-  // http://code.google.com/p/guava-libraries/issues/detail?id=722
+  // https://github.com/google/guava/issues/722
   public void testConsecutiveParentsAfterPresent() {
-    assertEquals("../..", simplifyPath("./../../"));
-    assertEquals("../..", simplifyPath("./.././../"));
+    assertThat(simplifyPath("./../../")).isEqualTo("../..");
+    assertThat(simplifyPath("./.././../")).isEqualTo("../..");
   }
 
   /*
@@ -180,78 +183,78 @@ public class FilesSimplifyPathTest extends TestCase {
 
   /** http://gbiv.com/protocols/uri/rfc/rfc2396.html#rfc.section.C.1 */
   public void testRfc2396Normal() {
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/./g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/g/"));
+    assertThat(simplifyPath("/a/b/c/g")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/./g")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/g/")).isEqualTo("/a/b/c/g");
 
-    assertEquals("/a/b/c/g?y", simplifyPath("/a/b/c/g?y"));
-    assertEquals("/a/b/c/g#s", simplifyPath("/a/b/c/g#s"));
-    assertEquals("/a/b/c/g?y#s", simplifyPath("/a/b/c/g?y#s"));
-    assertEquals("/a/b/c/;x", simplifyPath("/a/b/c/;x"));
-    assertEquals("/a/b/c/g;x", simplifyPath("/a/b/c/g;x"));
-    assertEquals("/a/b/c/g;x?y#s", simplifyPath("/a/b/c/g;x?y#s"));
-    assertEquals("/a/b/c", simplifyPath("/a/b/c/."));
-    assertEquals("/a/b/c", simplifyPath("/a/b/c/./"));
-    assertEquals("/a/b", simplifyPath("/a/b/c/.."));
-    assertEquals("/a/b", simplifyPath("/a/b/c/../"));
-    assertEquals("/a/b/g", simplifyPath("/a/b/c/../g"));
-    assertEquals("/a", simplifyPath("/a/b/c/../.."));
-    assertEquals("/a", simplifyPath("/a/b/c/../../"));
-    assertEquals("/a/g", simplifyPath("/a/b/c/../../g"));
+    assertThat(simplifyPath("/a/b/c/g?y")).isEqualTo("/a/b/c/g?y");
+    assertThat(simplifyPath("/a/b/c/g#s")).isEqualTo("/a/b/c/g#s");
+    assertThat(simplifyPath("/a/b/c/g?y#s")).isEqualTo("/a/b/c/g?y#s");
+    assertThat(simplifyPath("/a/b/c/;x")).isEqualTo("/a/b/c/;x");
+    assertThat(simplifyPath("/a/b/c/g;x")).isEqualTo("/a/b/c/g;x");
+    assertThat(simplifyPath("/a/b/c/g;x?y#s")).isEqualTo("/a/b/c/g;x?y#s");
+    assertThat(simplifyPath("/a/b/c/.")).isEqualTo("/a/b/c");
+    assertThat(simplifyPath("/a/b/c/./")).isEqualTo("/a/b/c");
+    assertThat(simplifyPath("/a/b/c/..")).isEqualTo("/a/b");
+    assertThat(simplifyPath("/a/b/c/../")).isEqualTo("/a/b");
+    assertThat(simplifyPath("/a/b/c/../g")).isEqualTo("/a/b/g");
+    assertThat(simplifyPath("/a/b/c/../..")).isEqualTo("/a");
+    assertThat(simplifyPath("/a/b/c/../../")).isEqualTo("/a");
+    assertThat(simplifyPath("/a/b/c/../../g")).isEqualTo("/a/g");
   }
 
   /** http://gbiv.com/protocols/uri/rfc/rfc2396.html#rfc.section.C.2 */
   public void testRfc2396Abnormal() {
-    assertEquals("/a/b/c/g.", simplifyPath("/a/b/c/g."));
-    assertEquals("/a/b/c/.g", simplifyPath("/a/b/c/.g"));
-    assertEquals("/a/b/c/g..", simplifyPath("/a/b/c/g.."));
-    assertEquals("/a/b/c/..g", simplifyPath("/a/b/c/..g"));
-    assertEquals("/a/b/g", simplifyPath("/a/b/c/./../g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/./g/."));
-    assertEquals("/a/b/c/g/h", simplifyPath("/a/b/c/g/./h"));
-    assertEquals("/a/b/c/h", simplifyPath("/a/b/c/g/../h"));
-    assertEquals("/a/b/c/g;x=1/y", simplifyPath("/a/b/c/g;x=1/./y"));
-    assertEquals("/a/b/c/y", simplifyPath("/a/b/c/g;x=1/../y"));
+    assertThat(simplifyPath("/a/b/c/g.")).isEqualTo("/a/b/c/g.");
+    assertThat(simplifyPath("/a/b/c/.g")).isEqualTo("/a/b/c/.g");
+    assertThat(simplifyPath("/a/b/c/g..")).isEqualTo("/a/b/c/g..");
+    assertThat(simplifyPath("/a/b/c/..g")).isEqualTo("/a/b/c/..g");
+    assertThat(simplifyPath("/a/b/c/./../g")).isEqualTo("/a/b/g");
+    assertThat(simplifyPath("/a/b/c/./g/.")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/g/./h")).isEqualTo("/a/b/c/g/h");
+    assertThat(simplifyPath("/a/b/c/g/../h")).isEqualTo("/a/b/c/h");
+    assertThat(simplifyPath("/a/b/c/g;x=1/./y")).isEqualTo("/a/b/c/g;x=1/y");
+    assertThat(simplifyPath("/a/b/c/g;x=1/../y")).isEqualTo("/a/b/c/y");
   }
 
   /** http://gbiv.com/protocols/uri/rfc/rfc3986.html#relative-normal */
   public void testRfc3986Normal() {
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/./g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/g/"));
+    assertThat(simplifyPath("/a/b/c/g")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/./g")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/g/")).isEqualTo("/a/b/c/g");
 
-    assertEquals("/a/b/c/g?y", simplifyPath("/a/b/c/g?y"));
-    assertEquals("/a/b/c/g#s", simplifyPath("/a/b/c/g#s"));
-    assertEquals("/a/b/c/g?y#s", simplifyPath("/a/b/c/g?y#s"));
-    assertEquals("/a/b/c/;x", simplifyPath("/a/b/c/;x"));
-    assertEquals("/a/b/c/g;x", simplifyPath("/a/b/c/g;x"));
-    assertEquals("/a/b/c/g;x?y#s", simplifyPath("/a/b/c/g;x?y#s"));
+    assertThat(simplifyPath("/a/b/c/g?y")).isEqualTo("/a/b/c/g?y");
+    assertThat(simplifyPath("/a/b/c/g#s")).isEqualTo("/a/b/c/g#s");
+    assertThat(simplifyPath("/a/b/c/g?y#s")).isEqualTo("/a/b/c/g?y#s");
+    assertThat(simplifyPath("/a/b/c/;x")).isEqualTo("/a/b/c/;x");
+    assertThat(simplifyPath("/a/b/c/g;x")).isEqualTo("/a/b/c/g;x");
+    assertThat(simplifyPath("/a/b/c/g;x?y#s")).isEqualTo("/a/b/c/g;x?y#s");
 
-    assertEquals("/a/b/c", simplifyPath("/a/b/c/."));
-    assertEquals("/a/b/c", simplifyPath("/a/b/c/./"));
-    assertEquals("/a/b", simplifyPath("/a/b/c/.."));
-    assertEquals("/a/b", simplifyPath("/a/b/c/../"));
-    assertEquals("/a/b/g", simplifyPath("/a/b/c/../g"));
-    assertEquals("/a", simplifyPath("/a/b/c/../.."));
-    assertEquals("/a", simplifyPath("/a/b/c/../../"));
-    assertEquals("/a/g", simplifyPath("/a/b/c/../../g"));
+    assertThat(simplifyPath("/a/b/c/.")).isEqualTo("/a/b/c");
+    assertThat(simplifyPath("/a/b/c/./")).isEqualTo("/a/b/c");
+    assertThat(simplifyPath("/a/b/c/..")).isEqualTo("/a/b");
+    assertThat(simplifyPath("/a/b/c/../")).isEqualTo("/a/b");
+    assertThat(simplifyPath("/a/b/c/../g")).isEqualTo("/a/b/g");
+    assertThat(simplifyPath("/a/b/c/../..")).isEqualTo("/a");
+    assertThat(simplifyPath("/a/b/c/../../")).isEqualTo("/a");
+    assertThat(simplifyPath("/a/b/c/../../g")).isEqualTo("/a/g");
   }
 
   /** http://gbiv.com/protocols/uri/rfc/rfc3986.html#relative-abnormal */
   public void testRfc3986Abnormal() {
-    assertEquals("/g", simplifyPath("/a/b/c/../../../g"));
-    assertEquals("/g", simplifyPath("/a/b/c/../../../../g"));
+    assertThat(simplifyPath("/a/b/c/../../../g")).isEqualTo("/g");
+    assertThat(simplifyPath("/a/b/c/../../../../g")).isEqualTo("/g");
 
-    assertEquals("/a/b/c/g.", simplifyPath("/a/b/c/g."));
-    assertEquals("/a/b/c/.g", simplifyPath("/a/b/c/.g"));
-    assertEquals("/a/b/c/g..", simplifyPath("/a/b/c/g.."));
-    assertEquals("/a/b/c/..g", simplifyPath("/a/b/c/..g"));
-    assertEquals("/a/b/g", simplifyPath("/a/b/c/./../g"));
-    assertEquals("/a/b/c/g", simplifyPath("/a/b/c/./g/."));
-    assertEquals("/a/b/c/g/h", simplifyPath("/a/b/c/g/./h"));
-    assertEquals("/a/b/c/h", simplifyPath("/a/b/c/g/../h"));
-    assertEquals("/a/b/c/g;x=1/y", simplifyPath("/a/b/c/g;x=1/./y"));
-    assertEquals("/a/b/c/y", simplifyPath("/a/b/c/g;x=1/../y"));
+    assertThat(simplifyPath("/a/b/c/g.")).isEqualTo("/a/b/c/g.");
+    assertThat(simplifyPath("/a/b/c/.g")).isEqualTo("/a/b/c/.g");
+    assertThat(simplifyPath("/a/b/c/g..")).isEqualTo("/a/b/c/g..");
+    assertThat(simplifyPath("/a/b/c/..g")).isEqualTo("/a/b/c/..g");
+    assertThat(simplifyPath("/a/b/c/./../g")).isEqualTo("/a/b/g");
+    assertThat(simplifyPath("/a/b/c/./g/.")).isEqualTo("/a/b/c/g");
+    assertThat(simplifyPath("/a/b/c/g/./h")).isEqualTo("/a/b/c/g/h");
+    assertThat(simplifyPath("/a/b/c/g/../h")).isEqualTo("/a/b/c/h");
+    assertThat(simplifyPath("/a/b/c/g;x=1/./y")).isEqualTo("/a/b/c/g;x=1/y");
+    assertThat(simplifyPath("/a/b/c/g;x=1/../y")).isEqualTo("/a/b/c/y");
   }
 
   public void testExtensiveWithAbsolutePrefix() throws IOException {
@@ -299,7 +302,7 @@ public class FilesSimplifyPathTest extends TestCase {
       String input = iterator.next();
       String expectedOutput = iterator.next();
       assertFalse(iterator.hasNext());
-      assertEquals(expectedOutput, simplifyPath(input));
+      assertThat(simplifyPath(input)).isEqualTo(expectedOutput);
     }
   }
 }

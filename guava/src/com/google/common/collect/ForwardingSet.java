@@ -17,11 +17,14 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Sets.equalsImpl;
+import static com.google.common.collect.Sets.hashCodeImpl;
+import static com.google.common.collect.Sets.removeAllImpl;
 
 import com.google.common.annotations.GwtCompatible;
 import java.util.Collection;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A set which forwards all its method calls to another set. Subclasses should override one or more
@@ -46,7 +49,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @since 2.0
  */
 @GwtCompatible
-public abstract class ForwardingSet<E> extends ForwardingCollection<E> implements Set<E> {
+public abstract class ForwardingSet<E extends @Nullable Object> extends ForwardingCollection<E>
+    implements Set<E> {
   // TODO(lowasser): identify places where thread safety is actually lost
 
   /** Constructor for use by subclasses. */
@@ -74,7 +78,7 @@ public abstract class ForwardingSet<E> extends ForwardingCollection<E> implement
    */
   @Override
   protected boolean standardRemoveAll(Collection<?> collection) {
-    return Sets.removeAllImpl(this, checkNotNull(collection)); // for GWT
+    return removeAllImpl(this, checkNotNull(collection)); // for GWT
   }
 
   /**
@@ -85,7 +89,7 @@ public abstract class ForwardingSet<E> extends ForwardingCollection<E> implement
    * @since 7.0
    */
   protected boolean standardEquals(@Nullable Object object) {
-    return Sets.equalsImpl(this, object);
+    return equalsImpl(this, object);
   }
 
   /**
@@ -95,6 +99,27 @@ public abstract class ForwardingSet<E> extends ForwardingCollection<E> implement
    * @since 7.0
    */
   protected int standardHashCode() {
-    return Sets.hashCodeImpl(this);
+    return hashCodeImpl(this);
+  }
+
+  /**
+   * A simplified version of {@link ForwardingSet} where subclasses can pass in an already
+   * constructed {@link Set} as the delegate.
+   *
+   * <p>TODO(b/3417232): Consider making this public, but take into consideration whether it would
+   * then appear as a user-visible supertype for any classes.
+   */
+  abstract static class SimpleForwardingSet<E extends @Nullable Object> extends ForwardingSet<E> {
+    private final Set<E> delegate;
+
+    /** Constructor for use by subclasses. */
+    SimpleForwardingSet(Set<E> delegate) {
+      this.delegate = checkNotNull(delegate);
+    }
+
+    @Override
+    protected final Set<E> delegate() {
+      return delegate;
+    }
   }
 }

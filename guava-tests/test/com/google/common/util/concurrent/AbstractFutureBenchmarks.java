@@ -18,6 +18,8 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -25,9 +27,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /** Utilities for the AbstractFutureBenchmarks */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 final class AbstractFutureBenchmarks {
   private AbstractFutureBenchmarks() {}
 
@@ -85,6 +91,7 @@ final class AbstractFutureBenchmarks {
     abstract <T> Facade<T> newFacade();
   }
 
+  @SuppressWarnings("ThreadPriorityCheck") // TODO(b/175898629): Consider onSpinWait.
   static void awaitWaiting(Thread t) {
     while (true) {
       Thread.State state = t.getState();
@@ -297,8 +304,7 @@ final class AbstractFutureBenchmarks {
        * Blocks until the task is complete or the timeout expires. Throws a {@link TimeoutException}
        * if the timer expires, otherwise behaves like {@link #get()}.
        */
-      V get(long nanos)
-          throws TimeoutException, CancellationException, ExecutionException, InterruptedException {
+      V get(long nanos) throws TimeoutException, ExecutionException, InterruptedException {
 
         // Attempt to acquire the shared lock with a timeout.
         if (!tryAcquireSharedNanos(-1, nanos)) {
@@ -313,7 +319,7 @@ final class AbstractFutureBenchmarks {
        * a {@link CancellationException} if the task was cancelled, or a {@link ExecutionException}
        * if the task completed with an error.
        */
-      V get() throws CancellationException, ExecutionException, InterruptedException {
+      V get() throws ExecutionException, InterruptedException {
 
         // Acquire the shared lock allowing interruption.
         acquireSharedInterruptibly(-1);
@@ -325,7 +331,7 @@ final class AbstractFutureBenchmarks {
        * exception on failure, a cancellation on cancellation, or an illegal state if the
        * synchronizer is in an invalid state.
        */
-      private V getValue() throws CancellationException, ExecutionException {
+      private V getValue() throws ExecutionException {
         int state = getState();
         switch (state) {
           case COMPLETED:
@@ -405,7 +411,7 @@ final class AbstractFutureBenchmarks {
       }
     }
 
-    static final CancellationException cancellationExceptionWithCause(
+    static CancellationException cancellationExceptionWithCause(
         @Nullable String message, @Nullable Throwable cause) {
       CancellationException exception = new CancellationException(message);
       exception.initCause(cause);

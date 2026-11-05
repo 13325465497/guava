@@ -16,22 +16,27 @@
 
 package com.google.common.io;
 
+import static com.google.common.base.StandardSystemProperty.LINE_SEPARATOR;
 import static com.google.common.io.TestOption.CLOSE_THROWS;
 import static com.google.common.io.TestOption.OPEN_THROWS;
 import static com.google.common.io.TestOption.READ_THROWS;
 import static com.google.common.io.TestOption.WRITE_THROWS;
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.Writer;
 import java.util.EnumSet;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for the default implementations of {@code CharSink} methods.
  *
  * @author Colin Decker
  */
+@NullUnmarked
 public class CharSinkTest extends IoTestCase {
 
   private static final String STRING = ASCII + I18N;
@@ -39,7 +44,7 @@ public class CharSinkTest extends IoTestCase {
   private TestCharSink sink;
 
   @Override
-  public void setUp() {
+  protected void setUp() {
     sink = new TestCharSink();
   }
 
@@ -52,15 +57,15 @@ public class CharSinkTest extends IoTestCase {
     writer.close();
 
     assertTrue(sink.wasStreamClosed());
-    assertEquals(STRING, sink.getString());
+    assertThat(sink.getString()).isEqualTo(STRING);
   }
 
   public void testWrite_string() throws IOException {
-    assertEquals("", sink.getString());
+    assertThat(sink.getString()).isEqualTo("");
     sink.write(STRING);
 
     assertTrue(sink.wasStreamOpened() && sink.wasStreamClosed());
-    assertEquals(STRING, sink.getString());
+    assertThat(sink.getString()).isEqualTo(STRING);
   }
 
   public void testWriteFrom_reader() throws IOException {
@@ -68,7 +73,7 @@ public class CharSinkTest extends IoTestCase {
     sink.writeFrom(reader);
 
     assertTrue(sink.wasStreamOpened() && sink.wasStreamClosed());
-    assertEquals(STRING, sink.getString());
+    assertThat(sink.getString()).isEqualTo(STRING);
   }
 
   public void testWriteFromStream_doesNotCloseThatStream() throws IOException {
@@ -80,35 +85,33 @@ public class CharSinkTest extends IoTestCase {
 
   public void testWriteLines_withSpecificSeparator() throws IOException {
     sink.writeLines(ImmutableList.of("foo", "bar", "baz"), "\n");
-    assertEquals("foo\nbar\nbaz\n", sink.getString());
+    assertThat(sink.getString()).isEqualTo("foo\nbar\nbaz\n");
   }
 
   public void testWriteLines_withDefaultSeparator() throws IOException {
     sink.writeLines(ImmutableList.of("foo", "bar", "baz"));
     String separator = System.getProperty("line.separator");
-    assertEquals("foo" + separator + "bar" + separator + "baz" + separator, sink.getString());
+    assertThat(sink.getString())
+        .isEqualTo("foo" + separator + "bar" + separator + "baz" + separator);
   }
 
   public void testWriteLines_stream() throws IOException {
     sink.writeLines(ImmutableList.of("foo", "bar", "baz").stream());
-    String separator = System.getProperty("line.separator");
-    assertEquals("foo" + separator + "bar" + separator + "baz" + separator, sink.getString());
+    String separator = LINE_SEPARATOR.value();
+    assertThat(sink.getString())
+        .isEqualTo("foo" + separator + "bar" + separator + "baz" + separator);
   }
 
   public void testWriteLines_stream_separator() throws IOException {
     sink.writeLines(ImmutableList.of("foo", "bar", "baz").stream(), "!");
-    assertEquals("foo!bar!baz!", sink.getString());
+    assertThat(sink.getString()).isEqualTo("foo!bar!baz!");
   }
 
   public void testClosesOnErrors_copyingFromCharSourceThatThrows() {
     for (TestOption option : EnumSet.of(OPEN_THROWS, READ_THROWS, CLOSE_THROWS)) {
       TestCharSource failSource = new TestCharSource(STRING, option);
       TestCharSink okSink = new TestCharSink();
-      try {
-        failSource.copyTo(okSink);
-        fail();
-      } catch (IOException expected) {
-      }
+      assertThrows(IOException.class, () -> failSource.copyTo(okSink));
       // ensure writer was closed IF it was opened (depends on implementation whether or not it's
       // opened at all if source.newReader() throws).
       assertTrue(
@@ -119,21 +122,13 @@ public class CharSinkTest extends IoTestCase {
 
   public void testClosesOnErrors_whenWriteThrows() {
     TestCharSink failSink = new TestCharSink(WRITE_THROWS);
-    try {
-      new TestCharSource(STRING).copyTo(failSink);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> new TestCharSource(STRING).copyTo(failSink));
     assertTrue(failSink.wasStreamClosed());
   }
 
   public void testClosesOnErrors_whenWritingFromReaderThatThrows() {
     TestCharSink okSink = new TestCharSink();
-    try {
-      okSink.writeFrom(new TestReader(READ_THROWS));
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> okSink.writeFrom(new TestReader(READ_THROWS)));
     assertTrue(okSink.wasStreamClosed());
   }
 }

@@ -18,19 +18,24 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
+import static java.lang.Math.floorMod;
+import static java.lang.System.arraycopy;
+import static java.util.Arrays.sort;
+import static java.util.Collections.emptyList;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.errorprone.annotations.InlineMe;
+import com.google.errorprone.annotations.InlineMeValidationDisabled;
 import java.io.Serializable;
 import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.RandomAccess;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@code char} primitives, that are not already found in
@@ -45,26 +50,29 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Kevin Bourrillion
  * @since 1.0
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 public final class Chars {
   private Chars() {}
 
   /**
    * The number of bytes required to represent a primitive {@code char} value.
    *
-   * <p><b>Java 8 users:</b> use {@link Character#BYTES} instead.
+   * <p>Prefer {@link Character#BYTES} instead.
    */
+  // We don't use Character.BYTES here because it's not available under J2KT.
   public static final int BYTES = Character.SIZE / Byte.SIZE;
 
   /**
-   * Returns a hash code for {@code value}; equal to the result of invoking {@code ((Character)
-   * value).hashCode()}.
-   *
-   * <p><b>Java 8 users:</b> use {@link Character#hashCode(char)} instead.
+   * Returns a hash code for {@code value}; obsolete alternative to {@link
+   * Character#hashCode(char)}.
    *
    * @param value a primitive {@code char} value
    * @return a hash code for the value
    */
+  @InlineMe(replacement = "Character.hashCode(value)")
+  @InlineMeValidationDisabled(
+      "The hash code of a char is the int version of the char itself, so it's simplest to return"
+          + " that.")
   public static int hashCode(char value) {
     return value;
   }
@@ -105,7 +113,7 @@ public final class Chars {
    * Compares the two specified {@code char} values. The sign of the value returned is the same as
    * that of {@code ((Character) a).compareTo(b)}.
    *
-   * <p><b>Note for Java 7 and later:</b> this method should be treated as deprecated; use the
+   * <p><b>Note:</b> this method is now unnecessary and should be treated as deprecated; use the
    * equivalent {@link Character#compare} method instead.
    *
    * @param a the first {@code char} to compare
@@ -113,8 +121,9 @@ public final class Chars {
    * @return a negative value if {@code a} is less than {@code b}; a positive value if {@code a} is
    *     greater than {@code b}; or zero if they are equal
    */
+  @InlineMe(replacement = "Character.compare(a, b)")
   public static int compare(char a, char b) {
-    return a - b; // safe due to restricted range
+    return Character.compare(a, b);
   }
 
   /**
@@ -257,7 +266,6 @@ public final class Chars {
    * @throws IllegalArgumentException if {@code min > max}
    * @since 21.0
    */
-  @Beta
   public static char constrainToRange(char value, char min, char max) {
     checkArgument(min <= max, "min (%s) must be less than or equal to max (%s)", min, max);
     return value < min ? min : value < max ? value : max;
@@ -269,19 +277,29 @@ public final class Chars {
    *
    * @param arrays zero or more {@code char} arrays
    * @return a single array containing all the values from the source arrays, in order
+   * @throws IllegalArgumentException if the total number of elements in {@code arrays} does not fit
+   *     in an {@code int}
    */
   public static char[] concat(char[]... arrays) {
-    int length = 0;
+    long length = 0;
     for (char[] array : arrays) {
       length += array.length;
     }
-    char[] result = new char[length];
+    char[] result = new char[checkNoOverflow(length)];
     int pos = 0;
     for (char[] array : arrays) {
-      System.arraycopy(array, 0, result, pos, array.length);
+      arraycopy(array, 0, result, pos, array.length);
       pos += array.length;
     }
     return result;
+  }
+
+  private static int checkNoOverflow(long result) {
+    checkArgument(
+        result == (int) result,
+        "the total number of elements (%s) in the arrays must fit in an int",
+        result);
+    return (int) result;
   }
 
   /**
@@ -392,7 +410,7 @@ public final class Chars {
     public int compare(char[] left, char[] right) {
       int minLength = Math.min(left.length, right.length);
       for (int i = 0; i < minLength; i++) {
-        int result = Chars.compare(left[i], right[i]);
+        int result = Character.compare(left[i], right[i]);
         if (result != 0) {
           return result;
         }
@@ -452,7 +470,7 @@ public final class Chars {
   public static void sortDescending(char[] array, int fromIndex, int toIndex) {
     checkNotNull(array);
     checkPositionIndexes(fromIndex, toIndex, array.length);
-    Arrays.sort(array, fromIndex, toIndex);
+    sort(array, fromIndex, toIndex);
     reverse(array, fromIndex, toIndex);
   }
 
@@ -488,6 +506,54 @@ public final class Chars {
   }
 
   /**
+   * Performs a right rotation of {@code array} of "distance" places, so that the first element is
+   * moved to index "distance", and the element at index {@code i} ends up at index {@code (distance
+   * + i) mod array.length}. This is equivalent to {@code Collections.rotate(Chars.asList(array),
+   * distance)}, but is considerably faster and avoids allocation and garbage collection.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @since 32.0.0
+   */
+  public static void rotate(char[] array, int distance) {
+    rotate(array, distance, 0, array.length);
+  }
+
+  /**
+   * Performs a right rotation of {@code array} between {@code fromIndex} inclusive and {@code
+   * toIndex} exclusive. This is equivalent to {@code
+   * Collections.rotate(Chars.asList(array).subList(fromIndex, toIndex), distance)}, but is
+   * considerably faster and avoids allocations and garbage collection.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @throws IndexOutOfBoundsException if {@code fromIndex < 0}, {@code toIndex > array.length}, or
+   *     {@code toIndex > fromIndex}
+   * @since 32.0.0
+   */
+  public static void rotate(char[] array, int distance, int fromIndex, int toIndex) {
+    // See Ints.rotate for more details about possible algorithms here.
+    checkNotNull(array);
+    checkPositionIndexes(fromIndex, toIndex, array.length);
+    int length = toIndex - fromIndex;
+    if (length <= 1) {
+      return;
+    }
+
+    // Map the given distance to an equivalent, non-negative value less than "length".
+    distance = floorMod(distance, length);
+    if (distance == 0) {
+      return;
+    }
+    // The current index of what will become the first element of the rotated section.
+    int newFirstIndex = toIndex - distance;
+
+    reverse(array, fromIndex, newFirstIndex);
+    reverse(array, newFirstIndex, toIndex);
+    reverse(array, fromIndex, toIndex);
+  }
+
+  /**
    * Returns a fixed-size list backed by the specified array, similar to {@link
    * Arrays#asList(Object[])}. The list supports {@link List#set(int, Object)}, but any attempt to
    * set a value to {@code null} will result in a {@link NullPointerException}.
@@ -496,18 +562,19 @@ public final class Chars {
    * written to or read from it. For example, whether {@code list.get(0) == list.get(0)} is true for
    * the returned list is unspecified.
    *
+   * <p>The returned list is serializable.
+   *
    * @param backingArray the array to back the list
    * @return a list view of the array
    */
   public static List<Character> asList(char... backingArray) {
     if (backingArray.length == 0) {
-      return Collections.emptyList();
+      return emptyList();
     }
     return new CharArrayAsList(backingArray);
   }
 
-  @GwtCompatible
-  private static class CharArrayAsList extends AbstractList<Character>
+  private static final class CharArrayAsList extends AbstractList<Character>
       implements RandomAccess, Serializable {
     final char[] array;
     final int start;
@@ -540,14 +607,14 @@ public final class Chars {
     }
 
     @Override
-    public boolean contains(Object target) {
+    public boolean contains(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       return (target instanceof Character)
           && Chars.indexOf(array, (Character) target, start, end) != -1;
     }
 
     @Override
-    public int indexOf(Object target) {
+    public int indexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Character) {
         int i = Chars.indexOf(array, (Character) target, start, end);
@@ -559,7 +626,7 @@ public final class Chars {
     }
 
     @Override
-    public int lastIndexOf(Object target) {
+    public int lastIndexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Character) {
         int i = Chars.lastIndexOf(array, (Character) target, start, end);
@@ -584,13 +651,13 @@ public final class Chars {
       int size = size();
       checkPositionIndexes(fromIndex, toIndex, size);
       if (fromIndex == toIndex) {
-        return Collections.emptyList();
+        return emptyList();
       }
       return new CharArrayAsList(array, start + fromIndex, start + toIndex);
     }
 
     @Override
-    public boolean equals(@NullableDecl Object object) {
+    public boolean equals(@Nullable Object object) {
       if (object == this) {
         return true;
       }
@@ -614,7 +681,7 @@ public final class Chars {
     public int hashCode() {
       int result = 1;
       for (int i = start; i < end; i++) {
-        result = 31 * result + Chars.hashCode(array[i]);
+        result = 31 * result + Character.hashCode(array[i]);
       }
       return result;
     }
@@ -633,6 +700,6 @@ public final class Chars {
       return Arrays.copyOfRange(array, start, end);
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 }

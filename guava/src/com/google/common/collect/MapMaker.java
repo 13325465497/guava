@@ -20,6 +20,7 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Ascii;
 import com.google.common.base.Equivalence;
 import com.google.common.base.MoreObjects;
@@ -30,7 +31,7 @@ import java.util.ConcurrentModificationException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A builder of {@link ConcurrentMap} instances that can have keys or values automatically wrapped
@@ -38,12 +39,12 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  *
  * <p>Usage example:
  *
- * <pre>{@code
+ * {@snippet :
  * ConcurrentMap<Request, Stopwatch> timers = new MapMaker()
  *     .concurrencyLevel(4)
  *     .weakKeys()
  *     .makeMap();
- * }</pre>
+ * }
  *
  * <p>These features are all optional; {@code new MapMaker().makeMap()} returns a valid concurrent
  * map that behaves similarly to a {@link ConcurrentHashMap}.
@@ -66,10 +67,10 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * present in the map to be reclaimed by the garbage collector. Entries with reclaimed keys or
  * values may be removed from the map on each map modification or on occasional map accesses; such
  * entries may be counted by {@link Map#size}, but will never be visible to read or write
- * operations. A partially-reclaimed entry is never exposed to the user. Any {@link java.util.Entry}
+ * operations. A partially-reclaimed entry is never exposed to the user. Any {@link Map.Entry}
  * instance retrieved from the map's {@linkplain Map#entrySet entry set} is a snapshot of that
  * entry's state at the time of retrieval; such entries do, however, support {@link
- * java.util.Entry#setValue}, which simply calls {@link Map#put} on the entry's key.
+ * Map.Entry#setValue}, which simply calls {@link Map#put} on the entry's key.
  *
  * <p>The maps produced by {@code MapMaker} are serializable, and the deserialized maps retain all
  * the configuration properties of the original map. During deserialization, if the original map had
@@ -85,7 +86,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * @author Kevin Bourrillion
  * @since 2.0
  */
-@GwtCompatible(emulated = true)
+@J2ktIncompatible
+@GwtCompatible
 public final class MapMaker {
   private static final int DEFAULT_INITIAL_CAPACITY = 16;
   private static final int DEFAULT_CONCURRENCY_LEVEL = 4;
@@ -98,10 +100,10 @@ public final class MapMaker {
   int initialCapacity = UNSET_INT;
   int concurrencyLevel = UNSET_INT;
 
-  @MonotonicNonNull Strength keyStrength;
-  @MonotonicNonNull Strength valueStrength;
+  @Nullable Strength keyStrength;
+  @Nullable Strength valueStrength;
 
-  @MonotonicNonNull Equivalence<Object> keyEquivalence;
+  @Nullable Equivalence<Object> keyEquivalence;
 
   /**
    * Constructs a new {@code MapMaker} instance with default settings, including strong keys, strong
@@ -114,7 +116,7 @@ public final class MapMaker {
    *
    * <p>By default, the map uses {@link Equivalence#identity} to determine key equality when {@link
    * #weakKeys} is specified, and {@link Equivalence#equals()} otherwise. The only place this is
-   * used is in {@link Interners.WeakInterner}.
+   * used is in {@link Interners}.
    */
   @CanIgnoreReturnValue
   @GwtIncompatible // To be supported
@@ -205,6 +207,7 @@ public final class MapMaker {
     return setKeyStrength(Strength.WEAK);
   }
 
+  @CanIgnoreReturnValue
   MapMaker setKeyStrength(Strength strength) {
     checkState(keyStrength == null, "Key strength was already set to %s", keyStrength);
     keyStrength = checkNotNull(strength);
@@ -251,6 +254,7 @@ public final class MapMaker {
     VALUE
   }
 
+  @CanIgnoreReturnValue
   MapMaker setValueStrength(Strength strength) {
     checkState(valueStrength == null, "Value strength was already set to %s", valueStrength);
     valueStrength = checkNotNull(strength);

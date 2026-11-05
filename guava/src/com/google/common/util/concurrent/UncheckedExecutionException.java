@@ -15,7 +15,9 @@
 package com.google.common.util.concurrent;
 
 import com.google.common.annotations.GwtCompatible;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unchecked variant of {@link java.util.concurrent.ExecutionException}. As with {@code
@@ -34,23 +36,60 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  */
 @GwtCompatible
 public class UncheckedExecutionException extends RuntimeException {
-  /** Creates a new instance with {@code null} as its detail message. */
+  /*
+   * Ideally, this class would have exposed only constructors that require a non-null cause. See
+   * https://github.com/jspecify/jspecify-reference-checker/blob/61aafa4ae52594830cfc2d61c8b113009dbdb045/src/main/java/com/google/jspecify/nullness/NullSpecTransfer.java#L789
+   * and https://github.com/jspecify/jspecify/issues/490.
+   *
+   * (Perhaps it should also have required that its cause was a RuntimeException. However, that
+   * would have required that we throw a different kind of exception for wrapping *checked*
+   * exceptions in methods like Futures.getUnchecked and LoadingCache.get.)
+   */
+
+  /**
+   * Creates a new instance with {@code null} as its detail message and no cause.
+   *
+   * @deprecated Prefer {@linkplain #UncheckedExecutionException(Throwable) a constructor that
+   *     accepts a cause}: Users of this class typically expect for instances to have a non-null
+   *     cause. At the moment, you can <i>usually</i> still preserve behavior by passing an explicit
+   *     {@code null} cause. Note, however, that passing an explicit {@code null} cause prevents
+   *     anyone from calling {@link #initCause} later, so it is not quite equivalent to using a
+   *     constructor that omits the cause.
+   */
+  @Deprecated
   protected UncheckedExecutionException() {}
 
-  /** Creates a new instance with the given detail message. */
+  /**
+   * Creates a new instance with the given detail message and no cause.
+   *
+   * @deprecated Prefer {@linkplain #UncheckedExecutionException(String, Throwable) a constructor
+   *     that accepts a cause}: Users of this class typically expect for instances to have a
+   *     non-null cause. At the moment, you can <i>usually</i> still preserve behavior by passing an
+   *     explicit {@code null} cause. Note, however, that passing an explicit {@code null} cause
+   *     prevents anyone from calling {@link #initCause} later, so it is not quite equivalent to
+   *     using a constructor that omits the cause.
+   */
+  @SuppressWarnings("InlineMeSuggester") // b/387265535
+  @Deprecated
   protected UncheckedExecutionException(@Nullable String message) {
     super(message);
   }
 
-  /** Creates a new instance with the given detail message and cause. */
+  /**
+   * Creates a new instance with the given detail message and cause. Prefer to provide a
+   * non-nullable {@code cause}, as many users expect to find one.
+   */
   public UncheckedExecutionException(@Nullable String message, @Nullable Throwable cause) {
     super(message, cause);
   }
 
-  /** Creates a new instance with the given cause. */
+  /**
+   * Creates a new instance with {@code null} as its detail message and the given cause. Prefer to
+   * provide a non-nullable {@code cause}, as many users expect to find one.
+   */
   public UncheckedExecutionException(@Nullable Throwable cause) {
     super(cause);
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

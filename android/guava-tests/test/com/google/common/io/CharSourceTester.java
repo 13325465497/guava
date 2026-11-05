@@ -16,10 +16,11 @@
 
 package com.google.common.io;
 
-import com.google.common.base.Charsets;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.io.SourceSinkFactory.ByteSourceFactory;
 import com.google.common.io.SourceSinkFactory.CharSourceFactory;
 import java.io.BufferedReader;
@@ -27,18 +28,21 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A generator of {@code TestSuite} instances for testing {@code CharSource} implementations.
- * Generates tests of a all methods on a {@code CharSource} given various inputs the source is
+ * Generates tests of all methods on a {@code CharSource} given various inputs the source is
  * expected to contain.
  *
  * @author Colin Decker
  */
-@AndroidIncompatible // Android doesn't understand tests that lack default constructors.
+@AndroidIncompatible // TODO(b/230620681): Make this available (even though we won't run it).
+@NullUnmarked
 public class CharSourceTester extends SourceSinkTester<CharSource, String, CharSourceFactory> {
 
   private static final ImmutableList<Method> testMethods = getTestMethods(CharSourceTester.class);
@@ -48,8 +52,7 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
     for (Entry<String, String> entry : TEST_STRINGS.entrySet()) {
       if (testAsByteSource) {
         suite.addTest(
-            suiteForBytes(
-                factory, entry.getValue().getBytes(Charsets.UTF_8), name, entry.getKey(), true));
+            suiteForBytes(factory, entry.getValue().getBytes(UTF_8), name, entry.getKey(), true));
       } else {
         suite.addTest(suiteForString(factory, entry.getValue(), name, entry.getKey()));
       }
@@ -59,7 +62,7 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
 
   static TestSuite suiteForBytes(
       CharSourceFactory factory, byte[] bytes, String name, String desc, boolean slice) {
-    TestSuite suite = suiteForString(factory, new String(bytes, Charsets.UTF_8), name, desc);
+    TestSuite suite = suiteForString(factory, new String(bytes, UTF_8), name, desc);
     ByteSourceFactory byteSourceFactory = SourceSinkFactories.asByteSourceFactory(factory);
     suite.addTest(
         ByteSourceTester.suiteForBytes(
@@ -144,9 +147,9 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
 
   public void testReadFirstLine() throws IOException {
     if (expectedLines.isEmpty()) {
-      assertNull(source.readFirstLine());
+      assertThat(source.readFirstLine()).isNull();
     } else {
-      assertEquals(expectedLines.get(0), source.readFirstLine());
+      assertThat(source.readFirstLine()).isEqualTo(expectedLines.get(0));
     }
   }
 
@@ -162,7 +165,7 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
     assertEquals(expected.length(), source.length());
   }
 
-  public void testLengthIfKnown() throws IOException {
+  public void testLengthIfKnown() {
     Optional<Long> lengthIfKnown = source.lengthIfKnown();
     if (lengthIfKnown.isPresent()) {
       assertEquals(expected.length(), (long) lengthIfKnown.get());
@@ -173,10 +176,10 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
     List<String> list =
         source.readLines(
             new LineProcessor<List<String>>() {
-              List<String> list = Lists.newArrayList();
+              final List<String> list = new ArrayList<>();
 
               @Override
-              public boolean processLine(String line) throws IOException {
+              public boolean processLine(String line) {
                 list.add(line);
                 return true;
               }
@@ -194,10 +197,10 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
     List<String> list =
         source.readLines(
             new LineProcessor<List<String>>() {
-              List<String> list = Lists.newArrayList();
+              final List<String> list = new ArrayList<>();
 
               @Override
-              public boolean processLine(String line) throws IOException {
+              public boolean processLine(String line) {
                 list.add(line);
                 return false;
               }
@@ -216,7 +219,7 @@ public class CharSourceTester extends SourceSinkTester<CharSource, String, CharS
   }
 
   private void assertExpectedString(String string) {
-    assertEquals(expected, string);
+    assertThat(string).isEqualTo(expected);
   }
 
   private void assertExpectedLines(List<String> list) {

@@ -20,10 +20,11 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.Spliterator;
 import java.util.function.Consumer;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code keySet()} implementation for {@link ImmutableMap}.
@@ -31,7 +32,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Jesse Wilson
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
   private final ImmutableMap<K, V> map;
 
@@ -50,6 +51,7 @@ final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
   }
 
   @Override
+  @GwtIncompatible // Spliterator
   public Spliterator<K> spliterator() {
     return map.keySpliterator();
   }
@@ -75,14 +77,20 @@ final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
     return true;
   }
 
-  @GwtIncompatible // serialization
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
   @Override
-  Object writeReplace() {
-    return new KeySetSerializedForm<K>(map);
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
+    return super.writeReplace();
   }
 
-  @GwtIncompatible // serialization
-  private static class KeySetSerializedForm<K> implements Serializable {
+  // No longer used for new writes, but kept so that old data can still be read.
+  @GwtIncompatible
+  @J2ktIncompatible
+  @SuppressWarnings("unused")
+  private static final class KeySetSerializedForm<K> implements Serializable {
     final ImmutableMap<K, ?> map;
 
     KeySetSerializedForm(ImmutableMap<K, ?> map) {

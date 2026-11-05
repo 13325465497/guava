@@ -22,27 +22,28 @@ import static com.google.common.collect.Hashing.smearedHash;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Multiset.Entry;
 import com.google.common.collect.Multisets.AbstractEntry;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Arrays;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import java.util.Objects;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
- * ObjectCountHashMap is an implementation of {@code AbstractObjectCountMap} that uses arrays to
- * store key objects and count values. Comparing to using a traditional {@code HashMap}
- * implementation which stores keys and count values as map entries, {@code ObjectCountHashMap}
- * minimizes object allocation and reduces memory footprint.
+ * {@code ObjectCountHashMap} uses arrays to store key objects and count values. Comparing to using
+ * a traditional {@code HashMap} implementation which stores keys and count values as map entries,
+ * {@code ObjectCountHashMap} minimizes object allocation and reduces memory footprint.
  *
  * <p>In the absence of element deletions, this will iterate over elements in insertion order.
  */
-@GwtCompatible(serializable = true, emulated = true)
-class ObjectCountHashMap<K> {
+@GwtCompatible
+@NullMarked
+class ObjectCountHashMap<K extends @Nullable Object> {
 
   /** Creates an empty {@code ObjectCountHashMap} instance. */
-  public static <K> ObjectCountHashMap<K> create() {
+  static <K extends @Nullable Object> ObjectCountHashMap<K> create() {
     return new ObjectCountHashMap<K>();
   }
 
@@ -55,7 +56,8 @@ class ObjectCountHashMap<K> {
    *     expectedSize} elements without resizing
    * @throws IllegalArgumentException if {@code expectedSize} is negative
    */
-  public static <K> ObjectCountHashMap<K> createWithExpectedSize(int expectedSize) {
+  static <K extends @Nullable Object> ObjectCountHashMap<K> createWithExpectedSize(
+      int expectedSize) {
     return new ObjectCountHashMap<K>(expectedSize);
   }
 
@@ -74,8 +76,13 @@ class ObjectCountHashMap<K> {
   // used to indicate blank table entries
   static final int UNSET = -1;
 
+  /*
+   * The array fields below are not initialized directly in the constructor, but they're initialized
+   * by init(), which the constructor calls.
+   */
+
   /** The keys of the entries in the map. */
-  transient Object[] keys;
+  transient @Nullable Object[] keys;
 
   /** The values of the entries in the map. */
   transient int[] values;
@@ -140,7 +147,7 @@ class ObjectCountHashMap<K> {
     this.table = newTable(buckets);
     this.loadFactor = loadFactor;
 
-    this.keys = new Object[expectedSize];
+    this.keys = new @Nullable Object[expectedSize];
     this.values = new int[expectedSize];
 
     this.entries = newEntries(expectedSize);
@@ -180,6 +187,7 @@ class ObjectCountHashMap<K> {
   }
 
   @SuppressWarnings("unchecked")
+  @ParametricNullness
   K getKey(int index) {
     checkElementIndex(index, size);
     return (K) keys[index];
@@ -200,8 +208,8 @@ class ObjectCountHashMap<K> {
     return new MapEntry(index);
   }
 
-  class MapEntry extends AbstractEntry<K> {
-    @NullableDecl final K key;
+  private final class MapEntry extends AbstractEntry<K> {
+    @ParametricNullness final K key;
 
     int lastKnownIndex;
 
@@ -212,6 +220,7 @@ class ObjectCountHashMap<K> {
     }
 
     @Override
+    @ParametricNullness
     public K getElement() {
       return key;
     }
@@ -219,30 +228,15 @@ class ObjectCountHashMap<K> {
     void updateLastKnownIndex() {
       if (lastKnownIndex == -1
           || lastKnownIndex >= size()
-          || !Objects.equal(key, keys[lastKnownIndex])) {
+          || !Objects.equals(key, keys[lastKnownIndex])) {
         lastKnownIndex = indexOf(key);
       }
     }
 
-    @SuppressWarnings("unchecked") // values only contains Vs
     @Override
     public int getCount() {
       updateLastKnownIndex();
       return (lastKnownIndex == -1) ? 0 : values[lastKnownIndex];
-    }
-
-    @SuppressWarnings("unchecked") // values only contains Vs
-    @CanIgnoreReturnValue
-    public int setCount(int count) {
-      updateLastKnownIndex();
-      if (lastKnownIndex == -1) {
-        put(key, count);
-        return 0;
-      } else {
-        int old = values[lastKnownIndex];
-        values[lastKnownIndex] = count;
-        return old;
-      }
     }
   }
 
@@ -271,10 +265,10 @@ class ObjectCountHashMap<K> {
   }
 
   @CanIgnoreReturnValue
-  public int put(@NullableDecl K key, int value) {
+  public int put(@ParametricNullness K key, int value) {
     checkPositive(value, "count");
     long[] entries = this.entries;
-    Object[] keys = this.keys;
+    @Nullable Object[] keys = this.keys;
     int[] values = this.values;
 
     int hash = smearedHash(key);
@@ -289,7 +283,7 @@ class ObjectCountHashMap<K> {
       do {
         last = next;
         entry = entries[next];
-        if (getHash(entry) == hash && Objects.equal(key, keys[next])) {
+        if (getHash(entry) == hash && Objects.equals(key, keys[next])) {
           int oldValue = values[next];
 
           values[next] = value;
@@ -316,7 +310,7 @@ class ObjectCountHashMap<K> {
   /**
    * Creates a fresh entry with the specified object at the specified position in the entry array.
    */
-  void insertEntry(int entryIndex, @NullableDecl K key, int value, int hash) {
+  void insertEntry(int entryIndex, @ParametricNullness K key, int value, int hash) {
     this.entries[entryIndex] = ((long) hash << 32) | (NEXT_MASK & UNSET);
     this.keys[entryIndex] = key;
     this.values[entryIndex] = value;
@@ -377,12 +371,12 @@ class ObjectCountHashMap<K> {
     this.table = newTable;
   }
 
-  int indexOf(@NullableDecl Object key) {
+  int indexOf(@Nullable Object key) {
     int hash = smearedHash(key);
     int next = table[hash & hashTableMask()];
     while (next != UNSET) {
       long entry = entries[next];
-      if (getHash(entry) == hash && Objects.equal(key, keys[next])) {
+      if (getHash(entry) == hash && Objects.equals(key, keys[next])) {
         return next;
       }
       next = getNext(entry);
@@ -390,21 +384,21 @@ class ObjectCountHashMap<K> {
     return -1;
   }
 
-  public boolean containsKey(@NullableDecl Object key) {
+  public boolean containsKey(@Nullable Object key) {
     return indexOf(key) != -1;
   }
 
-  public int get(@NullableDecl Object key) {
+  public int get(@Nullable Object key) {
     int index = indexOf(key);
     return (index == -1) ? 0 : values[index];
   }
 
   @CanIgnoreReturnValue
-  public int remove(@NullableDecl Object key) {
+  public int remove(@Nullable Object key) {
     return remove(key, smearedHash(key));
   }
 
-  private int remove(@NullableDecl Object key, int hash) {
+  private int remove(@Nullable Object key, int hash) {
     int tableIndex = hash & hashTableMask();
     int next = table[tableIndex];
     if (next == UNSET) { // empty bucket
@@ -413,7 +407,7 @@ class ObjectCountHashMap<K> {
     int last = UNSET;
     do {
       if (getHash(entries[next]) == hash) {
-        if (Objects.equal(key, keys[next])) {
+        if (Objects.equals(key, keys[next])) {
           int oldValue = values[next];
 
           if (last == UNSET) {
@@ -471,7 +465,8 @@ class ObjectCountHashMap<K> {
         long entry;
         do {
           previous = lastNext;
-          lastNext = getNext(entry = entries[lastNext]);
+          entry = entries[lastNext];
+          lastNext = getNext(entry);
         } while (lastNext != srcIndex);
         // here, entries[previous] points to the old entry location; update it
         entries[previous] = swapNext(entry, dstIndex);

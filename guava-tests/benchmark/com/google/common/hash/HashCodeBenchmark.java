@@ -22,6 +22,7 @@ import com.google.caliper.Param;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Random;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Benchmarks for comparing the various {@link HashCode#equals} methods.
@@ -41,6 +42,7 @@ import java.util.Random;
  *
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
 public class HashCodeBenchmark {
 
   // Use a statically configured random instance for all of the benchmarks
@@ -68,7 +70,7 @@ public class HashCodeBenchmark {
         }
         boolean areEqual = true;
         for (int i = 0; i < a.length; i++) {
-          areEqual &= (a[i] == b[i]);
+          areEqual &= a[i] == b[i];
         }
         return areEqual;
       }
@@ -83,7 +85,7 @@ public class HashCodeBenchmark {
         for (int i = 0; i < a.length; i++) {
           result = (byte) (result | a[i] ^ b[i]);
         }
-        return (result == 0);
+        return result == 0;
       }
     },
     XORING_TO_INT {
@@ -96,7 +98,7 @@ public class HashCodeBenchmark {
         for (int i = 0; i < a.length; i++) {
           result |= a[i] ^ b[i];
         }
-        return (result == 0);
+        return result == 0;
       }
     },
     MESSAGE_DIGEST_IS_EQUAL {

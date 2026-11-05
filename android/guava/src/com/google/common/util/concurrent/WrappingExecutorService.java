@@ -16,8 +16,11 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Throwables.throwIfUnchecked;
+import static com.google.common.util.concurrent.Platform.restoreInterruptIfIsInterruptedException;
+import static java.util.concurrent.Executors.callable;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Collection;
@@ -25,10 +28,10 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An abstract {@code ExecutorService} that allows subclasses to {@linkplain #wrapTask(Callable)
@@ -40,11 +43,12 @@ import java.util.concurrent.TimeoutException;
  *
  * @author Chris Nokleberg
  */
-@CanIgnoreReturnValue // TODO(cpovirk): Consider being more strict.
+@J2ktIncompatible
 @GwtIncompatible
 abstract class WrappingExecutorService implements ExecutorService {
   private final ExecutorService delegate;
 
+  /** Constructor for use by subclasses. */
   protected WrappingExecutorService(ExecutorService delegate) {
     this.delegate = checkNotNull(delegate);
   }
@@ -53,23 +57,21 @@ abstract class WrappingExecutorService implements ExecutorService {
    * Wraps a {@code Callable} for submission to the underlying executor. This method is also applied
    * to any {@code Runnable} passed to the default implementation of {@link #wrapTask(Runnable)}.
    */
-  protected abstract <T> Callable<T> wrapTask(Callable<T> callable);
+  protected abstract <T extends @Nullable Object> Callable<T> wrapTask(Callable<T> callable);
 
   /**
    * Wraps a {@code Runnable} for submission to the underlying executor. The default implementation
    * delegates to {@link #wrapTask(Callable)}.
    */
   protected Runnable wrapTask(Runnable command) {
-    final Callable<Object> wrapped = wrapTask(Executors.callable(command, null));
-    return new Runnable() {
-      @Override
-      public void run() {
-        try {
-          wrapped.call();
-        } catch (Exception e) {
-          throwIfUnchecked(e);
-          throw new RuntimeException(e);
-        }
+    Callable<Object> wrapped = wrapTask(callable(command, null));
+    return () -> {
+      try {
+        wrapped.call();
+      } catch (Exception e) {
+        restoreInterruptIfIsInterruptedException(e);
+        throwIfUnchecked(e);
+        throw new RuntimeException(e);
       }
     };
   }
@@ -79,7 +81,8 @@ abstract class WrappingExecutorService implements ExecutorService {
    *
    * @throws NullPointerException if any element of {@code tasks} is null
    */
-  private <T> ImmutableList<Callable<T>> wrapTasks(Collection<? extends Callable<T>> tasks) {
+  private <T extends @Nullable Object> ImmutableList<Callable<T>> wrapTasks(
+      Collection<? extends Callable<T>> tasks) {
     ImmutableList.Builder<Callable<T>> builder = ImmutableList.builder();
     for (Callable<T> task : tasks) {
       builder.add(wrapTask(task));
@@ -94,7 +97,7 @@ abstract class WrappingExecutorService implements ExecutorService {
   }
 
   @Override
-  public final <T> Future<T> submit(Callable<T> task) {
+  public final <T extends @Nullable Object> Future<T> submit(Callable<T> task) {
     return delegate.submit(wrapTask(checkNotNull(task)));
   }
 
@@ -104,31 +107,33 @@ abstract class WrappingExecutorService implements ExecutorService {
   }
 
   @Override
-  public final <T> Future<T> submit(Runnable task, T result) {
+  public final <T extends @Nullable Object> Future<T> submit(
+      Runnable task, @ParametricNullness T result) {
     return delegate.submit(wrapTask(task), result);
   }
 
   @Override
-  public final <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
-      throws InterruptedException {
+  public final <T extends @Nullable Object> List<Future<T>> invokeAll(
+      Collection<? extends Callable<T>> tasks) throws InterruptedException {
     return delegate.invokeAll(wrapTasks(tasks));
   }
 
   @Override
-  public final <T> List<Future<T>> invokeAll(
+  public final <T extends @Nullable Object> List<Future<T>> invokeAll(
       Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
       throws InterruptedException {
     return delegate.invokeAll(wrapTasks(tasks), timeout, unit);
   }
 
   @Override
-  public final <T> T invokeAny(Collection<? extends Callable<T>> tasks)
+  public final <T extends @Nullable Object> T invokeAny(Collection<? extends Callable<T>> tasks)
       throws InterruptedException, ExecutionException {
     return delegate.invokeAny(wrapTasks(tasks));
   }
 
   @Override
-  public final <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
+  public final <T extends @Nullable Object> T invokeAny(
+      Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
     return delegate.invokeAny(wrapTasks(tasks), timeout, unit);
   }
@@ -141,6 +146,7 @@ abstract class WrappingExecutorService implements ExecutorService {
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final List<Runnable> shutdownNow() {
     return delegate.shutdownNow();
   }

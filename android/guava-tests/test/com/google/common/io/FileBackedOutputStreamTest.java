@@ -16,18 +16,35 @@
 
 package com.google.common.io;
 
-import com.google.common.testing.GcFinalization;
+import static com.google.common.base.StandardSystemProperty.OS_NAME;
+import static com.google.common.io.FileBackedOutputStream.reachabilityFence;
+import static com.google.common.primitives.Bytes.concat;
+import static com.google.common.testing.GcFinalization.awaitClear;
+import static com.google.common.testing.GcFinalization.awaitDone;
+import static com.google.common.truth.Truth.assertThat;
+import static java.lang.Math.min;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
+import static org.junit.Assert.assertThrows;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Arrays;
+import java.lang.ref.WeakReference;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFileAttributes;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link FileBackedOutputStream}.
  *
+ * <p>For a tiny bit more testing, see {@link FileBackedOutputStreamAndroidIncompatibleTest}.
+ *
  * @author Chris Nokleberg
  */
+@NullUnmarked
 public class FileBackedOutputStreamTest extends IoTestCase {
+
 
   public void testThreshold() throws Exception {
     testThreshold(0, 100, true, false);
@@ -40,13 +57,14 @@ public class FileBackedOutputStreamTest extends IoTestCase {
     testThreshold(1000, 100, false, false);
   }
 
-  private void testThreshold(
-      int fileThreshold, int dataSize, boolean singleByte, boolean resetOnFinalize)
+  private static void testThreshold(
+      int fileThreshold, int dataSize, boolean singleByte, boolean resetWhenGarbageCollected)
       throws IOException {
     byte[] data = newPreFilledByteArray(dataSize);
-    FileBackedOutputStream out = new FileBackedOutputStream(fileThreshold, resetOnFinalize);
+    FileBackedOutputStream out =
+        new FileBackedOutputStream(fileThreshold, resetWhenGarbageCollected);
     ByteSource source = out.asByteSource();
-    int chunk1 = Math.min(dataSize, fileThreshold);
+    int chunk1 = min(dataSize, fileThreshold);
     int chunk2 = dataSize - chunk1;
 
     // Write just enough to not trip the threshold
@@ -55,7 +73,7 @@ public class FileBackedOutputStreamTest extends IoTestCase {
       assertTrue(ByteSource.wrap(data).slice(0, chunk1).contentEquals(source));
     }
     File file = out.getFile();
-    assertNull(file);
+    assertThat(file).isNull();
 
     // Write data to go over the threshold
     if (chunk2 > 0) {
@@ -63,11 +81,18 @@ public class FileBackedOutputStreamTest extends IoTestCase {
       file = out.getFile();
       assertEquals(dataSize, file.length());
       assertTrue(file.exists());
+      assertThat(file.getName()).contains("FileBackedOutputStream");
+      if (!isAndroid() && !isWindows()) {
+        PosixFileAttributes attributes =
+            java.nio.file.Files.getFileAttributeView(file.toPath(), PosixFileAttributeView.class)
+                .readAttributes();
+        assertThat(attributes.permissions()).containsExactly(OWNER_READ, OWNER_WRITE);
+      }
     }
     out.close();
 
     // Check that source returns the right data
-    assertTrue(Arrays.equals(data, source.read()));
+    assertThat(source.read()).isEqualTo(data);
 
     // Make sure that reset deleted the file
     out.reset();
@@ -76,30 +101,8 @@ public class FileBackedOutputStreamTest extends IoTestCase {
     }
   }
 
-  public void testFinalizeDeletesFile() throws Exception {
-    byte[] data = newPreFilledByteArray(100);
-    FileBackedOutputStream out = new FileBackedOutputStream(0, true);
 
-    write(out, data, 0, 100, true);
-    final File file = out.getFile();
-    assertEquals(100, file.length());
-    assertTrue(file.exists());
-    out.close();
-
-    // Make sure that finalize deletes the file
-    out = null;
-
-    // times out and throws RuntimeException on failure
-    GcFinalization.awaitDone(
-        new GcFinalization.FinalizationPredicate() {
-          @Override
-          public boolean isDone() {
-            return !file.exists();
-          }
-        });
-  }
-
-  public void testThreshold_resetOnFinalize() throws Exception {
+  public void testThreshold_resetWhenGarbageCollected() throws Exception {
     testThreshold(0, 100, true, true);
     testThreshold(10, 100, true, true);
     testThreshold(100, 100, true, true);
@@ -110,7 +113,7 @@ public class FileBackedOutputStreamTest extends IoTestCase {
     testThreshold(1000, 100, false, true);
   }
 
-  private static void write(OutputStream out, byte[] b, int off, int len, boolean singleByte)
+  static void write(OutputStream out, byte[] b, int off, int len, boolean singleByte)
       throws IOException {
     if (singleByte) {
       for (int i = off; i < off + len; i++) {
@@ -130,17 +133,13 @@ public class FileBackedOutputStreamTest extends IoTestCase {
     ByteSource source = out.asByteSource();
 
     out.write(data);
-    assertTrue(Arrays.equals(data, source.read()));
+    assertThat(source.read()).isEqualTo(data);
 
     out.close();
-    try {
-      out.write(42);
-      fail("expected exception");
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> out.write(42));
 
     // Verify that write had no effect
-    assertTrue(Arrays.equals(data, source.read()));
+    assertThat(source.read()).isEqualTo(data);
     out.reset();
   }
 
@@ -150,14 +149,114 @@ public class FileBackedOutputStreamTest extends IoTestCase {
     ByteSource source = out.asByteSource();
 
     out.write(data);
-    assertTrue(Arrays.equals(data, source.read()));
+    assertThat(source.read()).isEqualTo(data);
 
     out.reset();
-    assertTrue(Arrays.equals(new byte[0], source.read()));
+    assertThat(source.read()).isEmpty();
 
     out.write(data);
-    assertTrue(Arrays.equals(data, source.read()));
+    assertThat(source.read()).isEqualTo(data);
 
     out.close();
+  }
+
+  private static boolean isAndroid() {
+    return System.getProperty("java.runtime.name", "").contains("Android");
+  }
+
+  private static boolean isWindows() {
+    return OS_NAME.value().startsWith("Windows");
+  }
+
+  /**
+   * Test that verifies the resource leak fix for <a
+   * href="https://github.com/google/guava/issues/5756">Issue #5756</a>.
+   *
+   * <p>This test covers a scenario where we write a smaller amount of data first, then write a
+   * large amount that crosses the threshold (transitioning from "not at threshold" to "over the
+   * threshold"). (We then write some more afterward.) This differs from the existing
+   * testThreshold() which writes exactly enough bytes to fill the buffer, then immediately writes
+   * more bytes.
+   *
+   * <p>Note: Direct testing of the {@link IOException} scenario during write/flush is challenging
+   * without mocking. This test verifies that normal operation with threshold crossing still works
+   * correctly with the fix in place.
+   */
+  public void testThresholdCrossing_resourceManagement() throws Exception {
+    FileBackedOutputStream out = new FileBackedOutputStream(/* fileThreshold= */ 10);
+    ByteSource source = out.asByteSource();
+
+    byte[] chunk1 = newPreFilledByteArray(8); // Below threshold
+    byte[] chunk2 = newPreFilledByteArray(5); // Crosses threshold
+    byte[] chunk3 = newPreFilledByteArray(20); // More data to file
+
+    out.write(chunk1);
+    assertThat(out.getFile()).isNull();
+
+    out.write(chunk2);
+    assertThat(out.getFile()).isNotNull();
+    assertThat(source.read()).isEqualTo(concat(chunk1, chunk2));
+
+    out.write(chunk3);
+    assertThat(source.read()).isEqualTo(concat(chunk1, chunk2, chunk3));
+
+    out.reset();
+  }
+
+
+  public void testResetWhenGarbageCollected() throws Exception {
+    FileAndWeakByteSource fileAndSource = leakFileBackedOutputStream();
+    File file = fileAndSource.file;
+    WeakReference<ByteSource> sourceRef = fileAndSource.sourceRef;
+    fileAndSource = null;
+    awaitClear(sourceRef);
+    awaitDone(() -> !file.exists());
+  }
+
+  private static final class FileAndWeakByteSource {
+    final File file;
+    final WeakReference<ByteSource> sourceRef;
+
+    FileAndWeakByteSource(File file, WeakReference<ByteSource> sourceRef) {
+      this.file = file;
+      this.sourceRef = sourceRef;
+    }
+  }
+
+
+  public void testFileReplacedOnDisk() throws Exception {
+    if (isWindows()) {
+      return;
+    }
+    byte[] chunk1 = newPreFilledByteArray(20);
+    byte[] chunk2 = newPreFilledByteArray(30);
+    FileBackedOutputStream out = new FileBackedOutputStream(/* fileThreshold= */ 10);
+    ByteSource source = out.asByteSource();
+
+    out.write(chunk1);
+    File file = out.getFile();
+    assertThat(file).isNotNull();
+
+    assertThat(file.delete()).isTrue();
+    byte[] replacementBytes = new byte[] {9, 9, 9};
+    Files.write(replacementBytes, file);
+
+    out.write(chunk2);
+    out.close();
+    assertThat(source.read()).isEqualTo(concat(chunk1, chunk2));
+    assertThat(Files.toByteArray(file)).isEqualTo(replacementBytes);
+
+    out.reset();
+    assertThat(file.exists()).isFalse();
+  }
+
+  private static FileAndWeakByteSource leakFileBackedOutputStream() throws IOException {
+    FileBackedOutputStream out =
+        new FileBackedOutputStream(0, /* resetWhenGarbageCollected= */ true);
+    out.write(new byte[10]);
+    File file = out.getFile();
+    assertThat(file.exists()).isTrue();
+    reachabilityFence(out); // not sure if this is necessary even in theory
+    return new FileAndWeakByteSource(file, new WeakReference<>(out.asByteSource()));
   }
 }

@@ -16,13 +16,18 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.ImmutableList.asImmutableList;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Map.Entry;
 import java.util.Spliterator;
 import java.util.function.Consumer;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code entrySet()} implementation for {@link ImmutableMap}.
@@ -30,14 +35,17 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Jesse Wilson
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
-abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
+@GwtCompatible
+abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet.CachingAsList<Entry<K, V>> {
+  private static final int SPLITERATOR_CHARACTERISTICS =
+      Spliterator.ORDERED | Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.IMMUTABLE;
+
   static final class RegularEntrySet<K, V> extends ImmutableMapEntrySet<K, V> {
     private final transient ImmutableMap<K, V> map;
     private final transient ImmutableList<Entry<K, V>> entries;
 
     RegularEntrySet(ImmutableMap<K, V> map, Entry<K, V>[] entries) {
-      this(map, ImmutableList.<Entry<K, V>>asImmutableList(entries));
+      this(map, asImmutableList(entries));
     }
 
     RegularEntrySet(ImmutableMap<K, V> map, ImmutableList<Entry<K, V>> entries) {
@@ -51,8 +59,8 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
     }
 
     @Override
-    @GwtIncompatible("not used in GWT")
-    int copyIntoArray(Object[] dst, int offset) {
+    @GwtIncompatible // not used in GWT
+    int copyIntoArray(@Nullable Object[] dst, int offset) {
       return entries.copyIntoArray(dst, offset);
     }
 
@@ -62,8 +70,9 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
     }
 
     @Override
+    @GwtIncompatible // Spliterator
     public Spliterator<Entry<K, V>> spliterator() {
-      return entries.spliterator();
+      return entries.spliteratorWithCharacteristics(SPLITERATOR_CHARACTERISTICS);
     }
 
     @Override
@@ -75,6 +84,15 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
     ImmutableList<Entry<K, V>> createAsList() {
       return new RegularImmutableAsList<>(this, entries);
     }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+    @GwtIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
+    }
   }
 
   ImmutableMapEntrySet() {}
@@ -82,12 +100,12 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
   abstract ImmutableMap<K, V> map();
 
   @Override
-  public int size() {
+  public final int size() {
     return map().size();
   }
 
   @Override
-  public boolean contains(@Nullable Object object) {
+  public final boolean contains(@Nullable Object object) {
     if (object instanceof Entry) {
       Entry<?, ?> entry = (Entry<?, ?>) object;
       V value = map().get(entry.getKey());
@@ -97,7 +115,7 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
   }
 
   @Override
-  boolean isPartialView() {
+  final boolean isPartialView() {
     return map().isPartialView();
   }
 
@@ -112,14 +130,22 @@ abstract class ImmutableMapEntrySet<K, V> extends ImmutableSet<Entry<K, V>> {
     return map().hashCode();
   }
 
-  @GwtIncompatible // serialization
-  @Override
+  @GwtIncompatible
+  @J2ktIncompatible
+    @Override
   Object writeReplace() {
     return new EntrySetSerializedForm<>(map());
   }
 
-  @GwtIncompatible // serialization
-  private static class EntrySetSerializedForm<K, V> implements Serializable {
+  @GwtIncompatible
+  @J2ktIncompatible
+    private void readObject(ObjectInputStream stream) throws InvalidObjectException {
+    throw new InvalidObjectException("Use EntrySetSerializedForm");
+  }
+
+  @GwtIncompatible
+  @J2ktIncompatible
+  private static final class EntrySetSerializedForm<K, V> implements Serializable {
     final ImmutableMap<K, V> map;
 
     EntrySetSerializedForm(ImmutableMap<K, V> map) {

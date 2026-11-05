@@ -17,6 +17,8 @@
 package com.google.common.collect.testing.features;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.Set;
 
 /**
@@ -26,8 +28,8 @@ import java.util.Set;
  */
 @GwtCompatible
 public class ConflictingRequirementsException extends Exception {
-  private Set<Feature<?>> conflicts;
-  private Object source;
+  private final Set<Feature<?>> conflicts;
+  private final Object source;
 
   public ConflictingRequirementsException(
       String message, Set<Feature<?>> conflicts, Object source) {
@@ -49,5 +51,5 @@ public class ConflictingRequirementsException extends Exception {
     return super.getMessage() + " (source: " + source + ")";
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

@@ -16,10 +16,15 @@
 
 package com.google.common.collect;
 
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.singletonMap;
+
 import com.google.common.annotations.GwtCompatible;
-import java.util.Collections;
+import com.google.common.testing.EqualsTester;
 import java.util.Map.Entry;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@code AbstractMapEntry}.
@@ -27,11 +32,10 @@ import junit.framework.TestCase;
  * @author Mike Bostock
  */
 @GwtCompatible
+@NullMarked
 public class AbstractMapEntryTest extends TestCase {
-  private static final String NK = null;
-  private static final Integer NV = null;
-
-  private static <K, V> Entry<K, V> entry(final K key, final V value) {
+  private static <K extends @Nullable Object, V extends @Nullable Object> Entry<K, V> entry(
+      K key, V value) {
     return new AbstractMapEntry<K, V>() {
       @Override
       public K getKey() {
@@ -45,48 +49,29 @@ public class AbstractMapEntryTest extends TestCase {
     };
   }
 
-  private static <K, V> Entry<K, V> control(K key, V value) {
-    return Collections.singletonMap(key, value).entrySet().iterator().next();
+  private static <K extends @Nullable Object, V extends @Nullable Object> Entry<K, V> control(
+      K key, V value) {
+    return singletonMap(key, value).entrySet().iterator().next();
   }
 
   public void testToString() {
-    assertEquals("foo=1", entry("foo", 1).toString());
+    assertThat(entry("foo", 1).toString()).isEqualTo("foo=1");
   }
 
   public void testToStringNull() {
-    assertEquals("null=1", entry(NK, 1).toString());
-    assertEquals("foo=null", entry("foo", NV).toString());
-    assertEquals("null=null", entry(NK, NV).toString());
+    assertThat(entry(null, 1).toString()).isEqualTo("null=1");
+    assertThat(entry("foo", null).toString()).isEqualTo("foo=null");
+    assertThat(entry(null, null).toString()).isEqualTo("null=null");
   }
 
   public void testEquals() {
-    Entry<String, Integer> foo1 = entry("foo", 1);
-    assertEquals(foo1, foo1);
-    assertEquals(control("foo", 1), foo1);
-    assertEquals(control("bar", 2), entry("bar", 2));
-    assertFalse(control("foo", 1).equals(entry("foo", 2)));
-    assertFalse(foo1.equals(control("bar", 1)));
-    assertFalse(foo1.equals(new Object()));
-    assertFalse(foo1.equals(null));
-  }
-
-  public void testEqualsNull() {
-    assertEquals(control(NK, 1), entry(NK, 1));
-    assertEquals(control("bar", NV), entry("bar", NV));
-    assertFalse(control(NK, 1).equals(entry(NK, 2)));
-    assertFalse(entry(NK, 1).equals(control("bar", 1)));
-    assertFalse(entry(NK, 1).equals(new Object()));
-    assertFalse(entry(NK, 1).equals(null));
-  }
-
-  public void testHashCode() {
-    assertEquals(control("foo", 1).hashCode(), entry("foo", 1).hashCode());
-    assertEquals(control("bar", 2).hashCode(), entry("bar", 2).hashCode());
-  }
-
-  public void testHashCodeNull() {
-    assertEquals(control(NK, 1).hashCode(), entry(NK, 1).hashCode());
-    assertEquals(control("bar", NV).hashCode(), entry("bar", NV).hashCode());
-    assertEquals(control(NK, NV).hashCode(), entry(NK, NV).hashCode());
+    new EqualsTester()
+        .addEqualityGroup(entry("foo", 1), control("foo", 1))
+        .addEqualityGroup(entry("foo", 2))
+        .addEqualityGroup(entry("bar", 1))
+        .addEqualityGroup(entry(null, 1), control(null, 1))
+        .addEqualityGroup(entry("foo", null), control("foo", null))
+        .addEqualityGroup(entry(null, null), control(null, null))
+        .testEquals();
   }
 }

@@ -18,16 +18,22 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
+import static java.lang.Math.floorMod;
+import static java.lang.System.arraycopy;
+import static java.util.Collections.emptyList;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.errorprone.annotations.InlineMe;
+import com.google.errorprone.annotations.InlineMeValidationDisabled;
 import java.io.Serializable;
 import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.RandomAccess;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@code byte} primitives, that are not already found in
@@ -48,14 +54,15 @@ public final class Bytes {
   private Bytes() {}
 
   /**
-   * Returns a hash code for {@code value}; equal to the result of invoking {@code ((Byte)
-   * value).hashCode()}.
-   *
-   * <p><b>Java 8 users:</b> use {@link Byte#hashCode(byte)} instead.
+   * Returns a hash code for {@code value}; obsolete alternative to {@link Byte#hashCode(byte)}.
    *
    * @param value a primitive {@code byte} value
    * @return a hash code for the value
    */
+  @InlineMe(replacement = "Byte.hashCode(value)")
+  @InlineMeValidationDisabled(
+      "The hash code of a byte is the int version of the byte itself, so it's simplest to return"
+          + " that.")
   public static int hashCode(byte value) {
     return value;
   }
@@ -155,19 +162,29 @@ public final class Bytes {
    *
    * @param arrays zero or more {@code byte} arrays
    * @return a single array containing all the values from the source arrays, in order
+   * @throws IllegalArgumentException if the total number of elements in {@code arrays} does not fit
+   *     in an {@code int}
    */
   public static byte[] concat(byte[]... arrays) {
-    int length = 0;
+    long length = 0;
     for (byte[] array : arrays) {
       length += array.length;
     }
-    byte[] result = new byte[length];
+    byte[] result = new byte[checkNoOverflow(length)];
     int pos = 0;
     for (byte[] array : arrays) {
-      System.arraycopy(array, 0, result, pos, array.length);
+      arraycopy(array, 0, result, pos, array.length);
       pos += array.length;
     }
     return result;
+  }
+
+  private static int checkNoOverflow(long result) {
+    checkArgument(
+        result == (int) result,
+        "the total number of elements (%s) in the arrays must fit in an int",
+        result);
+    return (int) result;
   }
 
   /**
@@ -226,18 +243,19 @@ public final class Bytes {
    * written to or read from it. For example, whether {@code list.get(0) == list.get(0)} is true for
    * the returned list is unspecified.
    *
+   * <p>The returned list is serializable.
+   *
    * @param backingArray the array to back the list
    * @return a list view of the array
    */
   public static List<Byte> asList(byte... backingArray) {
     if (backingArray.length == 0) {
-      return Collections.emptyList();
+      return emptyList();
     }
     return new ByteArrayAsList(backingArray);
   }
 
-  @GwtCompatible
-  private static class ByteArrayAsList extends AbstractList<Byte>
+  private static final class ByteArrayAsList extends AbstractList<Byte>
       implements RandomAccess, Serializable {
     final byte[] array;
     final int start;
@@ -270,13 +288,13 @@ public final class Bytes {
     }
 
     @Override
-    public boolean contains(Object target) {
+    public boolean contains(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       return (target instanceof Byte) && Bytes.indexOf(array, (Byte) target, start, end) != -1;
     }
 
     @Override
-    public int indexOf(Object target) {
+    public int indexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Byte) {
         int i = Bytes.indexOf(array, (Byte) target, start, end);
@@ -288,7 +306,7 @@ public final class Bytes {
     }
 
     @Override
-    public int lastIndexOf(Object target) {
+    public int lastIndexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Byte) {
         int i = Bytes.lastIndexOf(array, (Byte) target, start, end);
@@ -313,7 +331,7 @@ public final class Bytes {
       int size = size();
       checkPositionIndexes(fromIndex, toIndex, size);
       if (fromIndex == toIndex) {
-        return Collections.emptyList();
+        return emptyList();
       }
       return new ByteArrayAsList(array, start + fromIndex, start + toIndex);
     }
@@ -343,7 +361,7 @@ public final class Bytes {
     public int hashCode() {
       int result = 1;
       for (int i = start; i < end; i++) {
-        result = 31 * result + Bytes.hashCode(array[i]);
+        result = 31 * result + Byte.hashCode(array[i]);
       }
       return result;
     }
@@ -362,7 +380,7 @@ public final class Bytes {
       return Arrays.copyOfRange(array, start, end);
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
@@ -394,5 +412,53 @@ public final class Bytes {
       array[i] = array[j];
       array[j] = tmp;
     }
+  }
+
+  /**
+   * Performs a right rotation of {@code array} of "distance" places, so that the first element is
+   * moved to index "distance", and the element at index {@code i} ends up at index {@code (distance
+   * + i) mod array.length}. This is equivalent to {@code Collections.rotate(Bytes.asList(array),
+   * distance)}, but is somewhat faster.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @since 32.0.0
+   */
+  public static void rotate(byte[] array, int distance) {
+    rotate(array, distance, 0, array.length);
+  }
+
+  /**
+   * Performs a right rotation of {@code array} between {@code fromIndex} inclusive and {@code
+   * toIndex} exclusive. This is equivalent to {@code
+   * Collections.rotate(Bytes.asList(array).subList(fromIndex, toIndex), distance)}, but is somewhat
+   * faster.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @throws IndexOutOfBoundsException if {@code fromIndex < 0}, {@code toIndex > array.length}, or
+   *     {@code toIndex > fromIndex}
+   * @since 32.0.0
+   */
+  public static void rotate(byte[] array, int distance, int fromIndex, int toIndex) {
+    // See Ints.rotate for more details about possible algorithms here.
+    checkNotNull(array);
+    checkPositionIndexes(fromIndex, toIndex, array.length);
+    int length = toIndex - fromIndex;
+    if (length <= 1) {
+      return;
+    }
+
+    // Map the given distance to an equivalent, non-negative value less than "length".
+    distance = floorMod(distance, length);
+    if (distance == 0) {
+      return;
+    }
+    // The current index of what will become the first element of the rotated section.
+    int newFirstIndex = toIndex - distance;
+
+    reverse(array, fromIndex, newFirstIndex);
+    reverse(array, newFirstIndex, toIndex);
+    reverse(array, fromIndex, toIndex);
   }
 }

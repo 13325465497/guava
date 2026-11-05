@@ -26,26 +26,41 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.j2objc.annotations.J2ObjCIncompatible;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * An object that measures elapsed time in nanoseconds. It is useful to measure elapsed time using
- * this class instead of direct calls to {@link System#nanoTime} for a few reasons:
+ * An object that accurately measures <i>elapsed time</i>: the measured duration between two
+ * successive readings of "now" in the same process.
+ *
+ * <p>In contrast, <i>wall time</i> is a reading of "now" as given by a method like
+ * {@link System#currentTimeMillis()}, best represented as an {@link java.time.Instant}. Such values
+ * <i>can</i> be subtracted to obtain a {@link Duration} (such as by {@link Duration#between}), but
+ * doing so does <i>not</i> give a reliable measurement of elapsed time, because wall time readings
+ * are inherently approximate, routinely affected by periodic clock corrections. Because this class
+ * (by default) uses {@link System#nanoTime}, it is unaffected by these changes.
+ *
+ * <p>Use this class instead of direct calls to {@link System#nanoTime} for two reasons:
  *
  * <ul>
- *   <li>An alternate time source can be substituted, for testing or performance reasons.
- *   <li>As documented by {@code nanoTime}, the value returned has no absolute meaning, and can only
- *       be interpreted as relative to another timestamp returned by {@code nanoTime} at a different
- *       time. {@code Stopwatch} is a more effective abstraction because it exposes only these
- *       relative values, not the absolute ones.
+ *   <li>The raw {@code long} values returned by {@code nanoTime} are meaningless and unsafe to use
+ *       in any other way than how {@code Stopwatch} uses them.
+ *   <li>An alternative source of nanosecond ticks can be substituted, for example for testing or
+ *       performance reasons, without affecting most of your code.
  * </ul>
+ *
+ * <p>The one downside of {@code Stopwatch} relative to {@link System#nanoTime()} is that {@code
+ * Stopwatch} requires object allocation and additional method calls, which can reduce the accuracy
+ * of the elapsed times reported. {@code Stopwatch} is still suitable for logging and metrics where
+ * reasonably accurate values are sufficient. In the uncommon case that you need to maximize
+ * accuracy, use {@code System.nanoTime()} directly instead.
  *
  * <p>Basic usage:
  *
- * <pre>{@code
+ * {@snippet :
  * Stopwatch stopwatch = Stopwatch.createStarted();
  * doSomething();
  * stopwatch.stop(); // optional
@@ -53,10 +68,10 @@ import java.util.concurrent.TimeUnit;
  * Duration duration = stopwatch.elapsed();
  *
  * log.info("time: " + stopwatch); // formatted string like "12.3 ms"
- * }</pre>
+ * }
  *
- * <p>Stopwatch methods are not idempotent; it is an error to start or stop a stopwatch that is
- * already in the desired state.
+ * <p>The state-changing methods are not idempotent; it is an error to start or stop a stopwatch
+ * that is already in the desired state.
  *
  * <p>When testing code that uses this class, use {@link #createUnstarted(Ticker)} or {@link
  * #createStarted(Ticker)} to supply a fake or mock ticker. This allows you to simulate any valid
@@ -67,19 +82,19 @@ import java.util.concurrent.TimeUnit;
  * <p><b>Warning for Android users:</b> a stopwatch with default behavior may not continue to keep
  * time while the device is asleep. Instead, create one like this:
  *
- * <pre>{@code
+ * {@snippet :
  * Stopwatch.createStarted(
  *      new Ticker() {
  *        public long read() {
  *          return android.os.SystemClock.elapsedRealtimeNanos();
  *        }
  *      });
- * }</pre>
+ * }
  *
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 @SuppressWarnings("GoodTime") // lots of violations
 public final class Stopwatch {
   private final Ticker ticker;
@@ -206,8 +221,9 @@ public final class Stopwatch {
    * Returns the current elapsed time shown on this stopwatch as a {@link Duration}. Unlike {@link
    * #elapsed(TimeUnit)}, this method does not lose any precision due to rounding.
    *
-   * @since 22.0
+   * @since 22.0 (but only since 33.4.0 in the Android flavor)
    */
+  @J2ktIncompatible
   @GwtIncompatible
   @J2ObjCIncompatible
   public Duration elapsed() {
@@ -253,7 +269,7 @@ public final class Stopwatch {
       case NANOSECONDS:
         return "ns";
       case MICROSECONDS:
-        return "\u03bcs"; // μs
+        return "μs";
       case MILLISECONDS:
         return "ms";
       case SECONDS:
@@ -264,8 +280,7 @@ public final class Stopwatch {
         return "h";
       case DAYS:
         return "d";
-      default:
-        throw new AssertionError();
     }
+    throw new AssertionError();
   }
 }

@@ -18,7 +18,7 @@ import static com.google.common.base.Strings.lenientFormat;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static convenience methods that serve the same purpose as Java language <a
@@ -26,15 +26,15 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * except that they are always enabled. These methods should be used instead of Java assertions
  * whenever there is a chance the check may fail "in real life". Example:
  *
- * <pre>{@code
+ * {@snippet :
  * Bill bill = remoteService.getLastUnpaidBill();
  *
  * // In case bug 12345 happens again we'd rather just die
  * Verify.verify(bill.status() == Status.UNPAID,
  *     "Unexpected bill status: %s", bill.status());
- * }</pre>
+ * }
  *
- * <h3>Comparison to alternatives</h3>
+ * <h2>Comparison to alternatives</h2>
  *
  * <p><b>Note:</b> In some cases the differences explained below can be subtle. When it's unclear
  * which approach to use, <b>don't worry</b> too much about it; just pick something that seems
@@ -45,7 +45,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  *       (such as by passing an invalid argument), use the utilities of the {@link Preconditions}
  *       class instead.
  *   <li>If checking an <i>impossible</i> condition (which <i>cannot</i> happen unless your own
- *       class or its <i>trusted</i> dependencies is badly broken), this is what ordinary Java
+ *       class or its <i>trusted</i> dependencies are badly broken), this is what ordinary Java
  *       assertions are for. Note that assertions are not enabled by default; they are essentially
  *       considered "compiled comments."
  *   <li>An explicit {@code if/throw} (as illustrated below) is always acceptable; we still
@@ -56,21 +56,21 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  *       same function with more clarity.
  * </ul>
  *
- * <h3>Warning about performance</h3>
+ * <h2>Warning about performance</h2>
  *
  * <p>Remember that parameter values for message construction must all be computed eagerly, and
  * autoboxing and varargs array creation may happen as well, even when the verification succeeds and
  * the message ends up unneeded. Performance-sensitive verification checks should continue to use
  * usual form:
  *
- * <pre>{@code
+ * {@snippet :
  * Bill bill = remoteService.getLastUnpaidBill();
  * if (bill.status() != Status.UNPAID) {
  *   throw new VerifyException("Unexpected bill status: " + bill.status());
  * }
- * }</pre>
+ * }
  *
- * <h3>Only {@code %s} is supported</h3>
+ * <h2>Only {@code %s} is supported</h2>
  *
  * <p>As with {@link Preconditions}, {@code Verify} uses {@link Strings#lenientFormat} to format
  * error message template strings. This only supports the {@code "%s"} specifier, not the full range
@@ -79,7 +79,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * behave as expected, and will still include all argument values in the error message; the message
  * will simply not be formatted exactly as intended.
  *
- * <h3>More information</h3>
+ * <h2>More information</h2>
  *
  * See <a href="https://github.com/google/guava/wiki/ConditionalFailuresExplained">Conditional
  * failures explained</a> in the Guava User Guide for advice on when this class should be used.
@@ -118,8 +118,8 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object... errorMessageArgs) {
+      String errorMessageTemplate,
+      @Nullable Object @Nullable ... errorMessageArgs) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, errorMessageArgs));
     }
@@ -134,21 +134,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, char p1) {
-    if (!expression) {
-      throw new VerifyException(lenientFormat(errorMessageTemplate, p1));
-    }
-  }
-
-  /**
-   * Ensures that {@code expression} is {@code true}, throwing a {@code VerifyException} with a
-   * custom message otherwise.
-   *
-   * <p>See {@link #verify(boolean, String, Object...)} for details.
-   *
-   * @since 23.1 (varargs overload since 17.0)
-   */
-  public static void verify(boolean expression, @NullableDecl String errorMessageTemplate, int p1) {
+      boolean expression, String errorMessageTemplate, char p1) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1));
     }
@@ -163,7 +149,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, long p1) {
+      boolean expression, String errorMessageTemplate, int p1) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1));
     }
@@ -178,7 +164,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, @NullableDecl Object p1) {
+      boolean expression, String errorMessageTemplate, long p1) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1));
     }
@@ -193,7 +179,22 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, char p1, char p2) {
+      boolean expression, String errorMessageTemplate, @Nullable Object p1) {
+    if (!expression) {
+      throw new VerifyException(lenientFormat(errorMessageTemplate, p1));
+    }
+  }
+
+  /**
+   * Ensures that {@code expression} is {@code true}, throwing a {@code VerifyException} with a
+   * custom message otherwise.
+   *
+   * <p>See {@link #verify(boolean, String, Object...)} for details.
+   *
+   * @since 23.1 (varargs overload since 17.0)
+   */
+  public static void verify(
+      boolean expression, String errorMessageTemplate, char p1, char p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -208,7 +209,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, int p1, char p2) {
+      boolean expression, String errorMessageTemplate, int p1, char p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -223,7 +224,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, long p1, char p2) {
+      boolean expression, String errorMessageTemplate, long p1, char p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -239,8 +240,8 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
+      String errorMessageTemplate,
+      @Nullable Object p1,
       char p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
@@ -256,7 +257,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, char p1, int p2) {
+      boolean expression, String errorMessageTemplate, char p1, int p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -271,7 +272,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, int p1, int p2) {
+      boolean expression, String errorMessageTemplate, int p1, int p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -286,7 +287,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, long p1, int p2) {
+      boolean expression, String errorMessageTemplate, long p1, int p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -302,8 +303,8 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
+      String errorMessageTemplate,
+      @Nullable Object p1,
       int p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
@@ -319,7 +320,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, char p1, long p2) {
+      boolean expression, String errorMessageTemplate, char p1, long p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -334,7 +335,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, int p1, long p2) {
+      boolean expression, String errorMessageTemplate, int p1, long p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -349,7 +350,7 @@ public final class Verify {
    * @since 23.1 (varargs overload since 17.0)
    */
   public static void verify(
-      boolean expression, @NullableDecl String errorMessageTemplate, long p1, long p2) {
+      boolean expression, String errorMessageTemplate, long p1, long p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -365,8 +366,8 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
+      String errorMessageTemplate,
+      @Nullable Object p1,
       long p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
@@ -383,9 +384,9 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
+      String errorMessageTemplate,
       char p1,
-      @NullableDecl Object p2) {
+      @Nullable Object p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -401,9 +402,9 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
+      String errorMessageTemplate,
       int p1,
-      @NullableDecl Object p2) {
+      @Nullable Object p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -419,9 +420,9 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
+      String errorMessageTemplate,
       long p1,
-      @NullableDecl Object p2) {
+      @Nullable Object p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -437,9 +438,9 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
-      @NullableDecl Object p2) {
+      String errorMessageTemplate,
+      @Nullable Object p1,
+      @Nullable Object p2) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2));
     }
@@ -455,10 +456,10 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
-      @NullableDecl Object p2,
-      @NullableDecl Object p3) {
+      String errorMessageTemplate,
+      @Nullable Object p1,
+      @Nullable Object p2,
+      @Nullable Object p3) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2, p3));
     }
@@ -474,15 +475,24 @@ public final class Verify {
    */
   public static void verify(
       boolean expression,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object p1,
-      @NullableDecl Object p2,
-      @NullableDecl Object p3,
-      @NullableDecl Object p4) {
+      String errorMessageTemplate,
+      @Nullable Object p1,
+      @Nullable Object p2,
+      @Nullable Object p3,
+      @Nullable Object p4) {
     if (!expression) {
       throw new VerifyException(lenientFormat(errorMessageTemplate, p1, p2, p3, p4));
     }
   }
+
+  /*
+   * For a discussion of the signature of verifyNotNull, see the discussion above
+   * Preconditions.checkNotNull.
+   *
+   * (verifyNotNull has many fewer "problem" callers, so we could try to be stricter. On the other
+   * hand, verifyNotNull arguably has more reason to accept nullable arguments in the first
+   * place....)
+   */
 
   /**
    * Ensures that {@code reference} is non-null, throwing a {@code VerifyException} with a default
@@ -493,7 +503,7 @@ public final class Verify {
    * @see Preconditions#checkNotNull Preconditions.checkNotNull()
    */
   @CanIgnoreReturnValue
-  public static <T> T verifyNotNull(@NullableDecl T reference) {
+  public static <T> T verifyNotNull(@Nullable T reference) {
     return verifyNotNull(reference, "expected a non-null reference");
   }
 
@@ -514,10 +524,12 @@ public final class Verify {
    */
   @CanIgnoreReturnValue
   public static <T> T verifyNotNull(
-      @NullableDecl T reference,
-      @NullableDecl String errorMessageTemplate,
-      @NullableDecl Object... errorMessageArgs) {
-    verify(reference != null, errorMessageTemplate, errorMessageArgs);
+      @Nullable T reference,
+      String errorMessageTemplate,
+      @Nullable Object @Nullable ... errorMessageArgs) {
+    if (reference == null) {
+      throw new VerifyException(lenientFormat(errorMessageTemplate, errorMessageArgs));
+    }
     return reference;
   }
 

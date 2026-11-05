@@ -16,12 +16,15 @@
 
 package com.google.common.io;
 
+import static com.google.common.base.StandardSystemProperty.OS_NAME;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static com.google.common.jimfs.Feature.SECURE_DIRECTORY_STREAM;
 import static com.google.common.jimfs.Feature.SYMBOLIC_LINKS;
 import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ObjectArrays;
 import com.google.common.jimfs.Configuration;
@@ -34,16 +37,18 @@ import java.nio.file.FileSystemException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.EnumSet;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link MoreFiles}.
@@ -53,6 +58,7 @@ import junit.framework.TestSuite;
  * @author Colin Decker
  */
 
+@NullUnmarked
 public class MoreFilesTest extends TestCase {
 
   public static TestSuite suite() {
@@ -89,7 +95,7 @@ public class MoreFilesTest extends TestCase {
     return FS.getRootDirectories().iterator().next();
   }
 
-  private Path tempDir;
+  private @Nullable Path tempDir;
 
   @Override
   protected void setUp() throws Exception {
@@ -111,7 +117,7 @@ public class MoreFilesTest extends TestCase {
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc)
+            public FileVisitResult postVisitDirectory(Path dir, @Nullable IOException exc)
                 throws IOException {
               if (exc != null) {
                 return FileVisitResult.TERMINATE;
@@ -136,11 +142,7 @@ public class MoreFilesTest extends TestCase {
 
       assertThat(source.sizeIfKnown()).isAbsent();
 
-      try {
-        source.size();
-        fail();
-      } catch (IOException expected) {
-      }
+      assertThrows(IOException.class, source::size);
     }
   }
 
@@ -155,11 +157,7 @@ public class MoreFilesTest extends TestCase {
 
       assertThat(source.sizeIfKnown()).isAbsent();
 
-      try {
-        source.size();
-        fail();
-      } catch (IOException expected) {
-      }
+      assertThrows(IOException.class, source::size);
     }
   }
 
@@ -188,11 +186,7 @@ public class MoreFilesTest extends TestCase {
 
       assertThat(source.sizeIfKnown()).isAbsent();
 
-      try {
-        source.size();
-        fail();
-      } catch (IOException expected) {
-      }
+      assertThrows(IOException.class, source::size);
     }
   }
 
@@ -244,6 +238,7 @@ public class MoreFilesTest extends TestCase {
     assertTrue(Files.exists(temp));
     Files.delete(temp);
     assertFalse(Files.exists(temp));
+
     MoreFiles.touch(temp);
     assertTrue(Files.exists(temp));
     MoreFiles.touch(temp);
@@ -260,16 +255,19 @@ public class MoreFilesTest extends TestCase {
   }
 
   public void testCreateParentDirectories_root() throws IOException {
-    Path root = root();
-    assertNull(root.getParent());
-    assertNull(root.toRealPath().getParent());
-    MoreFiles.createParentDirectories(root); // test that there's no exception
+    // We use a fake filesystem to sidestep flaky problems with Windows (b/136041958).
+    try (FileSystem fs = Jimfs.newFileSystem(Configuration.unix())) {
+      Path root = fs.getRootDirectories().iterator().next();
+      assertThat(root.getParent()).isNull();
+      assertThat(root.toRealPath().getParent()).isNull();
+      MoreFiles.createParentDirectories(root); // test that there's no exception
+    }
   }
 
   public void testCreateParentDirectories_relativePath() throws IOException {
     Path path = FS.getPath("nonexistent.file");
-    assertNull(path.getParent());
-    assertNotNull(path.toAbsolutePath().getParent());
+    assertThat(path.getParent()).isNull();
+    assertThat(path.toAbsolutePath().getParent()).isNotNull();
     MoreFiles.createParentDirectories(path); // test that there's no exception
   }
 
@@ -300,97 +298,108 @@ public class MoreFilesTest extends TestCase {
   }
 
   public void testCreateParentDirectories_noPermission() {
+    if (isWindows()) {
+      return; // TODO(b/136041958): Create/find a directory that we don't have permissions on?
+    }
     Path file = root().resolve("parent/nonexistent.file");
     Path parent = file.getParent();
     assertFalse(Files.exists(parent));
-    try {
-      MoreFiles.createParentDirectories(file);
-      // Cleanup in case parent creation was [erroneously] successful.
-      Files.delete(parent);
-      fail("expected exception");
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> MoreFiles.createParentDirectories(file));
   }
 
   public void testCreateParentDirectories_nonDirectoryParentExists() throws IOException {
     Path parent = createTempFile();
     assertTrue(Files.isRegularFile(parent));
     Path file = parent.resolve("foo");
-    try {
-      MoreFiles.createParentDirectories(file);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> MoreFiles.createParentDirectories(file));
   }
 
   public void testCreateParentDirectories_symlinkParentExists() throws IOException {
-    Path symlink = tempDir.resolve("linkToDir");
-    Files.createSymbolicLink(symlink, root());
-    Path file = symlink.resolve("foo");
-    MoreFiles.createParentDirectories(file);
+    /*
+     * We use a fake filesystem to sidestep:
+     *
+     * - flaky problems with Windows (b/136041958)
+     *
+     * - the lack of support for symlinks in the default filesystem under Android's desugared
+     *   java.nio.file
+     */
+    try (FileSystem fs = Jimfs.newFileSystem(Configuration.unix())) {
+      Path symlink = fs.getPath("linkToDir");
+      Files.createSymbolicLink(symlink, fs.getRootDirectories().iterator().next());
+      Path file = symlink.resolve("foo");
+      MoreFiles.createParentDirectories(file);
+    }
   }
 
   public void testGetFileExtension() {
-    assertEquals("txt", MoreFiles.getFileExtension(FS.getPath(".txt")));
-    assertEquals("txt", MoreFiles.getFileExtension(FS.getPath("blah.txt")));
-    assertEquals("txt", MoreFiles.getFileExtension(FS.getPath("blah..txt")));
-    assertEquals("txt", MoreFiles.getFileExtension(FS.getPath(".blah.txt")));
-    assertEquals("txt", MoreFiles.getFileExtension(root().resolve("tmp/blah.txt")));
-    assertEquals("gz", MoreFiles.getFileExtension(FS.getPath("blah.tar.gz")));
-    assertEquals("", MoreFiles.getFileExtension(root()));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath(".")));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath("..")));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath("...")));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath("blah")));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath("blah.")));
-    assertEquals("", MoreFiles.getFileExtension(FS.getPath(".blah.")));
-    assertEquals("", MoreFiles.getFileExtension(root().resolve("foo.bar/blah")));
-    assertEquals("", MoreFiles.getFileExtension(root().resolve("foo/.bar/blah")));
+    assertThat(MoreFiles.getFileExtension(FS.getPath(".txt"))).isEqualTo("txt");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("blah.txt"))).isEqualTo("txt");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("blah..txt"))).isEqualTo("txt");
+    assertThat(MoreFiles.getFileExtension(FS.getPath(".blah.txt"))).isEqualTo("txt");
+    assertThat(MoreFiles.getFileExtension(root().resolve("tmp/blah.txt"))).isEqualTo("txt");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("blah.tar.gz"))).isEqualTo("gz");
+    assertThat(MoreFiles.getFileExtension(root())).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("."))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath(".."))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("..."))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("blah"))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath("blah."))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(FS.getPath(".blah."))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(root().resolve("foo.bar/blah"))).isEqualTo("");
+    assertThat(MoreFiles.getFileExtension(root().resolve("foo/.bar/blah"))).isEqualTo("");
   }
 
   public void testGetNameWithoutExtension() {
-    assertEquals("", MoreFiles.getNameWithoutExtension(FS.getPath(".txt")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(FS.getPath("blah.txt")));
-    assertEquals("blah.", MoreFiles.getNameWithoutExtension(FS.getPath("blah..txt")));
-    assertEquals(".blah", MoreFiles.getNameWithoutExtension(FS.getPath(".blah.txt")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(root().resolve("tmp/blah.txt")));
-    assertEquals("blah.tar", MoreFiles.getNameWithoutExtension(FS.getPath("blah.tar.gz")));
-    assertEquals("", MoreFiles.getNameWithoutExtension(root()));
-    assertEquals("", MoreFiles.getNameWithoutExtension(FS.getPath(".")));
-    assertEquals(".", MoreFiles.getNameWithoutExtension(FS.getPath("..")));
-    assertEquals("..", MoreFiles.getNameWithoutExtension(FS.getPath("...")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(FS.getPath("blah")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(FS.getPath("blah.")));
-    assertEquals(".blah", MoreFiles.getNameWithoutExtension(FS.getPath(".blah.")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(root().resolve("foo.bar/blah")));
-    assertEquals("blah", MoreFiles.getNameWithoutExtension(root().resolve("foo/.bar/blah")));
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath(".txt"))).isEqualTo("");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("blah.txt"))).isEqualTo("blah");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("blah..txt"))).isEqualTo("blah.");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath(".blah.txt"))).isEqualTo(".blah");
+    assertThat(MoreFiles.getNameWithoutExtension(root().resolve("tmp/blah.txt"))).isEqualTo("blah");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("blah.tar.gz"))).isEqualTo("blah.tar");
+    assertThat(MoreFiles.getNameWithoutExtension(root())).isEqualTo("");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("."))).isEqualTo("");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath(".."))).isEqualTo(".");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("..."))).isEqualTo("..");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("blah"))).isEqualTo("blah");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath("blah."))).isEqualTo("blah");
+    assertThat(MoreFiles.getNameWithoutExtension(FS.getPath(".blah."))).isEqualTo(".blah");
+    assertThat(MoreFiles.getNameWithoutExtension(root().resolve("foo.bar/blah"))).isEqualTo("blah");
+    assertThat(MoreFiles.getNameWithoutExtension(root().resolve("foo/.bar/blah")))
+        .isEqualTo("blah");
   }
 
   public void testPredicates() throws IOException {
-    Path file = createTempFile();
-    Path dir = tempDir.resolve("dir");
-    Files.createDirectory(dir);
+    /*
+     * We use a fake filesystem to sidestep the lack of support for symlinks in the default
+     * filesystem under Android's desugared java.nio.file.
+     */
+    try (FileSystem fs = Jimfs.newFileSystem(Configuration.unix())) {
+      Path file = fs.getPath("file");
+      Files.createFile(file);
+      Path dir = fs.getPath("dir");
+      Files.createDirectory(dir);
 
-    assertTrue(MoreFiles.isDirectory().apply(dir));
-    assertFalse(MoreFiles.isRegularFile().apply(dir));
+      assertTrue(MoreFiles.isDirectory().apply(dir));
+      assertFalse(MoreFiles.isRegularFile().apply(dir));
 
-    assertFalse(MoreFiles.isDirectory().apply(file));
-    assertTrue(MoreFiles.isRegularFile().apply(file));
+      assertFalse(MoreFiles.isDirectory().apply(file));
+      assertTrue(MoreFiles.isRegularFile().apply(file));
 
-    Path symlinkToDir = tempDir.resolve("symlinkToDir");
-    Path symlinkToFile = tempDir.resolve("symlinkToFile");
+      Path symlinkToDir = fs.getPath("symlinkToDir");
+      Path symlinkToFile = fs.getPath("symlinkToFile");
 
-    Files.createSymbolicLink(symlinkToDir, dir);
-    Files.createSymbolicLink(symlinkToFile, file);
+      Files.createSymbolicLink(symlinkToDir, dir);
+      Files.createSymbolicLink(symlinkToFile, file);
 
-    assertTrue(MoreFiles.isDirectory().apply(symlinkToDir));
-    assertFalse(MoreFiles.isRegularFile().apply(symlinkToDir));
+      assertTrue(MoreFiles.isDirectory().apply(symlinkToDir));
+      assertFalse(MoreFiles.isRegularFile().apply(symlinkToDir));
 
-    assertFalse(MoreFiles.isDirectory().apply(symlinkToFile));
-    assertTrue(MoreFiles.isRegularFile().apply(symlinkToFile));
+      assertFalse(MoreFiles.isDirectory().apply(symlinkToFile));
+      assertTrue(MoreFiles.isRegularFile().apply(symlinkToFile));
 
-    assertFalse(MoreFiles.isDirectory(NOFOLLOW_LINKS).apply(symlinkToDir));
-    assertFalse(MoreFiles.isRegularFile(NOFOLLOW_LINKS).apply(symlinkToFile));
+      assertFalse(MoreFiles.isDirectory(NOFOLLOW_LINKS).apply(symlinkToDir));
+      assertFalse(MoreFiles.isRegularFile(NOFOLLOW_LINKS).apply(symlinkToFile));
+    }
   }
 
   /**
@@ -424,8 +433,7 @@ public class MoreFilesTest extends TestCase {
   static FileSystem newTestFileSystem(Feature... supportedFeatures) throws IOException {
     FileSystem fs =
         Jimfs.newFileSystem(
-            Configuration.unix()
-                .toBuilder()
+            Configuration.unix().toBuilder()
                 .setSupportedFeatures(ObjectArrays.concat(SYMBOLIC_LINKS, supportedFeatures))
                 .build());
     Files.createDirectories(fs.getPath("dir/b/i/j/l"));
@@ -511,11 +519,7 @@ public class MoreFilesTest extends TestCase {
         Path dir = fs.getPath("dir");
         assertEquals(6, MoreFiles.listFiles(dir).size());
 
-        try {
-          method.delete(dir);
-          fail("expected InsecureRecursiveDeleteException");
-        } catch (InsecureRecursiveDeleteException expected) {
-        }
+        assertThrows(InsecureRecursiveDeleteException.class, () -> method.delete(dir));
 
         assertTrue(Files.exists(dir));
         assertEquals(6, MoreFiles.listFiles(dir).size());
@@ -556,6 +560,16 @@ public class MoreFilesTest extends TestCase {
     }
   }
 
+  public void testDeleteRecursively_nonexistingFile_throwsNoSuchFileException() throws IOException {
+    try (FileSystem fs = newTestFileSystem()) {
+      NoSuchFileException expected =
+          assertThrows(
+              NoSuchFileException.class,
+              () -> MoreFiles.deleteRecursively(fs.getPath("/work/nothere"), ALLOW_INSECURE));
+      assertThat(expected.getFile()).isEqualTo("/work/nothere");
+    }
+  }
+
   public void testDeleteDirectoryContents_symlinkToDir_sdsNotSupported_allowInsecure()
       throws IOException {
     try (FileSystem fs = newTestFileSystem()) {
@@ -580,18 +594,20 @@ public class MoreFilesTest extends TestCase {
    * <p>We can only test this with a file system that supports SecureDirectoryStream, because it's
    * not possible to protect against this if the file system doesn't.
    */
-  public void testDirectoryDeletion_directorySymlinkRace() throws IOException {
+  @SuppressWarnings("ThreadPriorityCheck") // TODO(b/175898629): Consider onSpinWait.
+  public void testDirectoryDeletion_directorySymlinkRace() throws Exception {
+    int iterations = isAndroid() ? 100 : 5000;
     for (DirectoryDeleteMethod method : EnumSet.allOf(DirectoryDeleteMethod.class)) {
       try (FileSystem fs = newTestFileSystem(SECURE_DIRECTORY_STREAM)) {
         Path dirToDelete = fs.getPath("dir/b/i");
         Path changingFile = dirToDelete.resolve("j/l");
         Path symlinkTarget = fs.getPath("/dontdelete");
 
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        startDirectorySymlinkSwitching(changingFile, symlinkTarget, executor);
+        ExecutorService executor = newSingleThreadExecutor();
+        Future<?> switcher = startDirectorySymlinkSwitching(changingFile, symlinkTarget, executor);
 
         try {
-          for (int i = 0; i < 5000; i++) {
+          for (int i = 0; i < iterations; i++) {
             try {
               Files.createDirectories(changingFile);
               Files.createFile(dirToDelete.resolve("j/k"));
@@ -615,6 +631,8 @@ public class MoreFilesTest extends TestCase {
         } finally {
           executor.shutdownNow();
         }
+
+        switcher.get(); // to check for (extremely unlikely) exceptions
       }
     }
   }
@@ -647,46 +665,42 @@ public class MoreFilesTest extends TestCase {
    * between being a directory and being a symlink, while the given {@code target} is the target the
    * symlink should have.
    */
-  private static void startDirectorySymlinkSwitching(
-      final Path file, final Path target, ExecutorService executor) {
-    @SuppressWarnings("unused") // go/futurereturn-lsc
-    Future<?> possiblyIgnoredError =
-        executor.submit(
-            new Runnable() {
-              @Override
-              public void run() {
-                boolean createSymlink = false;
-                while (!Thread.interrupted()) {
-                  try {
-                    // trying to switch between a real directory and a symlink (dir -> /a)
-                    if (Files.deleteIfExists(file)) {
-                      if (createSymlink) {
-                        Files.createSymbolicLink(file, target);
-                      } else {
-                        Files.createDirectory(file);
-                      }
-                      createSymlink = !createSymlink;
-                    }
-                  } catch (IOException tolerated) {
-                    // it's expected that some of these will fail
-                  }
-
-                  Thread.yield();
+  @SuppressWarnings("ThreadPriorityCheck") // TODO(b/175898629): Consider onSpinWait.
+  private static Future<?> startDirectorySymlinkSwitching(
+      Path file, Path target, ExecutorService executor) {
+    return executor.submit(
+        () -> {
+          boolean createSymlink = false;
+          while (!Thread.interrupted()) {
+            try {
+              // trying to switch between a real directory and a symlink (dir -> /a)
+              if (Files.deleteIfExists(file)) {
+                if (createSymlink) {
+                  Files.createSymbolicLink(file, target);
+                } else {
+                  Files.createDirectory(file);
                 }
+                createSymlink = !createSymlink;
               }
-            });
+            } catch (IOException tolerated) {
+              // it's expected that some of these will fail
+            }
+
+            Thread.yield();
+          }
+        });
   }
 
   /** Enum defining the two MoreFiles methods that delete directory contents. */
   private enum DirectoryDeleteMethod {
     DELETE_DIRECTORY_CONTENTS {
       @Override
-      public void delete(Path path, RecursiveDeleteOption... options) throws IOException {
+      void delete(Path path, RecursiveDeleteOption... options) throws IOException {
         MoreFiles.deleteDirectoryContents(path, options);
       }
 
       @Override
-      public void assertDeleteSucceeded(Path path) throws IOException {
+      void assertDeleteSucceeded(Path path) throws IOException {
         assertEquals(
             "contents of directory " + path + " not deleted with delete method " + this,
             0,
@@ -695,18 +709,26 @@ public class MoreFilesTest extends TestCase {
     },
     DELETE_RECURSIVELY {
       @Override
-      public void delete(Path path, RecursiveDeleteOption... options) throws IOException {
+      void delete(Path path, RecursiveDeleteOption... options) throws IOException {
         MoreFiles.deleteRecursively(path, options);
       }
 
       @Override
-      public void assertDeleteSucceeded(Path path) throws IOException {
+      void assertDeleteSucceeded(Path path) {
         assertFalse("file " + path + " not deleted with delete method " + this, Files.exists(path));
       }
     };
 
-    public abstract void delete(Path path, RecursiveDeleteOption... options) throws IOException;
+    abstract void delete(Path path, RecursiveDeleteOption... options) throws IOException;
 
-    public abstract void assertDeleteSucceeded(Path path) throws IOException;
+    abstract void assertDeleteSucceeded(Path path) throws IOException;
+  }
+
+  private static boolean isWindows() {
+    return OS_NAME.value().startsWith("Windows");
+  }
+
+  private static boolean isAndroid() {
+    return System.getProperty("java.runtime.name", "").contains("Android");
   }
 }

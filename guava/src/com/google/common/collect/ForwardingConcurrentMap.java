@@ -16,9 +16,12 @@
 
 package com.google.common.collect;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A concurrent map which forwards all its method calls to another concurrent map. Subclasses should
@@ -47,25 +50,47 @@ public abstract class ForwardingConcurrentMap<K, V> extends ForwardingMap<K, V>
 
   @CanIgnoreReturnValue
   @Override
-  public V putIfAbsent(K key, V value) {
+  public @Nullable V putIfAbsent(K key, V value) {
     return delegate().putIfAbsent(key, value);
   }
 
   @CanIgnoreReturnValue
   @Override
-  public boolean remove(Object key, Object value) {
+  public boolean remove(@Nullable Object key, @Nullable Object value) {
     return delegate().remove(key, value);
   }
 
   @CanIgnoreReturnValue
   @Override
-  public V replace(K key, V value) {
+  public @Nullable V replace(K key, V value) {
     return delegate().replace(key, value);
   }
 
   @CanIgnoreReturnValue
   @Override
+  @SuppressWarnings("nullness") // https://github.com/jspecify/jdk/issues/118
   public boolean replace(K key, V oldValue, V newValue) {
     return delegate().replace(key, oldValue, newValue);
+  }
+
+  /**
+   * A simplified version of {@link ForwardingConcurrentMap} where subclasses can pass in an already
+   * constructed {@link ConcurrentMap} as the delegate.
+   *
+   * <p>TODO(b/3417232): Consider making this public, but take into consideration whether it would
+   * then appear as a user-visible supertype for any classes.
+   */
+  abstract static class SimpleForwardingConcurrentMap<K, V> extends ForwardingConcurrentMap<K, V> {
+    private final ConcurrentMap<K, V> delegate;
+
+    /** Constructor for use by subclasses. */
+    SimpleForwardingConcurrentMap(ConcurrentMap<K, V> delegate) {
+      this.delegate = checkNotNull(delegate);
+    }
+
+    @Override
+    protected final ConcurrentMap<K, V> delegate() {
+      return delegate;
+    }
   }
 }

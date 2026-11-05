@@ -16,32 +16,26 @@
 
 package com.google.common.graph;
 
-import static com.google.common.graph.AbstractNetworkTest.ERROR_MODIFIABLE_COLLECTION;
-import static com.google.common.graph.TestUtil.ERROR_NODE_NOT_IN_GRAPH;
-import static com.google.common.graph.TestUtil.EdgeType.DIRECTED;
-import static com.google.common.graph.TestUtil.EdgeType.UNDIRECTED;
 import static com.google.common.graph.TestUtil.assertNodeNotInGraphErrorMessage;
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.graph.TestUtil.EdgeType;
-import java.util.Arrays;
-import java.util.Collection;
+import com.google.testing.junit.testparameterinjector.TestParameter;
+import com.google.testing.junit.testparameterinjector.TestParameterInjector;
 import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
 
 /**
  * Test for {@link Network} methods which have default implementations. Currently those
  * implementations are in {@link AbstractNetwork}; in future they might be in {@link Network}
  * itself, once we are willing to use Java 8 default methods.
  */
-@AndroidIncompatible
-// TODO(cpovirk): Figure out Android JUnit 4 support. Does it work with Gingerbread? @RunWith?
-@RunWith(Parameterized.class)
+@RunWith(TestParameterInjector.class)
+@NullUnmarked
 public final class DefaultNetworkImplementationsTest {
   private MutableNetwork<Integer, String> network;
   private NetworkForTest<Integer, String> networkForTest;
@@ -55,22 +49,14 @@ public final class DefaultNetworkImplementationsTest {
   private static final String E21 = "2-1";
   private static final String E23 = "2-3";
 
-  @Parameters
-  public static Collection<Object[]> parameters() {
-    return Arrays.asList(
-        new Object[][] {
-          {UNDIRECTED}, {DIRECTED},
-        });
-  }
-
   private final EdgeType edgeType;
 
-  public DefaultNetworkImplementationsTest(EdgeType edgeType) {
+  public DefaultNetworkImplementationsTest(@TestParameter EdgeType edgeType) {
     this.edgeType = edgeType;
   }
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     NetworkBuilder<Object, Object> builder =
         (edgeType == EdgeType.DIRECTED) ? NetworkBuilder.directed() : NetworkBuilder.undirected();
 
@@ -89,24 +75,21 @@ public final class DefaultNetworkImplementationsTest {
   public void edgesConnecting_nodesNotInGraph() {
     network.addNode(N1);
     network.addNode(N2);
-    try {
-      networkForTest.edgesConnecting(N1, NODE_NOT_IN_GRAPH);
-      fail(ERROR_NODE_NOT_IN_GRAPH);
-    } catch (IllegalArgumentException e) {
-      assertNodeNotInGraphErrorMessage(e);
-    }
-    try {
-      networkForTest.edgesConnecting(NODE_NOT_IN_GRAPH, N2);
-      fail(ERROR_NODE_NOT_IN_GRAPH);
-    } catch (IllegalArgumentException e) {
-      assertNodeNotInGraphErrorMessage(e);
-    }
-    try {
-      networkForTest.edgesConnecting(NODE_NOT_IN_GRAPH, NODE_NOT_IN_GRAPH);
-      fail(ERROR_NODE_NOT_IN_GRAPH);
-    } catch (IllegalArgumentException e) {
-      assertNodeNotInGraphErrorMessage(e);
-    }
+    IllegalArgumentException e =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> networkForTest.edgesConnecting(N1, NODE_NOT_IN_GRAPH));
+    assertNodeNotInGraphErrorMessage(e);
+    e =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> networkForTest.edgesConnecting(NODE_NOT_IN_GRAPH, N2));
+    assertNodeNotInGraphErrorMessage(e);
+    e =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> networkForTest.edgesConnecting(NODE_NOT_IN_GRAPH, NODE_NOT_IN_GRAPH));
+    assertNodeNotInGraphErrorMessage(e);
   }
 
   @Test
@@ -114,13 +97,9 @@ public final class DefaultNetworkImplementationsTest {
     network.addNode(N1);
     network.addNode(N2);
     Set<String> edgesConnecting = network.edgesConnecting(N1, N2);
-    try {
-      edgesConnecting.add(E23);
-      fail(ERROR_MODIFIABLE_COLLECTION);
-    } catch (UnsupportedOperationException e) {
-      network.addEdge(N1, N2, E12);
-      assertThat(networkForTest.edgesConnecting(N1, N2)).containsExactlyElementsIn(edgesConnecting);
-    }
+    assertThrows(UnsupportedOperationException.class, () -> edgesConnecting.add(E23));
+    network.addEdge(N1, N2, E12);
+    assertThat(networkForTest.edgesConnecting(N1, N2)).containsExactlyElementsIn(edgesConnecting);
   }
 
   @Test

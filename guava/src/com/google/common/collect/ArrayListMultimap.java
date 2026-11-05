@@ -20,6 +20,7 @@ import static com.google.common.collect.CollectPreconditions.checkNonnegative;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -29,6 +30,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@code Multimap} that uses an {@code ArrayList} to store the values for a given
@@ -52,15 +54,14 @@ import java.util.Map;
  * with a call to {@link Multimaps#synchronizedListMultimap}.
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap"> {@code
- * Multimap}</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap">{@code Multimap}</a>.
  *
  * @author Jared Levy
  * @since 2.0
  */
-@GwtCompatible(serializable = true, emulated = true)
-public final class ArrayListMultimap<K, V>
-    extends ArrayListMultimapGwtSerializationDependencies<K, V> {
+@GwtCompatible
+public final class ArrayListMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractListMultimap<K, V> {
   // Default from ArrayList
   private static final int DEFAULT_VALUES_PER_KEY = 3;
 
@@ -69,10 +70,12 @@ public final class ArrayListMultimap<K, V>
   /**
    * Creates a new, empty {@code ArrayListMultimap} with the default initial capacities.
    *
-   * <p>This method will soon be deprecated in favor of {@code
-   * MultimapBuilder.hashKeys().arrayListValues().build()}.
+   * <p>You may also consider the equivalent {@code
+   * MultimapBuilder.hashKeys().arrayListValues().build()}, which provides more control over the
+   * underlying data structure.
    */
-  public static <K, V> ArrayListMultimap<K, V> create() {
+  public static <K extends @Nullable Object, V extends @Nullable Object>
+      ArrayListMultimap<K, V> create() {
     return new ArrayListMultimap<>();
   }
 
@@ -80,27 +83,31 @@ public final class ArrayListMultimap<K, V>
    * Constructs an empty {@code ArrayListMultimap} with enough capacity to hold the specified
    * numbers of keys and values without resizing.
    *
-   * <p>This method will soon be deprecated in favor of {@code
-   * MultimapBuilder.hashKeys(expectedKeys).arrayListValues(expectedValuesPerKey).build()}.
+   * <p>You may also consider the equivalent {@code
+   * MultimapBuilder.hashKeys(expectedKeys).arrayListValues(expectedValuesPerKey).build()}, which
+   * provides more control over the underlying data structure.
    *
    * @param expectedKeys the expected number of distinct keys
    * @param expectedValuesPerKey the expected average number of values per key
    * @throws IllegalArgumentException if {@code expectedKeys} or {@code expectedValuesPerKey} is
    *     negative
    */
-  public static <K, V> ArrayListMultimap<K, V> create(int expectedKeys, int expectedValuesPerKey) {
+  public static <K extends @Nullable Object, V extends @Nullable Object>
+      ArrayListMultimap<K, V> create(int expectedKeys, int expectedValuesPerKey) {
     return new ArrayListMultimap<>(expectedKeys, expectedValuesPerKey);
   }
 
   /**
    * Constructs an {@code ArrayListMultimap} with the same mappings as the specified multimap.
    *
-   * <p>This method will soon be deprecated in favor of {@code
-   * MultimapBuilder.hashKeys().arrayListValues().build(multimap)}.
+   * <p>You may also consider the equivalent {@code
+   * MultimapBuilder.hashKeys().arrayListValues().build(multimap)}, which provides more control over
+   * the underlying data structure.
    *
    * @param multimap the multimap whose contents are copied to this multimap
    */
-  public static <K, V> ArrayListMultimap<K, V> create(Multimap<? extends K, ? extends V> multimap) {
+  public static <K extends @Nullable Object, V extends @Nullable Object>
+      ArrayListMultimap<K, V> create(Multimap<? extends K, ? extends V> multimap) {
     return new ArrayListMultimap<>(multimap);
   }
 
@@ -109,7 +116,7 @@ public final class ArrayListMultimap<K, V>
   }
 
   private ArrayListMultimap(int expectedKeys, int expectedValuesPerKey) {
-    super(Platform.<K, Collection<V>>newHashMapWithExpectedSize(expectedKeys));
+    super(Platform.newHashMapWithExpectedSize(expectedKeys));
     checkNonnegative(expectedValuesPerKey, "expectedValuesPerKey");
     this.expectedValuesPerKey = expectedValuesPerKey;
   }
@@ -128,7 +135,7 @@ public final class ArrayListMultimap<K, V>
    */
   @Override
   List<V> createCollection() {
-    return new ArrayList<V>(expectedValuesPerKey);
+    return new ArrayList<>(expectedValuesPerKey);
   }
 
   /**
@@ -150,22 +157,23 @@ public final class ArrayListMultimap<K, V>
    * @serialData expectedValuesPerKey, number of distinct keys, and then for each distinct key: the
    *     key, number of values for that key, and the key's values
    */
-  @GwtIncompatible // java.io.ObjectOutputStream
-  private void writeObject(ObjectOutputStream stream) throws IOException {
+  @GwtIncompatible
+  @J2ktIncompatible
+    private void writeObject(ObjectOutputStream stream) throws IOException {
     stream.defaultWriteObject();
     Serialization.writeMultimap(this, stream);
   }
 
-  @GwtIncompatible // java.io.ObjectOutputStream
-  private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
+  @GwtIncompatible
+  @J2ktIncompatible
+    private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
     stream.defaultReadObject();
     expectedValuesPerKey = DEFAULT_VALUES_PER_KEY;
-    int distinctKeys = Serialization.readCount(stream);
-    Map<K, Collection<V>> map = Maps.newHashMap();
+    int distinctKeys = stream.readInt();
+    Map<K, Collection<V>> map = new HashMap<>();
     setMap(map);
     Serialization.populateMultimap(this, stream, distinctKeys);
   }
 
-  @GwtIncompatible // Not needed in emulated source.
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

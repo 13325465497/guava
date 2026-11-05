@@ -16,34 +16,50 @@
 
 package com.google.common.collect;
 
-import java.util.Arrays;
+import static com.google.common.collect.ObjectArrays.newArray;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
 import jsinterop.annotations.JsProperty;
 import jsinterop.annotations.JsType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Minimal GWT emulation of {@code com.google.common.collect.Platform}.
  *
- * <p><strong>This .java file should never be consumed by javac.</strong>
- *
  * @author Hayward Chan
  */
 final class Platform {
-  static <K, V> Map<K, V> newHashMapWithExpectedSize(int expectedSize) {
+  static <K extends @Nullable Object, V extends @Nullable Object>
+      Map<K, V> newHashMapWithExpectedSize(int expectedSize) {
     return Maps.newHashMapWithExpectedSize(expectedSize);
   }
 
-  static <K, V> Map<K, V> newLinkedHashMapWithExpectedSize(int expectedSize) {
+  static <K extends @Nullable Object, V extends @Nullable Object>
+      Map<K, V> newLinkedHashMapWithExpectedSize(int expectedSize) {
     return Maps.newLinkedHashMapWithExpectedSize(expectedSize);
   }
 
-  static <E> Set<E> newHashSetWithExpectedSize(int expectedSize) {
+  static <E extends @Nullable Object> Set<E> newHashSetWithExpectedSize(int expectedSize) {
     return Sets.newHashSetWithExpectedSize(expectedSize);
   }
 
-  static <E> Set<E> newLinkedHashSetWithExpectedSize(int expectedSize) {
+  static <E> Set<E> newConcurrentHashSet() {
+    // GWT's ConcurrentHashMap is a wrapper around HashMap, but it rejects null keys, which matches
+    // the behaviour of the non-GWT implementation of newConcurrentHashSet().
+    // On the other hand HashSet might be better for code size if apps aren't
+    // already using Collections.newSetFromMap and ConcurrentHashMap.
+    // And GWT/J2CL ConcurrentHashMap.newKeySet returns a plain HashSet (which permits nulls).
+    return Collections.newSetFromMap(new ConcurrentHashMap<E, Boolean>());
+  }
+
+  static <E extends @Nullable Object> Set<E> newLinkedHashSetWithExpectedSize(int expectedSize) {
     return Sets.newLinkedHashSetWithExpectedSize(expectedSize);
   }
 
@@ -51,30 +67,30 @@ final class Platform {
    * Returns the platform preferred map implementation that preserves insertion order when used only
    * for insertions.
    */
-  static <K, V> Map<K, V> preservesInsertionOrderOnPutsMap() {
-    return Maps.newLinkedHashMap();
+  static <K extends @Nullable Object, V extends @Nullable Object>
+      Map<K, V> preservesInsertionOrderOnPutsMap() {
+    return new LinkedHashMap<>();
+  }
+
+  /**
+   * Returns the platform preferred map implementation that preserves insertion order when used only
+   * for insertions, with a hint for how many entries to expect.
+   */
+  static <K extends @Nullable Object, V extends @Nullable Object>
+      Map<K, V> preservesInsertionOrderOnPutsMapWithExpectedSize(int expectedSize) {
+    return Maps.newLinkedHashMapWithExpectedSize(expectedSize);
   }
 
   /**
    * Returns the platform preferred set implementation that preserves insertion order when used only
    * for insertions.
    */
-  static <E> Set<E> preservesInsertionOrderOnAddsSet() {
-    return Sets.newLinkedHashSet();
-  }
-
-  static <T> T[] newArray(T[] reference, int length) {
-    T[] clone = Arrays.copyOf(reference, 0);
-    resizeArray(clone, length);
-    return clone;
-  }
-
-  private static void resizeArray(Object array, int newSize) {
-    ((NativeArray) array).setLength(newSize);
+  static <E extends @Nullable Object> Set<E> preservesInsertionOrderOnAddsSet() {
+    return new LinkedHashSet<>();
   }
 
   /** Equivalent to Arrays.copyOfRange(source, from, to, arrayOfType.getClass()). */
-  static <T> T[] copy(Object[] source, int from, int to, T[] arrayOfType) {
+  static <T extends @Nullable Object> T[] copy(Object[] source, int from, int to, T[] arrayOfType) {
     T[] result = newArray(arrayOfType, to - from);
     System.arraycopy(source, from, result, 0, to - from);
     return result;
@@ -90,6 +106,33 @@ final class Platform {
   static MapMaker tryWeakKeys(MapMaker mapMaker) {
     return mapMaker;
   }
+
+  static <E extends Enum<E>> Class<E> getDeclaringClassOrObjectForJ2cl(E e) {
+    Class<E> classOrNull = getDeclaringClassOrNullForJ2cl(e);
+    @SuppressWarnings("unchecked")
+    Class<E> result = classOrNull == null ? (Class<E>) (Class<?>) Object.class : classOrNull;
+    return result;
+  }
+
+  /*
+   * If I understand correctly:
+   *
+   * This needs to be a @JsMethod so that J2CL knows to look for a JavaScript implemention of
+   * it in Platform.native.js. (The JavaScript implementation inline below is visible to *GWT*, but
+   * *J2CL* doesn't look at it.)
+   *
+   * However, once it's a @JsMethod, GWT produces a warning. That's because (a) the *other* purpose
+   * of @JsMethod is to make a method *callable* from JavaScript and (b) this method would not be
+   * useful to call from vanilla JavaScript because it returns an instance of Class, which can't be
+   * converted to a standard JavaScript type. (Contrast to something like String or boolean.) Since
+   * we're not calling it from JavaScript, we suppress the warning.
+   */
+  @JsMethod
+  @SuppressWarnings("unusable-by-js")
+  private static native <E extends Enum<E>> @Nullable Class<E> getDeclaringClassOrNullForJ2cl(
+      E e) /*-{
+    return e.@java.lang.Enum::getDeclaringClass()();
+  }-*/;
 
   static int reduceIterationsIfGwt(int iterations) {
     return iterations / 10;

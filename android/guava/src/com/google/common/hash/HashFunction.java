@@ -14,17 +14,17 @@
 
 package com.google.common.hash;
 
-import com.google.common.annotations.Beta;
 import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.Immutable;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A hash function is a collision-averse pure function that maps an arbitrary block of data to a
  * number called a <i>hash code</i>.
  *
- * <h3>Definition</h3>
+ * <h2>Definition</h2>
  *
  * <p>Unpacking this definition:
  *
@@ -50,7 +50,7 @@ import java.nio.charset.Charset;
  * <p>Summarizing the last two points: "equal yield equal <i>always</i>; unequal yield unequal
  * <i>often</i>." This is the most important characteristic of all hash functions.
  *
- * <h3>Desirable properties</h3>
+ * <h2>Desirable properties</h2>
  *
  * <p>A high-quality hash function strives for some subset of the following virtues:
  *
@@ -77,7 +77,7 @@ import java.nio.charset.Charset;
  *   <li><b>fast:</b> perhaps self-explanatory, but often the most important consideration.
  * </ul>
  *
- * <h3>Providing input to a hash function</h3>
+ * <h2>Providing input to a hash function</h2>
  *
  * <p>The primary way to provide the data that your hash function should act on is via a {@link
  * Hasher}. Obtain a new hasher from the hash function using {@link #newHasher}, "push" the relevant
@@ -97,7 +97,7 @@ import java.nio.charset.Charset;
  * equivalent to hashing the {@code int} value {@code 0x04030201}. If this isn't what you need,
  * methods such as {@link Integer#reverseBytes} and {@link Ints#toByteArray} will help.
  *
- * <h3>Relationship to {@link Object#hashCode}</h3>
+ * <h2>Relationship to {@link Object#hashCode}</h2>
  *
  * <p>Java's baked-in concept of hash codes is constrained to 32 bits, and provides no separation
  * between hash algorithms and the data they act on, so alternate hash algorithms can't be easily
@@ -115,20 +115,19 @@ import java.nio.charset.Charset;
  * @author Kevin Bourrillion
  * @since 11.0
  */
-@Beta
 @Immutable
 public interface HashFunction {
   /**
    * Begins a new hash code computation by returning an initialized, stateful {@code Hasher}
    * instance that is ready to receive data. Example:
    *
-   * <pre>{@code
+   * {@snippet :
    * HashFunction hf = Hashing.md5();
    * HashCode hc = hf.newHasher()
    *     .putLong(id)
    *     .putBoolean(isActive)
    *     .hash();
-   * }</pre>
+   * }
    */
   Hasher newHasher();
 
@@ -211,7 +210,8 @@ public interface HashFunction {
    *
    * @since 14.0
    */
-  <T> HashCode hashObject(T instance, Funnel<? super T> funnel);
+  <T extends @Nullable Object> HashCode hashObject(
+      @ParametricNullness T instance, Funnel<? super T> funnel);
 
   /**
    * Returns the number of bits (a multiple of 32) that each hash code produced by this hash

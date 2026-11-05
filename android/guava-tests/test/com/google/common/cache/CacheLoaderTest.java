@@ -16,27 +16,33 @@
 
 package com.google.common.cache;
 
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.util.concurrent.Futures.immediateFuture;
+
+import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import java.util.LinkedList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link CacheLoader}.
  *
  * @author Charles Fry
  */
+@GwtIncompatible
+@NullUnmarked
 public class CacheLoaderTest extends TestCase {
 
   private static class QueuingExecutor implements Executor {
-    private LinkedList<Runnable> tasks = Lists.newLinkedList();
+    private final Deque<Runnable> tasks = new ArrayDeque<>();
 
     @Override
     public void execute(Runnable task) {
@@ -49,9 +55,9 @@ public class CacheLoaderTest extends TestCase {
   }
 
   public void testAsyncReload() throws Exception {
-    final AtomicInteger loadCount = new AtomicInteger();
-    final AtomicInteger reloadCount = new AtomicInteger();
-    final AtomicInteger loadAllCount = new AtomicInteger();
+    AtomicInteger loadCount = new AtomicInteger();
+    AtomicInteger reloadCount = new AtomicInteger();
+    AtomicInteger loadAllCount = new AtomicInteger();
 
     CacheLoader<Object, Object> baseLoader =
         new CacheLoader<Object, Object>() {
@@ -64,42 +70,42 @@ public class CacheLoaderTest extends TestCase {
           @Override
           public ListenableFuture<Object> reload(Object key, Object oldValue) {
             reloadCount.incrementAndGet();
-            return Futures.immediateFuture(new Object());
+            return immediateFuture(new Object());
           }
 
           @Override
-          public Map<Object, Object> loadAll(Iterable<?> keys) {
+          public Map<Object, Object> loadAll(Iterable<? extends Object> keys) {
             loadAllCount.incrementAndGet();
             return ImmutableMap.of();
           }
         };
 
-    assertEquals(0, loadCount.get());
-    assertEquals(0, reloadCount.get());
-    assertEquals(0, loadAllCount.get());
+    assertThat(loadCount.get()).isEqualTo(0);
+    assertThat(reloadCount.get()).isEqualTo(0);
+    assertThat(loadAllCount.get()).isEqualTo(0);
 
-    baseLoader.load(new Object());
-    @SuppressWarnings("unused") // go/futurereturn-lsc
+    Object unused1 = baseLoader.load(new Object());
+    @SuppressWarnings("unused") // https://errorprone.info/bugpattern/FutureReturnValueIgnored
     Future<?> possiblyIgnoredError = baseLoader.reload(new Object(), new Object());
-    baseLoader.loadAll(ImmutableList.of(new Object()));
-    assertEquals(1, loadCount.get());
-    assertEquals(1, reloadCount.get());
-    assertEquals(1, loadAllCount.get());
+    Map<Object, Object> unused2 = baseLoader.loadAll(ImmutableList.of(new Object()));
+    assertThat(loadCount.get()).isEqualTo(1);
+    assertThat(reloadCount.get()).isEqualTo(1);
+    assertThat(loadAllCount.get()).isEqualTo(1);
 
     QueuingExecutor executor = new QueuingExecutor();
     CacheLoader<Object, Object> asyncReloader = CacheLoader.asyncReloading(baseLoader, executor);
 
-    asyncReloader.load(new Object());
-    @SuppressWarnings("unused") // go/futurereturn-lsc
+    Object unused3 = asyncReloader.load(new Object());
+    @SuppressWarnings("unused") // https://errorprone.info/bugpattern/FutureReturnValueIgnored
     Future<?> possiblyIgnoredError1 = asyncReloader.reload(new Object(), new Object());
-    asyncReloader.loadAll(ImmutableList.of(new Object()));
-    assertEquals(2, loadCount.get());
-    assertEquals(1, reloadCount.get());
-    assertEquals(2, loadAllCount.get());
+    Map<Object, Object> unused4 = asyncReloader.loadAll(ImmutableList.of(new Object()));
+    assertThat(loadCount.get()).isEqualTo(2);
+    assertThat(reloadCount.get()).isEqualTo(1);
+    assertThat(loadAllCount.get()).isEqualTo(2);
 
     executor.runNext();
-    assertEquals(2, loadCount.get());
-    assertEquals(2, reloadCount.get());
-    assertEquals(2, loadAllCount.get());
+    assertThat(loadCount.get()).isEqualTo(2);
+    assertThat(reloadCount.get()).isEqualTo(2);
+    assertThat(loadAllCount.get()).isEqualTo(2);
   }
 }

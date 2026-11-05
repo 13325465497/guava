@@ -17,7 +17,7 @@
 package com.google.common.graph;
 
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A class to allow {@link ValueGraph} implementations to be backed by a provided delegate. This is
@@ -28,7 +28,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  */
 abstract class ForwardingValueGraph<N, V> extends AbstractValueGraph<N, V> {
 
-  protected abstract ValueGraph<N, V> delegate();
+  abstract ValueGraph<N, V> delegate();
 
   @Override
   public Set<N> nodes() {
@@ -57,6 +57,11 @@ abstract class ForwardingValueGraph<N, V> extends AbstractValueGraph<N, V> {
   @Override
   public ElementOrder<N> nodeOrder() {
     return delegate().nodeOrder();
+  }
+
+  @Override
+  public ElementOrder<N> incidentEdgeOrder() {
+    return delegate().incidentEdgeOrder();
   }
 
   @Override
@@ -100,14 +105,12 @@ abstract class ForwardingValueGraph<N, V> extends AbstractValueGraph<N, V> {
   }
 
   @Override
-  @NullableDecl
-  public V edgeValueOrDefault(N nodeU, N nodeV, @NullableDecl V defaultValue) {
+  public @Nullable V edgeValueOrDefault(N nodeU, N nodeV, @Nullable V defaultValue) {
     return delegate().edgeValueOrDefault(nodeU, nodeV, defaultValue);
   }
 
   @Override
-  @NullableDecl
-  public V edgeValueOrDefault(EndpointPair<N> endpoints, @NullableDecl V defaultValue) {
+  public @Nullable V edgeValueOrDefault(EndpointPair<N> endpoints, @Nullable V defaultValue) {
     return delegate().edgeValueOrDefault(endpoints, defaultValue);
   }
 }

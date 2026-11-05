@@ -25,7 +25,6 @@ import com.google.common.collect.testing.features.CollectionSize;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import org.junit.Ignore;
 
 /**
  * Tests {@link List#equals}.
@@ -33,7 +32,6 @@ import org.junit.Ignore;
  * @author George van den Driessche
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class ListEqualsTester<E> extends AbstractListTester<E> {
   public void testEquals_otherListWithSameElements() {
     assertTrue(

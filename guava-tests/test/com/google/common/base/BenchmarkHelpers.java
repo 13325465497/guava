@@ -14,13 +14,16 @@
 
 package com.google.common.base;
 
+import org.jspecify.annotations.NullUnmarked;
+
 /**
  * Common benchmarking utilities.
  *
  * @author Christopher Swenson
  * @author Louis Wasserman
  */
-class BenchmarkHelpers {
+@NullUnmarked
+final class BenchmarkHelpers {
   private static final String WHITESPACE_CHARACTERS =
       "\u00a0\u180e\u202f\t\n\013\f\r \u0085"
           + "\u1680\u2028\u2029\u205f\u3000\u2000\u2001\u2002\u2003\u2004\u2005"
@@ -85,4 +88,6 @@ class BenchmarkHelpers {
       this.matchingChars = matchingChars;
     }
   }
+
+  private BenchmarkHelpers() {}
 }

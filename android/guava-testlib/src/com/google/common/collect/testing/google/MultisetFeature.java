@@ -16,6 +16,8 @@
 
 package com.google.common.collect.testing.google;
 
+import static java.util.Collections.emptySet;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.testing.features.Feature;
@@ -23,7 +25,6 @@ import com.google.common.collect.testing.features.TesterAnnotation;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -31,6 +32,7 @@ import java.util.Set;
  *
  * @author Louis Wasserman
  */
+@SuppressWarnings("rawtypes") // maybe avoidable if we rework the whole package?
 @GwtCompatible
 public enum MultisetFeature implements Feature<Multiset> {
   /**
@@ -41,15 +43,15 @@ public enum MultisetFeature implements Feature<Multiset> {
 
   @Override
   public Set<Feature<? super Multiset>> getImpliedFeatures() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   @Retention(RetentionPolicy.RUNTIME)
   @Inherited
   @TesterAnnotation
   public @interface Require {
-    public abstract MultisetFeature[] value() default {};
+    MultisetFeature[] value() default {};
 
-    public abstract MultisetFeature[] absent() default {};
+    MultisetFeature[] absent() default {};
   }
 }

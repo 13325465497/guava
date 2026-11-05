@@ -19,7 +19,10 @@ package com.google.common.reflect;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static java.util.Arrays.sort;
 
+import com.google.errorprone.annotations.Keep;
+import com.google.errorprone.annotations.Modifier;
 import com.google.errorprone.annotations.RequiredModifiers;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -27,9 +30,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
-import java.util.Arrays;
-import java.util.Comparator;
-import javax.lang.model.element.Modifier;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tester of subtyping relationships between two types.
@@ -40,7 +42,7 @@ import javax.lang.model.element.Modifier;
  * <p>These declaration methods rely on Java static type checking to make sure what we want to
  * assert as subtypes are really subtypes according to javac. For example:
  *
- * <pre>{@code
+ * {@snippet :
  * class MySubtypeTests extends SubtypeTester {
  *   @TestSubtype(suppressGetSubtype = true, suppressGetSupertype = true)
  *   public <T> Iterable<? extends T> listIsSubtypeOfIterable(List<T> list) {
@@ -56,20 +58,21 @@ import javax.lang.model.element.Modifier;
  * public void testMySubtypes() throws Exception {
  *   new MySubtypeTests().testAllDeclarations();
  * }
- * }</pre>
+ * }
  *
  * The calls to {@link #isSubtype} and {@link #notSubtype} tells the framework what assertions need
  * to be made.
  *
  * <p>The declaration methods must be public.
  */
-@AndroidIncompatible // only used by android incompatible tests.
+@NullUnmarked
 abstract class SubtypeTester implements Cloneable {
 
   /** Annotates a public method that declares subtype assertion. */
-  @RequiredModifiers(Modifier.PUBLIC)
+  @RequiredModifiers(modifier = Modifier.PUBLIC)
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.METHOD)
+  @Keep
   @interface TestSubtype {
     /** Suppresses the assertion on {@link TypeToken#getSubtype}. */
     boolean suppressGetSubtype() default false;
@@ -78,7 +81,7 @@ abstract class SubtypeTester implements Cloneable {
     boolean suppressGetSupertype() default false;
   }
 
-  private Method method = null;
+  private @Nullable Method method = null;
 
   /** Call this in a {@link TestSubtype} public method asserting subtype relationship. */
   final <T> T isSubtype(T sub) {
@@ -105,7 +108,7 @@ abstract class SubtypeTester implements Cloneable {
    * Call this in a {@link TestSubtype} public method asserting that subtype relationship does not
    * hold.
    */
-  final <X> X notSubtype(@SuppressWarnings("unused") Object sub) {
+  final <X> @Nullable X notSubtype(@SuppressWarnings("unused") Object sub) {
     Type returnType = method.getGenericReturnType();
     Type paramType = getOnlyParameterType();
     TestSubtype spec = method.getAnnotation(TestSubtype.class);
@@ -137,14 +140,7 @@ abstract class SubtypeTester implements Cloneable {
   final void testAllDeclarations() throws Exception {
     checkState(method == null);
     Method[] methods = getClass().getMethods();
-    Arrays.sort(
-        methods,
-        new Comparator<Method>() {
-          @Override
-          public int compare(Method a, Method b) {
-            return a.getName().compareTo(b.getName());
-          }
-        });
+    sort(methods, (a, b) -> a.getName().compareTo(b.getName()));
     for (Method method : methods) {
       if (method.isAnnotationPresent(TestSubtype.class)) {
         method.setAccessible(true);

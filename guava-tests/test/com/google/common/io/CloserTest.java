@@ -16,40 +16,35 @@
 
 package com.google.common.io;
 
+import static com.google.common.base.Throwables.throwIfInstanceOf;
+import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.testing.TestLogHandler;
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.LogRecord;
+import java.util.Objects;
 import junit.framework.TestCase;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link Closer}.
  *
  * @author Colin Decker
  */
+@NullUnmarked
 public class CloserTest extends TestCase {
 
   private TestSuppressor suppressor;
 
   @Override
-  protected void setUp() throws Exception {
+  protected void setUp() {
     suppressor = new TestSuppressor();
-  }
-
-  @AndroidIncompatible // TODO(cpovirk): Look up Build.VERSION.SDK_INT reflectively.
-  public void testCreate() {
-    assertThat(Closer.create().suppressor).isInstanceOf(Closer.SuppressingSuppressor.class);
   }
 
   public void testNoExceptionsThrown() throws IOException {
@@ -72,7 +67,7 @@ public class CloserTest extends TestCase {
     assertTrue(suppressor.suppressions.isEmpty());
   }
 
-  public void testExceptionThrown_fromTryBlock() throws IOException {
+  public void testExceptionThrown_fromTryBlock() {
     Closer closer = new Closer(suppressor);
 
     TestCloseable c1 = closer.register(TestCloseable.normal());
@@ -88,8 +83,8 @@ public class CloserTest extends TestCase {
       } finally {
         closer.close();
       }
-    } catch (Throwable expected) {
-      assertSame(exception, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(exception);
     }
 
     assertTrue(c1.isClosed());
@@ -98,7 +93,7 @@ public class CloserTest extends TestCase {
     assertTrue(suppressor.suppressions.isEmpty());
   }
 
-  public void testExceptionThrown_whenCreatingCloseables() throws IOException {
+  public void testExceptionThrown_whenCreatingCloseables() {
     Closer closer = new Closer(suppressor);
 
     TestCloseable c1 = null;
@@ -114,18 +109,18 @@ public class CloserTest extends TestCase {
       } finally {
         closer.close();
       }
-    } catch (Throwable expected) {
-      assertThat(expected).isInstanceOf(IOException.class);
+    } catch (Throwable caught) {
+      assertThat(caught).isInstanceOf(IOException.class);
     }
 
     assertTrue(c1.isClosed());
     assertTrue(c2.isClosed());
-    assertNull(c3);
+    assertThat(c3).isNull();
 
     assertTrue(suppressor.suppressions.isEmpty());
   }
 
-  public void testExceptionThrown_whileClosingLastCloseable() throws IOException {
+  public void testExceptionThrown_whileClosingLastCloseable() {
     Closer closer = new Closer(suppressor);
 
     IOException exception = new IOException();
@@ -136,8 +131,8 @@ public class CloserTest extends TestCase {
 
     try {
       closer.close();
-    } catch (Throwable expected) {
-      assertSame(exception, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(exception);
     }
 
     assertTrue(c1.isClosed());
@@ -146,7 +141,7 @@ public class CloserTest extends TestCase {
     assertTrue(suppressor.suppressions.isEmpty());
   }
 
-  public void testExceptionThrown_whileClosingFirstCloseable() throws IOException {
+  public void testExceptionThrown_whileClosingFirstCloseable() {
     Closer closer = new Closer(suppressor);
 
     IOException exception = new IOException();
@@ -157,8 +152,8 @@ public class CloserTest extends TestCase {
 
     try {
       closer.close();
-    } catch (Throwable expected) {
-      assertSame(exception, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(exception);
     }
 
     assertTrue(c1.isClosed());
@@ -167,7 +162,7 @@ public class CloserTest extends TestCase {
     assertTrue(suppressor.suppressions.isEmpty());
   }
 
-  public void testCloseExceptionsSuppressed_whenExceptionThrownFromTryBlock() throws IOException {
+  public void testCloseExceptionsSuppressed_whenExceptionThrownFromTryBlock() {
     Closer closer = new Closer(suppressor);
 
     IOException tryException = new IOException();
@@ -185,8 +180,8 @@ public class CloserTest extends TestCase {
       } finally {
         closer.close();
       }
-    } catch (Throwable expected) {
-      assertSame(tryException, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(tryException);
     }
 
     assertTrue(c1.isClosed());
@@ -197,8 +192,7 @@ public class CloserTest extends TestCase {
         new Suppression(c1, tryException, c1Exception));
   }
 
-  public void testCloseExceptionsSuppressed_whenExceptionThrownClosingFirstCloseable()
-      throws IOException {
+  public void testCloseExceptionsSuppressed_whenExceptionThrownClosingFirstCloseable() {
     Closer closer = new Closer(suppressor);
 
     IOException c1Exception = new IOException();
@@ -211,8 +205,8 @@ public class CloserTest extends TestCase {
 
     try {
       closer.close();
-    } catch (Throwable expected) {
-      assertSame(c3Exception, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(c3Exception);
     }
 
     assertTrue(c1.isClosed());
@@ -224,7 +218,7 @@ public class CloserTest extends TestCase {
         new Suppression(c1, c3Exception, c1Exception));
   }
 
-  public void testRuntimeExceptions() throws IOException {
+  public void testRuntimeExceptions() {
     Closer closer = new Closer(suppressor);
 
     RuntimeException tryException = new RuntimeException();
@@ -242,8 +236,8 @@ public class CloserTest extends TestCase {
       } finally {
         closer.close();
       }
-    } catch (Throwable expected) {
-      assertSame(tryException, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(tryException);
     }
 
     assertTrue(c1.isClosed());
@@ -254,7 +248,7 @@ public class CloserTest extends TestCase {
         new Suppression(c1, tryException, c1Exception));
   }
 
-  public void testErrors() throws IOException {
+  public void testErrors() {
     Closer closer = new Closer(suppressor);
 
     Error c1Exception = new Error();
@@ -267,8 +261,8 @@ public class CloserTest extends TestCase {
 
     try {
       closer.close();
-    } catch (Throwable expected) {
-      assertSame(c3Exception, expected);
+    } catch (Throwable caught) {
+      assertThat(caught).isEqualTo(c3Exception);
     }
 
     assertTrue(c1.isClosed());
@@ -280,43 +274,8 @@ public class CloserTest extends TestCase {
         new Suppression(c1, c3Exception, c1Exception));
   }
 
-  public static void testLoggingSuppressor() throws IOException {
-    TestLogHandler logHandler = new TestLogHandler();
-
-    Closeables.logger.addHandler(logHandler);
-    try {
-      Closer closer = new Closer(new Closer.LoggingSuppressor());
-
-      TestCloseable c1 = closer.register(TestCloseable.throwsOnClose(new IOException()));
-      TestCloseable c2 = closer.register(TestCloseable.throwsOnClose(new RuntimeException()));
-      try {
-        throw closer.rethrow(new IOException("thrown"), IOException.class);
-      } catch (IOException expected) {
-      }
-
-      assertTrue(logHandler.getStoredLogRecords().isEmpty());
-
-      closer.close();
-
-      assertEquals(2, logHandler.getStoredLogRecords().size());
-
-      LogRecord record = logHandler.getStoredLogRecords().get(0);
-      assertEquals("Suppressing exception thrown when closing " + c2, record.getMessage());
-
-      record = logHandler.getStoredLogRecords().get(1);
-      assertEquals("Suppressing exception thrown when closing " + c1, record.getMessage());
-    } finally {
-      Closeables.logger.removeHandler(logHandler);
-    }
-  }
-
-  public static void testSuppressingSuppressorIfPossible() throws IOException {
-    // can't test the JDK7 suppressor when not running on JDK7
-    if (!Closer.SuppressingSuppressor.isAvailable()) {
-      return;
-    }
-
-    Closer closer = new Closer(new Closer.SuppressingSuppressor());
+  public void testSuppressingSuppressor() {
+    Closer closer = Closer.create();
 
     IOException thrownException = new IOException();
     IOException c1Exception = new IOException();
@@ -330,17 +289,17 @@ public class CloserTest extends TestCase {
       } catch (Throwable e) {
         throw closer.rethrow(thrownException, IOException.class);
       } finally {
-        assertThat(getSuppressed(thrownException)).isEmpty();
+        assertThat(thrownException.getSuppressed()).isEmpty();
         closer.close();
       }
-    } catch (IOException expected) {
-      assertSame(thrownException, expected);
+    } catch (IOException caught) {
+      assertThat(caught).isEqualTo(thrownException);
     }
 
     assertTrue(c1.isClosed());
     assertTrue(c2.isClosed());
 
-    ImmutableSet<Throwable> suppressed = ImmutableSet.copyOf(getSuppressed(thrownException));
+    ImmutableSet<Throwable> suppressed = ImmutableSet.copyOf(thrownException.getSuppressed());
     assertEquals(2, suppressed.size());
 
     assertEquals(ImmutableSet.of(c1Exception, c2Exception), suppressed);
@@ -352,15 +311,6 @@ public class CloserTest extends TestCase {
     closer.close();
   }
 
-  static Throwable[] getSuppressed(Throwable throwable) {
-    try {
-      Method getSuppressed = Throwable.class.getDeclaredMethod("getSuppressed");
-      return (Throwable[]) getSuppressed.invoke(throwable);
-    } catch (Exception e) {
-      throw new AssertionError(e); // only called if running on JDK7
-    }
-  }
-
   /**
    * Asserts that an exception was thrown when trying to close each of the given throwables and that
    * each such exception was suppressed because of the given thrown exception.
@@ -369,10 +319,11 @@ public class CloserTest extends TestCase {
     assertEquals(ImmutableList.copyOf(expected), suppressor.suppressions);
   }
 
+  // TODO(cpovirk): Just use addSuppressed+getSuppressed now that we can rely on it.
   /** Suppressor that records suppressions. */
   private static class TestSuppressor implements Closer.Suppressor {
 
-    private final List<Suppression> suppressions = Lists.newArrayList();
+    private final List<Suppression> suppressions = new ArrayList<>();
 
     @Override
     public void suppress(Closeable closeable, Throwable thrown, Throwable suppressed) {
@@ -393,7 +344,7 @@ public class CloserTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
       if (obj instanceof Suppression) {
         Suppression other = (Suppression) obj;
         return closeable.equals(other.closeable)
@@ -405,7 +356,7 @@ public class CloserTest extends TestCase {
 
     @Override
     public int hashCode() {
-      return Objects.hashCode(closeable, thrown, suppressed);
+      return Objects.hash(closeable, thrown, suppressed);
     }
 
     @Override
@@ -420,14 +371,14 @@ public class CloserTest extends TestCase {
 
   private static class TestCloseable implements Closeable {
 
-    private final Throwable throwOnClose;
+    private final @Nullable Throwable throwOnClose;
     private boolean closed;
 
-    static TestCloseable normal() throws IOException {
+    static TestCloseable normal() {
       return new TestCloseable(null);
     }
 
-    static TestCloseable throwsOnClose(Throwable throwOnClose) throws IOException {
+    static TestCloseable throwsOnClose(Throwable throwOnClose) {
       return new TestCloseable(throwOnClose);
     }
 
@@ -439,7 +390,7 @@ public class CloserTest extends TestCase {
       this.throwOnClose = throwOnClose;
     }
 
-    public boolean isClosed() {
+    boolean isClosed() {
       return closed;
     }
 
@@ -447,7 +398,8 @@ public class CloserTest extends TestCase {
     public void close() throws IOException {
       closed = true;
       if (throwOnClose != null) {
-        Throwables.propagateIfPossible(throwOnClose, IOException.class);
+        throwIfInstanceOf(throwOnClose, IOException.class);
+        throwIfUnchecked(throwOnClose);
         throw new AssertionError(throwOnClose);
       }
     }

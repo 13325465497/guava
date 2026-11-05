@@ -17,25 +17,32 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Comparator;
+import org.jspecify.annotations.Nullable;
 
 /** An ordering that tries several comparators in order. */
-@GwtCompatible(serializable = true)
-final class CompoundOrdering<T> extends Ordering<T> implements Serializable {
+@GwtCompatible
+final class CompoundOrdering<T extends @Nullable Object> extends Ordering<T>
+    implements Serializable {
   final Comparator<? super T>[] comparators;
 
+  @SuppressWarnings("unchecked") // Generic array creation
   CompoundOrdering(Comparator<? super T> primary, Comparator<? super T> secondary) {
-    this.comparators = (Comparator<? super T>[]) new Comparator[] {primary, secondary};
+    this.comparators = (Comparator<? super T>[]) new Comparator<?>[] {primary, secondary};
   }
 
+  @SuppressWarnings("unchecked") // Generic array creation
   CompoundOrdering(Iterable<? extends Comparator<? super T>> comparators) {
-    this.comparators = Iterables.toArray(comparators, new Comparator[0]);
+    this.comparators =
+        Iterables.toArray(comparators, (Comparator<? super T>[]) new Comparator<?>[0]);
   }
 
   @Override
-  public int compare(T left, T right) {
+  public int compare(@ParametricNullness T left, @ParametricNullness T right) {
     for (int i = 0; i < comparators.length; i++) {
       int result = comparators[i].compare(left, right);
       if (result != 0) {
@@ -46,7 +53,7 @@ final class CompoundOrdering<T> extends Ordering<T> implements Serializable {
   }
 
   @Override
-  public boolean equals(Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object == this) {
       return true;
     }
@@ -67,5 +74,5 @@ final class CompoundOrdering<T> extends Ordering<T> implements Serializable {
     return "Ordering.compound(" + Arrays.toString(comparators) + ")";
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

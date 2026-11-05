@@ -21,12 +21,14 @@ import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
 import java.lang.reflect.Constructor;
 import java.util.concurrent.BlockingQueue;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Benchmarks for {@link Monitor}.
  *
  * @author Justin T. Sampson
  */
+@NullUnmarked
 public class MonitorBenchmark {
 
   @Param({"10", "100", "1000"})
@@ -44,7 +46,7 @@ public class MonitorBenchmark {
   @SuppressWarnings("unchecked")
   void setUp() throws Exception {
     String prefix =
-        (useMonitor ? "com.google.common.util.concurrent.MonitorBased" : "java.util.concurrent.");
+        useMonitor ? "com.google.common.util.concurrent.MonitorBased" : "java.util.concurrent.";
     String className = prefix + queueType + "BlockingQueue";
     Constructor<?> constructor = Class.forName(className).getConstructor(int.class);
     queue = (BlockingQueue<String>) constructor.newInstance(capacity);

@@ -21,8 +21,10 @@ import com.google.caliper.api.VmOptions;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.Buffer;
 import java.nio.CharBuffer;
 import java.util.Random;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Benchmarks for {@link CharStreams#copy}.
@@ -32,6 +34,7 @@ import java.util.Random;
  */
 // These benchmarks allocate a lot of data so use a large heap
 @VmOptions({"-Xms12g", "-Xmx12g", "-d64"})
+@NullUnmarked
 public class CharStreamsCopyBenchmark {
   enum CopyStrategy {
     OLD {
@@ -40,10 +43,10 @@ public class CharStreamsCopyBenchmark {
         CharBuffer buf = CharStreams.createBuffer();
         long total = 0;
         while (from.read(buf) != -1) {
-          buf.flip();
+          ((Buffer) buf).flip();
           to.append(buf);
           total += buf.remaining();
-          buf.clear();
+          ((Buffer) buf).clear();
         }
         return total;
       }
@@ -96,13 +99,12 @@ public class CharStreamsCopyBenchmark {
     data = sb.toString();
   }
 
-  @SuppressWarnings("GoodTime") // b/130759882
   @Benchmark
   public long timeCopy(int reps) throws IOException {
     long r = 0;
-    final String localData = data;
-    final TargetSupplier localTarget = target;
-    final CopyStrategy localStrategy = strategy;
+    String localData = data;
+    TargetSupplier localTarget = target;
+    CopyStrategy localStrategy = strategy;
     for (int i = 0; i < reps; i++) {
       Appendable appendable = localTarget.get(localData.length());
       r += localStrategy.copy(new StringReader(localData), appendable);

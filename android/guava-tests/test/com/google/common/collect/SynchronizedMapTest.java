@@ -17,10 +17,13 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.singletonMap;
 
 import com.google.common.collect.Synchronized.SynchronizedCollection;
 import com.google.common.collect.Synchronized.SynchronizedSet;
-import com.google.common.testing.SerializableTester;
+import com.google.common.testing.EqualsTester;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashMap;
@@ -28,16 +31,19 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@code Synchronized#map}.
  *
  * @author Mike Bostock
  */
+@NullUnmarked
 public class SynchronizedMapTest extends TestCase {
-  public final Object mutex = new Integer(1); // something Serializable
+  public final Object mutex = new Object[0]; // something Serializable
 
-  protected <K, V> Map<K, V> create() {
+  <K, V> Map<K, V> create() {
     TestMap<K, V> inner = new TestMap<>(new HashMap<K, V>(), mutex);
     Map<K, V> outer = Synchronized.map(inner, mutex);
     return outer;
@@ -45,7 +51,7 @@ public class SynchronizedMapTest extends TestCase {
 
   static class TestMap<K, V> extends ForwardingMap<K, V> implements Serializable {
     public final Object mutex;
-    private Map<K, V> delegate;
+    private final Map<K, V> delegate;
 
     public TestMap(Map<K, V> delegate, Object mutex) {
       checkNotNull(mutex);
@@ -71,7 +77,7 @@ public class SynchronizedMapTest extends TestCase {
     }
 
     @Override
-    public V remove(Object object) {
+    public @Nullable V remove(@Nullable Object object) {
       assertTrue(Thread.holdsLock(mutex));
       return super.remove(object);
     }
@@ -83,25 +89,25 @@ public class SynchronizedMapTest extends TestCase {
     }
 
     @Override
-    public boolean containsKey(Object key) {
+    public boolean containsKey(@Nullable Object key) {
       assertTrue(Thread.holdsLock(mutex));
       return super.containsKey(key);
     }
 
     @Override
-    public boolean containsValue(Object value) {
+    public boolean containsValue(@Nullable Object value) {
       assertTrue(Thread.holdsLock(mutex));
       return super.containsValue(value);
     }
 
     @Override
-    public V get(Object key) {
+    public @Nullable V get(@Nullable Object key) {
       assertTrue(Thread.holdsLock(mutex));
       return super.get(key);
     }
 
     @Override
-    public V put(K key, V value) {
+    public @Nullable V put(K key, V value) {
       assertTrue(Thread.holdsLock(mutex));
       return super.put(key, value);
     }
@@ -131,7 +137,7 @@ public class SynchronizedMapTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
       assertTrue(Thread.holdsLock(mutex));
       return super.equals(obj);
     }
@@ -159,11 +165,11 @@ public class SynchronizedMapTest extends TestCase {
    */
 
   public void testSize() {
-    create().size();
+    int unused = create().size();
   }
 
   public void testIsEmpty() {
-    create().isEmpty();
+    boolean unused = create().isEmpty();
   }
 
   public void testRemove() {
@@ -175,15 +181,15 @@ public class SynchronizedMapTest extends TestCase {
   }
 
   public void testContainsKey() {
-    create().containsKey(null);
+    boolean unused = create().containsKey(null);
   }
 
   public void testContainsValue() {
-    create().containsValue(null);
+    boolean unused = create().containsValue(null);
   }
 
   public void testGet() {
-    create().get(null);
+    Object unused = create().get(null);
   }
 
   public void testPut() {
@@ -198,36 +204,35 @@ public class SynchronizedMapTest extends TestCase {
     Map<String, Integer> map = create();
     Set<String> keySet = map.keySet();
     assertTrue(keySet instanceof SynchronizedSet);
-    assertSame(mutex, ((SynchronizedSet<?>) keySet).mutex);
+    assertThat(((SynchronizedSet<?>) keySet).mutex).isSameInstanceAs(mutex);
   }
 
   public void testValues() {
     Map<String, Integer> map = create();
     Collection<Integer> values = map.values();
     assertTrue(values instanceof SynchronizedCollection);
-    assertSame(mutex, ((SynchronizedCollection<?>) values).mutex);
+    assertThat(((SynchronizedCollection<?>) values).mutex).isSameInstanceAs(mutex);
   }
 
   public void testEntrySet() {
     Map<String, Integer> map = create();
     Set<Entry<String, Integer>> entrySet = map.entrySet();
     assertTrue(entrySet instanceof SynchronizedSet);
-    assertSame(mutex, ((SynchronizedSet<?>) entrySet).mutex);
+    assertThat(((SynchronizedSet<?>) entrySet).mutex).isSameInstanceAs(mutex);
   }
 
   public void testEquals() {
-    create().equals(new HashMap<String, Integer>());
-  }
-
-  public void testHashCode() {
-    create().hashCode();
+    new EqualsTester()
+        .addEqualityGroup(create(), new HashMap<>())
+        .addEqualityGroup(singletonMap("a", 1))
+        .testEquals();
   }
 
   public void testToString() {
-    create().toString();
+    String unused = create().toString();
   }
 
   public void testSerialization() {
-    SerializableTester.reserializeAndAssert(create());
+    reserializeAndAssert(create());
   }
 }

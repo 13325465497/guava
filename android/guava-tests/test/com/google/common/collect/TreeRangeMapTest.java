@@ -16,6 +16,8 @@ package com.google.common.collect;
 
 import static com.google.common.collect.BoundType.OPEN;
 import static com.google.common.collect.testing.Helpers.mapEntry;
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
@@ -24,6 +26,8 @@ import com.google.common.collect.testing.TestMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
+import com.google.common.testing.EqualsTester;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -31,6 +35,7 @@ import java.util.NoSuchElementException;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@code TreeRangeMap}.
@@ -38,7 +43,9 @@ import junit.framework.TestSuite;
  * @author Louis Wasserman
  */
 @GwtIncompatible // NavigableMap
+@NullUnmarked
 public class TreeRangeMapTest extends TestCase {
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTestSuite(TreeRangeMapTest.class);
@@ -69,7 +76,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Entry<Range<Integer>, String>[] createArray(int length) {
-                    return new Entry[length];
+                    return (Entry<Range<Integer>, String>[]) new Entry<?, ?>[length];
                   }
 
                   @Override
@@ -81,7 +88,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Range<Integer>[] createKeyArray(int length) {
-                    return new Range[length];
+                    return (Range<Integer>[]) new Range<?>[length];
                   }
 
                   @Override
@@ -125,7 +132,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Entry<Range<Integer>, String>[] createArray(int length) {
-                    return new Entry[length];
+                    return (Entry<Range<Integer>, String>[]) new Entry<?, ?>[length];
                   }
 
                   @Override
@@ -137,7 +144,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Range<Integer>[] createKeyArray(int length) {
-                    return new Range[length];
+                    return (Range<Integer>[]) new Range<?>[length];
                   }
 
                   @Override
@@ -180,7 +187,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Entry<Range<Integer>, String>[] createArray(int length) {
-                    return new Entry[length];
+                    return (Entry<Range<Integer>, String>[]) new Entry<?, ?>[length];
                   }
 
                   @Override
@@ -195,7 +202,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Range<Integer>[] createKeyArray(int length) {
-                    return new Range[length];
+                    return (Range<Integer>[]) new Range<?>[length];
                   }
 
                   @Override
@@ -239,7 +246,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Entry<Range<Integer>, String>[] createArray(int length) {
-                    return new Entry[length];
+                    return (Entry<Range<Integer>, String>[]) new Entry<?, ?>[length];
                   }
 
                   @Override
@@ -254,7 +261,7 @@ public class TreeRangeMapTest extends TestCase {
                   @SuppressWarnings("unchecked")
                   @Override
                   public Range<Integer>[] createKeyArray(int length) {
-                    return new Range[length];
+                    return (Range<Integer>[]) new Range<?>[length];
                   }
 
                   @Override
@@ -279,7 +286,7 @@ public class TreeRangeMapTest extends TestCase {
   static {
     ImmutableList.Builder<Range<Integer>> builder = ImmutableList.builder();
 
-    builder.add(Range.<Integer>all());
+    builder.add(Range.all());
 
     // Add one-ended ranges
     for (int i = MIN_BOUND; i <= MAX_BOUND; i++) {
@@ -343,9 +350,9 @@ public class TreeRangeMapTest extends TestCase {
 
         try {
           assertEquals(expected, rangeMap.span());
-          assertNotNull(expected);
+          assertThat(expected).isNotNull();
         } catch (NoSuchElementException e) {
-          assertNull(expected);
+          assertThat(expected).isNull();
         }
       }
     }
@@ -353,7 +360,7 @@ public class TreeRangeMapTest extends TestCase {
 
   public void testAllRangesAlone() {
     for (Range<Integer> range : RANGES) {
-      Map<Integer, Integer> model = Maps.newHashMap();
+      Map<Integer, Integer> model = new HashMap<>();
       putModel(model, range, 1);
       RangeMap<Integer, Integer> test = TreeRangeMap.create();
       test.put(range, 1);
@@ -364,7 +371,7 @@ public class TreeRangeMapTest extends TestCase {
   public void testAllRangePairs() {
     for (Range<Integer> range1 : RANGES) {
       for (Range<Integer> range2 : RANGES) {
-        Map<Integer, Integer> model = Maps.newHashMap();
+        Map<Integer, Integer> model = new HashMap<>();
         putModel(model, range1, 1);
         putModel(model, range2, 2);
         RangeMap<Integer, Integer> test = TreeRangeMap.create();
@@ -379,7 +386,7 @@ public class TreeRangeMapTest extends TestCase {
     for (Range<Integer> range1 : RANGES) {
       for (Range<Integer> range2 : RANGES) {
         for (Range<Integer> range3 : RANGES) {
-          Map<Integer, Integer> model = Maps.newHashMap();
+          Map<Integer, Integer> model = new HashMap<>();
           putModel(model, range1, 1);
           putModel(model, range2, 2);
           putModel(model, range3, 3);
@@ -397,7 +404,7 @@ public class TreeRangeMapTest extends TestCase {
     for (Range<Integer> range1 : RANGES) {
       for (Range<Integer> range2 : RANGES) {
         for (Range<Integer> range3 : RANGES) {
-          Map<Integer, Integer> model = Maps.newHashMap();
+          Map<Integer, Integer> model = new HashMap<>();
           putModel(model, range1, 1);
           putModel(model, range2, 2);
           putModel(model, range3, 3);
@@ -417,7 +424,7 @@ public class TreeRangeMapTest extends TestCase {
   public void testPutAndRemove() {
     for (Range<Integer> rangeToPut : RANGES) {
       for (Range<Integer> rangeToRemove : RANGES) {
-        Map<Integer, Integer> model = Maps.newHashMap();
+        Map<Integer, Integer> model = new HashMap<>();
         putModel(model, rangeToPut, 1);
         removeModel(model, rangeToRemove);
         RangeMap<Integer, Integer> test = TreeRangeMap.create();
@@ -432,7 +439,7 @@ public class TreeRangeMapTest extends TestCase {
     for (Range<Integer> rangeToPut1 : RANGES) {
       for (Range<Integer> rangeToPut2 : RANGES) {
         for (Range<Integer> rangeToRemove : RANGES) {
-          Map<Integer, Integer> model = Maps.newHashMap();
+          Map<Integer, Integer> model = new HashMap<>();
           putModel(model, rangeToPut1, 1);
           putModel(model, rangeToPut2, 2);
           removeModel(model, rangeToRemove);
@@ -452,7 +459,7 @@ public class TreeRangeMapTest extends TestCase {
     for (Range<Integer> rangeToPut1 : RANGES) {
       for (Range<Integer> rangeToPut2 : RANGES) {
         for (Range<Integer> rangeToRemove : RANGES) {
-          Map<Integer, Integer> model = Maps.newHashMap();
+          Map<Integer, Integer> model = new HashMap<>();
           putModel(model, rangeToPut1, 1);
           putModel(model, rangeToPut2, 2);
           removeModel(model, rangeToRemove);
@@ -486,6 +493,20 @@ public class TreeRangeMapTest extends TestCase {
         rangeMap.asMapOfRanges());
 
     rangeMap.putCoalescing(Range.closedOpen(1, 1), 1); // empty range coalesces connected ranges
+    assertEquals(ImmutableMap.of(Range.closedOpen(0, 2), 1), rangeMap.asMapOfRanges());
+  }
+
+  public void testPutCoalescingSubmapEmpty() {
+    RangeMap<Integer, Integer> rangeMap = TreeRangeMap.create();
+    rangeMap.put(Range.closedOpen(0, 1), 1);
+    rangeMap.put(Range.closedOpen(1, 2), 1);
+    assertEquals(
+        ImmutableMap.of(Range.closedOpen(0, 1), 1, Range.closedOpen(1, 2), 1),
+        rangeMap.asMapOfRanges());
+
+    RangeMap<Integer, Integer> subRangeMap = rangeMap.subRangeMap(Range.closedOpen(0, 2));
+    subRangeMap.putCoalescing(Range.closedOpen(1, 1), 1); // empty range coalesces connected ranges
+    assertEquals(ImmutableMap.of(Range.closedOpen(0, 2), 1), subRangeMap.asMapOfRanges());
     assertEquals(ImmutableMap.of(Range.closedOpen(0, 2), 1), rangeMap.asMapOfRanges());
   }
 
@@ -524,6 +545,7 @@ public class TreeRangeMapTest extends TestCase {
             .build(),
         rangeMap.asMapOfRanges());
   }
+
 
   public void testSubRangeMapExhaustive() {
     for (Range<Integer> range1 : RANGES) {
@@ -602,14 +624,10 @@ public class TreeRangeMapTest extends TestCase {
             3),
         rangeMap.asMapOfRanges());
 
-    try {
-      sub.put(Range.open(9, 12), 5);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> sub.put(Range.open(9, 12), 5));
 
-    sub = sub.subRangeMap(Range.closedOpen(5, 5));
-    sub.put(Range.closedOpen(5, 5), 6); // should be a no-op
+    RangeMap<Integer, Integer> subSub = sub.subRangeMap(Range.closedOpen(5, 5));
+    subSub.put(Range.closedOpen(5, 5), 6); // should be a no-op
     assertEquals(
         ImmutableMap.of(
             Range.open(3, 7),
@@ -653,11 +671,7 @@ public class TreeRangeMapTest extends TestCase {
             3),
         rangeMap.asMapOfRanges());
 
-    try {
-      sub.putCoalescing(Range.open(9, 12), 5);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> sub.putCoalescing(Range.open(9, 12), 5));
   }
 
   public void testSubRangeMapRemove() {
@@ -694,7 +708,54 @@ public class TreeRangeMapTest extends TestCase {
         ImmutableMap.of(Range.open(3, 5), 1, Range.closed(12, 16), 3), rangeMap.asMapOfRanges());
   }
 
-  private void verify(Map<Integer, Integer> model, RangeMap<Integer, Integer> test) {
+  public void testCopyOfTreeRangeMap() {
+    RangeMap<Integer, Integer> rangeMap = TreeRangeMap.create();
+    rangeMap.put(Range.open(3, 7), 1);
+    rangeMap.put(Range.closed(9, 10), 2);
+    rangeMap.put(Range.closed(12, 16), 3);
+
+    RangeMap<Integer, Integer> copy = TreeRangeMap.copyOf(rangeMap);
+
+    assertEquals(rangeMap.asMapOfRanges(), copy.asMapOfRanges());
+  }
+
+  public void testCopyOfImmutableRangeMap() {
+    ImmutableRangeMap<Integer, Integer> rangeMap =
+        ImmutableRangeMap.<Integer, Integer>builder()
+            .put(Range.open(3, 7), 1)
+            .put(Range.closed(9, 10), 2)
+            .put(Range.closed(12, 16), 3)
+            .build();
+
+    RangeMap<Integer, Integer> copy = TreeRangeMap.copyOf(rangeMap);
+
+    assertEquals(rangeMap.asMapOfRanges(), copy.asMapOfRanges());
+  }
+
+  // Overriding testEquals because it seems that we get spurious failures when it things empty
+  // should be unequal to empty.
+  public void testEquals() {
+    TreeRangeMap<Integer, Integer> empty = TreeRangeMap.create();
+    TreeRangeMap<Integer, Integer> nonEmpty = TreeRangeMap.create();
+    nonEmpty.put(Range.all(), 1);
+    TreeRangeMap<Integer, Integer> coalesced = TreeRangeMap.create();
+    coalesced.put(Range.atLeast(1), 1);
+    coalesced.putCoalescing(Range.atMost(1), 1);
+    TreeRangeMap<Integer, Integer> differentValues = TreeRangeMap.create();
+    differentValues.put(Range.closedOpen(1, 2), 2);
+    differentValues.put(Range.closedOpen(3, 4), 2);
+    TreeRangeMap<Double, Integer> differentTypes = TreeRangeMap.create();
+    differentTypes.put(Range.closedOpen(1.0, 2.0), 2);
+    differentTypes.put(Range.closedOpen(3.0, 4.0), 2);
+    new EqualsTester()
+        .addEqualityGroup(empty, TreeRangeMap.<Integer, Integer>create())
+        .addEqualityGroup(nonEmpty, coalesced)
+        .addEqualityGroup(differentValues)
+        .addEqualityGroup(differentTypes)
+        .testEquals();
+  }
+
+  private static void verify(Map<Integer, Integer> model, RangeMap<Integer, Integer> test) {
     for (int i = MIN_BOUND - 1; i <= MAX_BOUND + 1; i++) {
       assertEquals(model.get(i), test.get(i));
 

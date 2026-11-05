@@ -20,12 +20,14 @@ import com.google.common.base.Function;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.ForwardingWrapperTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link ForwardingMultimap}.
  *
  * @author Hayward Chan
  */
+@NullUnmarked
 public class ForwardingMultimapTest extends TestCase {
 
   @SuppressWarnings("rawtypes")
@@ -33,10 +35,10 @@ public class ForwardingMultimapTest extends TestCase {
     new ForwardingWrapperTester()
         .testForwarding(
             Multimap.class,
-            new Function<Multimap, Multimap>() {
+            new Function<Multimap, Multimap<?, ?>>() {
               @Override
-              public Multimap apply(Multimap delegate) {
-                return wrap(delegate);
+              public Multimap<?, ?> apply(Multimap delegate) {
+                return wrap((Multimap<?, ?>) delegate);
               }
             });
   }
@@ -50,7 +52,7 @@ public class ForwardingMultimapTest extends TestCase {
         .testEquals();
   }
 
-  private static <K, V> Multimap<K, V> wrap(final Multimap<K, V> delegate) {
+  private static <K, V> Multimap<K, V> wrap(Multimap<K, V> delegate) {
     return new ForwardingMultimap<K, V>() {
       @Override
       protected Multimap<K, V> delegate() {

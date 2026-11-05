@@ -17,12 +17,16 @@
 package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.JdkFutureAdapters.listenInPoolThread;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.ClassSanityTester;
 import com.google.common.util.concurrent.FuturesTest.ExecutorSpy;
 import java.util.concurrent.CountDownLatch;
@@ -33,6 +37,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link JdkFutureAdapters}.
@@ -40,12 +45,15 @@ import junit.framework.TestCase;
  * @author Sven Mawson
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class JdkFutureAdaptersTest extends TestCase {
   private static final String DATA1 = "data";
 
-  public void testListenInPoolThreadReturnsSameFuture() throws Exception {
+  public void testListenInPoolThreadReturnsSameFuture() {
     ListenableFuture<String> listenableFuture = immediateFuture(DATA1);
-    assertSame(listenableFuture, listenInPoolThread(listenableFuture));
+    assertThat(listenInPoolThread(listenableFuture)).isSameInstanceAs(listenableFuture);
   }
 
   private static class SingleCallListener implements Runnable {
@@ -60,16 +68,16 @@ public class JdkFutureAdaptersTest extends TestCase {
       calledCountDown.countDown();
     }
 
-    public void expectCall() {
+    void expectCall() {
       assertFalse("expectCall is already true", expectCall);
       expectCall = true;
     }
 
-    public boolean wasCalled() {
+    boolean wasCalled() {
       return calledCountDown.getCount() == 0;
     }
 
-    public void waitForCall() throws InterruptedException {
+    void waitForCall() throws InterruptedException {
       assertTrue("expectCall is false", expectCall);
       calledCountDown.await();
     }
@@ -91,7 +99,7 @@ public class JdkFutureAdaptersTest extends TestCase {
     // #addListener() will run the listener immediately because the Future is
     // already finished (we explicitly set the result of it above).
     listenableFuture.addListener(singleCallListener, directExecutor());
-    assertEquals(DATA1, listenableFuture.get());
+    assertThat(listenableFuture.get()).isEqualTo(DATA1);
 
     // 'spy' should have been ignored since 'abstractFuture' was done before
     // a listener was added.
@@ -116,7 +124,7 @@ public class JdkFutureAdaptersTest extends TestCase {
 
     listenableFuture.addListener(singleCallListener, executorService);
     abstractFuture.set(DATA1);
-    assertEquals(DATA1, listenableFuture.get());
+    assertThat(listenableFuture.get()).isEqualTo(DATA1);
     singleCallListener.waitForCall();
 
     assertTrue(spy.wasExecuted);
@@ -125,13 +133,13 @@ public class JdkFutureAdaptersTest extends TestCase {
   }
 
   public void testListenInPoolThreadCustomExecutorInterrupted() throws Exception {
-    final CountDownLatch submitSuccessful = new CountDownLatch(1);
+    CountDownLatch submitSuccessful = new CountDownLatch(1);
     ExecutorService executorService =
         new ThreadPoolExecutor(
             0,
             Integer.MAX_VALUE,
             60L,
-            TimeUnit.SECONDS,
+            SECONDS,
             new SynchronousQueue<Runnable>(),
             new ThreadFactoryBuilder().setDaemon(true).build()) {
           @Override
@@ -157,7 +165,7 @@ public class JdkFutureAdaptersTest extends TestCase {
     submitSuccessful.await();
     executorService.shutdownNow();
     abstractFuture.set(DATA1);
-    assertEquals(DATA1, listenableFuture.get());
+    assertThat(listenableFuture.get()).isEqualTo(DATA1);
     singleCallListener.waitForCall();
 
     assertTrue(singleCallListener.wasCalled());
@@ -236,14 +244,15 @@ public class JdkFutureAdaptersTest extends TestCase {
   public void testListenInPoolThreadRunsListenerAfterRuntimeException() throws Exception {
     RuntimeExceptionThrowingFuture<String> input = new RuntimeExceptionThrowingFuture<>();
     /*
-     * The compiler recognizes that "input instanceof ListenableFuture" is
-     * impossible. We want the test, though, in case that changes in the future,
-     * so we use isInstance instead.
+     * RuntimeExceptionThrowingFuture is provably not a ListenableFuture at compile time, so this
+     * code may someday upset Error Prone. We want the test, though, in case that changes in the
+     * future, so we will suppress any such future Error Prone reports.
      */
-    assertFalse(
-        "Can't test the main listenInPoolThread path "
-            + "if the input is already a ListenableFuture",
-        ListenableFuture.class.isInstance(input));
+    assertWithMessage(
+            "Can't test the main listenInPoolThread path "
+                + "if the input is already a ListenableFuture")
+        .that(input)
+        .isNotInstanceOf(ListenableFuture.class);
     ListenableFuture<String> listenable = listenInPoolThread(input);
     /*
      * This will occur before the waiting get() in the

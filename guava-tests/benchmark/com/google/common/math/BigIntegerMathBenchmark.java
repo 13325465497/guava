@@ -25,12 +25,14 @@ import com.google.caliper.BeforeExperiment;
 import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
 import java.math.BigInteger;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Benchmarks for the non-rounding methods of {@code BigIntegerMath}.
  *
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class BigIntegerMathBenchmark {
   private static final int[] factorials = new int[ARRAY_SIZE];
   private static final int[] slowFactorials = new int[ARRAY_SIZE];
@@ -59,6 +61,7 @@ public class BigIntegerMathBenchmark {
   }
 
   /** Returns the product of {@code n1} exclusive through {@code n2} inclusive. */
+  @SuppressWarnings("UseCorrectAssertInTests") // TODO(b/345814817): Remove or convert assertion.
   private static BigInteger oldSlowFactorial(int n1, int n2) {
     assert n1 <= n2;
     if (IntMath.log2(n2, CEILING) * (n2 - n1) < Long.SIZE - 1) {

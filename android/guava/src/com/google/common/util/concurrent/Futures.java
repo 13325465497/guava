@@ -16,12 +16,16 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.google.common.util.concurrent.Uninterruptibles.getUninterruptibly;
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.Executors.callable;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
@@ -29,8 +33,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.CollectionFuture.ListFuture;
 import com.google.common.util.concurrent.ImmediateFuture.ImmediateCancelledFuture;
 import com.google.common.util.concurrent.ImmediateFuture.ImmediateFailedFuture;
-import com.google.common.util.concurrent.ImmediateFuture.ImmediateSuccessfulFuture;
+import com.google.common.util.concurrent.internal.InternalFutureFailureAccess;
+import com.google.common.util.concurrent.internal.InternalFutures;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.concurrent.LazyInit;
+import com.google.j2objc.annotations.RetainedLocalRef;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -38,14 +46,17 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to the {@link Future} interface.
+ *
+ * <p>For uninterruptible operations, see {@link Uninterruptibles#getUninterruptibly}.
  *
  * <p>Many of these methods use the {@link ListenableFuture} API; consult the Guava User Guide
  * article on <a href="https://github.com/google/guava/wiki/ListenableFutureExplained">{@code
@@ -58,17 +69,19 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * monitoring, debugging, and cancellation. Examples of frameworks include:
  *
  * <ul>
- *   <li><a href="http://dagger.dev/producers.html">Dagger Producers</a>
+ *   <li><a href="https://dagger.dev/producers.html">Dagger Producers</a>
  * </ul>
  *
- * <p>If you do chain your operations manually, you may want to use {@link FluentFuture}.
+ * <p>If you do chain your operations manually, you may want to use {@link FluentFuture}. If those
+ * operations create objects that must be closed when the computation is done, see {@link
+ * ClosingFuture}.
  *
  * @author Kevin Bourrillion
  * @author Nishant Thakkar
  * @author Sven Mawson
  * @since 1.0
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 public final class Futures extends GwtFuturesCatchingSpecialization {
 
   // A note on memory visibility.
@@ -99,7 +112,7 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
   //    (hypothetical) unsafe read by our caller. Note: adding 'volatile' does not fix this issue,
   //    it would just add an edge such that if done() observed non-null, then it would also
   //    definitely observe all earlier writes, but we still have no guarantee that done() would see
-  //    the inital write (just stronger guarantees if it does).
+  //    the initial write (just stronger guarantees if it does).
   //
   // See: http://cs.oswego.edu/pipermail/concurrency-interest/2015-January/013800.html
   // For a (long) discussion about this specific issue and the general futility of life.
@@ -123,14 +136,26 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * getters just return the value. This {@code Future} can't be canceled or timed out and its
    * {@code isDone()} method always returns {@code true}.
    */
-  public static <V> ListenableFuture<V> immediateFuture(@NullableDecl V value) {
+  public static <V extends @Nullable Object> ListenableFuture<V> immediateFuture(
+      @ParametricNullness V value) {
     if (value == null) {
-      // This cast is safe because null is assignable to V for all V (i.e. it is covariant)
-      @SuppressWarnings({"unchecked", "rawtypes"})
-      ListenableFuture<V> typedNull = (ListenableFuture) ImmediateSuccessfulFuture.NULL;
+      // This cast is safe because null is assignable to V for all V (i.e. it is bivariant)
+      @SuppressWarnings("unchecked")
+      ListenableFuture<V> typedNull = (ListenableFuture<V>) ImmediateFuture.NULL;
       return typedNull;
     }
-    return new ImmediateSuccessfulFuture<V>(value);
+    return new ImmediateFuture<>(value);
+  }
+
+  /**
+   * Returns a successful {@code ListenableFuture<Void>}. This method is equivalent to {@code
+   * immediateFuture(null)} except that it is restricted to produce futures of type {@code Void}.
+   *
+   * @since 29.0
+   */
+  @SuppressWarnings("unchecked")
+  public static ListenableFuture<@Nullable Void> immediateVoidFuture() {
+    return (ListenableFuture<@Nullable Void>) ImmediateFuture.NULL;
   }
 
   /**
@@ -140,9 +165,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * returns {@code true}. Calling {@code get()} will immediately throw the provided {@code
    * Throwable} wrapped in an {@code ExecutionException}.
    */
-  public static <V> ListenableFuture<V> immediateFailedFuture(Throwable throwable) {
+  public static <V extends @Nullable Object> ListenableFuture<V> immediateFailedFuture(
+      Throwable throwable) {
     checkNotNull(throwable);
-    return new ImmediateFailedFuture<V>(throwable);
+    return new ImmediateFailedFuture<>(throwable);
   }
 
   /**
@@ -151,8 +177,40 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * @since 14.0
    */
-  public static <V> ListenableFuture<V> immediateCancelledFuture() {
-    return new ImmediateCancelledFuture<V>();
+  @SuppressWarnings("unchecked") // ImmediateCancelledFuture can work with any type
+  public static <V extends @Nullable Object> ListenableFuture<V> immediateCancelledFuture() {
+    ListenableFuture<Object> instance = ImmediateCancelledFuture.INSTANCE;
+    if (instance != null) {
+      return (ListenableFuture<V>) instance;
+    }
+    return new ImmediateCancelledFuture<>();
+  }
+
+  /**
+   * Executes {@code callable} on the specified {@code executor}, returning a {@code Future}.
+   *
+   * @throws RejectedExecutionException if the task cannot be scheduled for execution
+   * @since 28.2
+   */
+  public static <O extends @Nullable Object> ListenableFuture<O> submit(
+      Callable<O> callable, Executor executor) {
+    TrustedListenableFutureTask<O> task = TrustedListenableFutureTask.create(callable);
+    executor.execute(task);
+    return task;
+  }
+
+  /**
+   * Executes {@code runnable} on the specified {@code executor}, returning a {@code Future} that
+   * will complete after execution.
+   *
+   * @throws RejectedExecutionException if the task cannot be scheduled for execution
+   * @since 28.2
+   */
+  public static ListenableFuture<@Nullable Void> submit(Runnable runnable, Executor executor) {
+    TrustedListenableFutureTask<@Nullable Void> task =
+        TrustedListenableFutureTask.create(runnable, null);
+    executor.execute(task);
+    return task;
   }
 
   /**
@@ -161,8 +219,8 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @throws RejectedExecutionException if the task cannot be scheduled for execution
    * @since 23.0
    */
-  @Beta
-  public static <O> ListenableFuture<O> submitAsync(AsyncCallable<O> callable, Executor executor) {
+  public static <O extends @Nullable Object> ListenableFuture<O> submitAsync(
+      AsyncCallable<O> callable, Executor executor) {
     TrustedListenableFutureTask<O> task = TrustedListenableFutureTask.create(callable);
     executor.execute(task);
     return task;
@@ -172,27 +230,39 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * Schedules {@code callable} on the specified {@code executor}, returning a {@code Future}.
    *
    * @throws RejectedExecutionException if the task cannot be scheduled for execution
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @J2ktIncompatible
+  @GwtIncompatible // java.util.concurrent.ScheduledExecutorService
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  // TODO(cpovirk): Return ListenableScheduledFuture?
+  public static <O extends @Nullable Object> ListenableFuture<O> scheduleAsync(
+      AsyncCallable<O> callable, Duration delay, ScheduledExecutorService executorService) {
+    return scheduleAsync(callable, toNanosSaturated(delay), NANOSECONDS, executorService);
+  }
+
+  /**
+   * Schedules {@code callable} on the specified {@code executor}, returning a {@code Future}.
+   *
+   * @throws RejectedExecutionException if the task cannot be scheduled for execution
    * @since 23.0
    */
-  @Beta
+  @J2ktIncompatible
   @GwtIncompatible // java.util.concurrent.ScheduledExecutorService
   @SuppressWarnings("GoodTime") // should accept a java.time.Duration
-  public static <O> ListenableFuture<O> scheduleAsync(
+  // TODO(cpovirk): Return ListenableScheduledFuture?
+  public static <O extends @Nullable Object> ListenableFuture<O> scheduleAsync(
       AsyncCallable<O> callable,
       long delay,
       TimeUnit timeUnit,
       ScheduledExecutorService executorService) {
     TrustedListenableFutureTask<O> task = TrustedListenableFutureTask.create(callable);
-    final Future<?> scheduled = executorService.schedule(task, delay, timeUnit);
-    task.addListener(
-        new Runnable() {
-          @Override
-          public void run() {
-            // Don't want to interrupt twice
-            scheduled.cancel(false);
-          }
-        },
-        directExecutor());
+    Future<?> scheduled = executorService.schedule(task, delay, timeUnit);
+    /*
+     * Even when the user interrupts the task, we pass `false` to `cancel` so that we don't
+     * interrupt a second time after the interruption performed by TrustedListenableFutureTask.
+     */
+    task.addListener(() -> scheduled.cancel(false), directExecutor());
     return task;
   }
 
@@ -206,19 +276,17 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>Usage example:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<Integer> fetchCounterFuture = ...;
    *
    * // Falling back to a zero counter in case an exception happens when
    * // processing the RPC to fetch counters.
    * ListenableFuture<Integer> faultTolerantFuture = Futures.catching(
    *     fetchCounterFuture, FetchException.class, x -> 0, directExecutor());
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
-   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
-   * documentation. All its warnings about heavyweight listeners are also applicable to heavyweight
-   * functions passed to this method.
+   * the warnings the {@link MoreExecutors#directExecutor} documentation.
    *
    * @param input the primary input {@code Future}
    * @param exceptionType the exception type that triggers use of {@code fallback}. The exception
@@ -234,9 +302,9 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @param executor the executor that runs {@code fallback} if {@code input} fails
    * @since 19.0
    */
-  @Beta
+  @J2ktIncompatible
   @Partially.GwtIncompatible("AVAILABLE but requires exceptionType to be Throwable.class")
-  public static <V, X extends Throwable> ListenableFuture<V> catching(
+  public static <V extends @Nullable Object, X extends Throwable> ListenableFuture<V> catching(
       ListenableFuture<? extends V> input,
       Class<X> exceptionType,
       Function<? super X, ? extends V> fallback,
@@ -254,18 +322,18 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>Usage examples:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<Integer> fetchCounterFuture = ...;
    *
    * // Falling back to a zero counter in case an exception happens when
    * // processing the RPC to fetch counters.
    * ListenableFuture<Integer> faultTolerantFuture = Futures.catchingAsync(
    *     fetchCounterFuture, FetchException.class, x -> immediateFuture(0), directExecutor());
-   * }</pre>
+   * }
    *
    * <p>The fallback can also choose to propagate the original exception when desired:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<Integer> fetchCounterFuture = ...;
    *
    * // Falling back to a zero counter only in case the exception was a
@@ -280,14 +348,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *       throw e;
    *     },
    *     directExecutor());
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
-   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
-   * documentation. All its warnings about heavyweight listeners are also applicable to heavyweight
-   * functions passed to this method. (Specifically, {@code directExecutor} functions should avoid
-   * heavyweight operations inside {@code AsyncFunction.apply}. Any heavyweight operations should
-   * occur in other threads responsible for completing the returned {@code Future}.)
+   * the warnings the {@link MoreExecutors#directExecutor} documentation.
    *
    * @param input the primary input {@code Future}
    * @param exceptionType the exception type that triggers use of {@code fallback}. The exception
@@ -303,14 +367,14 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @param executor the executor that runs {@code fallback} if {@code input} fails
    * @since 19.0 (similar functionality in 14.0 as {@code withFallback})
    */
-  @Beta
+  @J2ktIncompatible
   @Partially.GwtIncompatible("AVAILABLE but requires exceptionType to be Throwable.class")
-  public static <V, X extends Throwable> ListenableFuture<V> catchingAsync(
+  public static <V extends @Nullable Object, X extends Throwable> ListenableFuture<V> catchingAsync(
       ListenableFuture<? extends V> input,
       Class<X> exceptionType,
       AsyncFunction<? super X, ? extends V> fallback,
       Executor executor) {
-    return AbstractCatchingFuture.create(input, exceptionType, fallback, executor);
+    return AbstractCatchingFuture.createAsync(input, exceptionType, fallback, executor);
   }
 
   /**
@@ -320,19 +384,40 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * <p>The delegate future is interrupted and cancelled if it times out.
    *
    * @param delegate The future to delegate to.
-   * @param time when to timeout the future
+   * @param time when to time out the future
+   * @param scheduledExecutor The executor service to enforce the timeout.
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @J2ktIncompatible
+  @GwtIncompatible // java.util.concurrent.ScheduledExecutorService
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  public static <V extends @Nullable Object> ListenableFuture<V> withTimeout(
+      ListenableFuture<V> delegate, Duration time, ScheduledExecutorService scheduledExecutor) {
+    return withTimeout(delegate, toNanosSaturated(time), NANOSECONDS, scheduledExecutor);
+  }
+
+  /**
+   * Returns a future that delegates to another but will finish early (via a {@link
+   * TimeoutException} wrapped in an {@link ExecutionException}) if the specified duration expires.
+   *
+   * <p>The delegate future is interrupted and cancelled if it times out.
+   *
+   * @param delegate The future to delegate to.
+   * @param time when to time out the future
    * @param unit the time unit of the time parameter
    * @param scheduledExecutor The executor service to enforce the timeout.
    * @since 19.0
    */
-  @Beta
+  @J2ktIncompatible
   @GwtIncompatible // java.util.concurrent.ScheduledExecutorService
   @SuppressWarnings("GoodTime") // should accept a java.time.Duration
-  public static <V> ListenableFuture<V> withTimeout(
+  public static <V extends @Nullable Object> ListenableFuture<V> withTimeout(
       ListenableFuture<V> delegate,
       long time,
       TimeUnit unit,
       ScheduledExecutorService scheduledExecutor) {
+    checkNotNull(unit);
+    checkNotNull(scheduledExecutor);
     if (delegate.isDone()) {
       return delegate;
     }
@@ -342,24 +427,21 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
   /**
    * Returns a new {@code Future} whose result is asynchronously derived from the result of the
    * given {@code Future}. If the given {@code Future} fails, the returned {@code Future} fails with
-   * the same exception (and the function is not invoked).
+   * the same exception (and the function is not invoked). If the function throws an exception, the
+   * returned {@code Future} fails with that exception.
    *
    * <p>More precisely, the returned {@code Future} takes its result from a {@code Future} produced
    * by applying the given {@code AsyncFunction} to the result of the original {@code Future}.
    * Example usage:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<RowKey> rowKeyFuture = indexService.lookUp(query);
    * ListenableFuture<QueryResult> queryFuture =
    *     transformAsync(rowKeyFuture, dataService::readFuture, executor);
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
-   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
-   * documentation. All its warnings about heavyweight listeners are also applicable to heavyweight
-   * functions passed to this method. (Specifically, {@code directExecutor} functions should avoid
-   * heavyweight operations inside {@code AsyncFunction.apply}. Any heavyweight operations should
-   * occur in other threads responsible for completing the returned {@code Future}.)
+   * the warnings the {@link MoreExecutors#directExecutor} documentation.
    *
    * <p>The returned {@code Future} attempts to keep its cancellation state in sync with that of the
    * input future and that of the future returned by the chain function. That is, if the returned
@@ -375,29 +457,28 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *     input's failure (if not)
    * @since 19.0 (in 11.0 as {@code transform})
    */
-  @Beta
-  public static <I, O> ListenableFuture<O> transformAsync(
-      ListenableFuture<I> input,
-      AsyncFunction<? super I, ? extends O> function,
-      Executor executor) {
-    return AbstractTransformFuture.create(input, function, executor);
+  public static <I extends @Nullable Object, O extends @Nullable Object>
+      ListenableFuture<O> transformAsync(
+          ListenableFuture<I> input,
+          AsyncFunction<? super I, ? extends O> function,
+          Executor executor) {
+    return AbstractTransformFuture.createAsync(input, function, executor);
   }
 
   /**
    * Returns a new {@code Future} whose result is derived from the result of the given {@code
    * Future}. If {@code input} fails, the returned {@code Future} fails with the same exception (and
-   * the function is not invoked). Example usage:
+   * the function is not invoked). If the function throws an exception, the returned {@code Future}
+   * fails with that exception. Example usage:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<QueryResult> queryFuture = ...;
    * ListenableFuture<List<Row>> rowsFuture =
    *     transform(queryFuture, QueryResult::getRows, executor);
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
-   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
-   * documentation. All its warnings about heavyweight listeners are also applicable to heavyweight
-   * functions passed to this method.
+   * the warnings the {@link MoreExecutors#directExecutor} documentation.
    *
    * <p>The returned {@code Future} attempts to keep its cancellation state in sync with that of the
    * input future. That is, if the returned {@code Future} is cancelled, it will attempt to cancel
@@ -414,9 +495,9 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @return A future that holds result of the transformation.
    * @since 9.0 (in 2.0 as {@code compose})
    */
-  @Beta
-  public static <I, O> ListenableFuture<O> transform(
-      ListenableFuture<I> input, Function<? super I, ? extends O> function, Executor executor) {
+  public static <I extends @Nullable Object, O extends @Nullable Object>
+      ListenableFuture<O> transform(
+          ListenableFuture<I> input, Function<? super I, ? extends O> function, Executor executor) {
     return AbstractTransformFuture.create(input, function, executor);
   }
 
@@ -440,10 +521,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @return A future that returns the result of the transformation.
    * @since 10.0
    */
-  @Beta
+  @J2ktIncompatible
   @GwtIncompatible // TODO
-  public static <I, O> Future<O> lazyTransform(
-      final Future<I> input, final Function<? super I, ? extends O> function) {
+  public static <I extends @Nullable Object, O extends @Nullable Object> Future<O> lazyTransform(
+      Future<I> input, Function<? super I, ? extends O> function) {
     checkNotNull(input);
     checkNotNull(function);
     return new Future<O>() {
@@ -474,10 +555,11 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
         return applyTransformation(input.get(timeout, unit));
       }
 
-      private O applyTransformation(I input) throws ExecutionException {
+      O applyTransformation(I input) throws ExecutionException {
         try {
           return function.apply(input);
         } catch (Throwable t) {
+          // Any Exception is either a RuntimeException or sneaky checked exception.
           throw new ExecutionException(t);
         }
       }
@@ -490,6 +572,9 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>The list of results is in the same order as the input list.
    *
+   * <p>This differs from {@link #successfulAsList(ListenableFuture[])} in that it will return a
+   * failed future if any of the items fails.
+   *
    * <p>Canceling this future will attempt to cancel all the component futures, and if any of the
    * provided futures fails or is canceled, this one is, too.
    *
@@ -497,10 +582,15 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @return a future that provides a list of the results of the component futures
    * @since 10.0
    */
-  @Beta
   @SafeVarargs
-  public static <V> ListenableFuture<List<V>> allAsList(ListenableFuture<? extends V>... futures) {
-    return new ListFuture<V>(ImmutableList.copyOf(futures), true);
+  public static <V extends @Nullable Object> ListenableFuture<List<V>> allAsList(
+      ListenableFuture<? extends V>... futures) {
+    ListenableFuture<List<@Nullable V>> nullable =
+        new ListFuture<V>(ImmutableList.copyOf(futures), true);
+    // allAsList ensures that it fills the output list with V instances.
+    @SuppressWarnings("nullness")
+    ListenableFuture<List<V>> nonNull = nullable;
+    return nonNull;
   }
 
   /**
@@ -509,6 +599,9 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>The list of results is in the same order as the input list.
    *
+   * <p>This differs from {@link #successfulAsList(Iterable)} in that it will return a failed future
+   * if any of the items fails.
+   *
    * <p>Canceling this future will attempt to cancel all the component futures, and if any of the
    * provided futures fails or is canceled, this one is, too.
    *
@@ -516,34 +609,41 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @return a future that provides a list of the results of the component futures
    * @since 10.0
    */
-  @Beta
-  public static <V> ListenableFuture<List<V>> allAsList(
+  public static <V extends @Nullable Object> ListenableFuture<List<V>> allAsList(
       Iterable<? extends ListenableFuture<? extends V>> futures) {
-    return new ListFuture<V>(ImmutableList.copyOf(futures), true);
+    ListenableFuture<List<@Nullable V>> nullable =
+        new ListFuture<V>(ImmutableList.copyOf(futures), true);
+    // allAsList ensures that it fills the output list with V instances.
+    @SuppressWarnings("nullness")
+    ListenableFuture<List<V>> nonNull = nullable;
+    return nonNull;
   }
 
   /**
    * Creates a {@link FutureCombiner} that processes the completed futures whether or not they're
    * successful.
    *
+   * <p>Any failures from the input futures will not be propagated to the returned future.
+   *
    * @since 20.0
    */
-  @Beta
   @SafeVarargs
-  public static <V> FutureCombiner<V> whenAllComplete(ListenableFuture<? extends V>... futures) {
-    return new FutureCombiner<V>(false, ImmutableList.copyOf(futures));
+  public static <V extends @Nullable Object> FutureCombiner<V> whenAllComplete(
+      ListenableFuture<? extends V>... futures) {
+    return new FutureCombiner<>(false, ImmutableList.copyOf(futures));
   }
 
   /**
    * Creates a {@link FutureCombiner} that processes the completed futures whether or not they're
    * successful.
    *
+   * <p>Any failures from the input futures will not be propagated to the returned future.
+   *
    * @since 20.0
    */
-  @Beta
-  public static <V> FutureCombiner<V> whenAllComplete(
+  public static <V extends @Nullable Object> FutureCombiner<V> whenAllComplete(
       Iterable<? extends ListenableFuture<? extends V>> futures) {
-    return new FutureCombiner<V>(false, ImmutableList.copyOf(futures));
+    return new FutureCombiner<>(false, ImmutableList.copyOf(futures));
   }
 
   /**
@@ -553,10 +653,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * @since 20.0
    */
-  @Beta
   @SafeVarargs
-  public static <V> FutureCombiner<V> whenAllSucceed(ListenableFuture<? extends V>... futures) {
-    return new FutureCombiner<V>(true, ImmutableList.copyOf(futures));
+  public static <V extends @Nullable Object> FutureCombiner<V> whenAllSucceed(
+      ListenableFuture<? extends V>... futures) {
+    return new FutureCombiner<>(true, ImmutableList.copyOf(futures));
   }
 
   /**
@@ -566,10 +666,9 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * @since 20.0
    */
-  @Beta
-  public static <V> FutureCombiner<V> whenAllSucceed(
+  public static <V extends @Nullable Object> FutureCombiner<V> whenAllSucceed(
       Iterable<? extends ListenableFuture<? extends V>> futures) {
-    return new FutureCombiner<V>(true, ImmutableList.copyOf(futures));
+    return new FutureCombiner<>(true, ImmutableList.copyOf(futures));
   }
 
   /**
@@ -580,7 +679,7 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>Example:
    *
-   * <pre>{@code
+   * {@snippet :
    * final ListenableFuture<Instant> loginDateFuture =
    *     loginService.findLastLoginDate(username);
    * final ListenableFuture<List<String>> recentCommandsFuture =
@@ -594,14 +693,12 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *                     Futures.getDone(loginDateFuture),
    *                     Futures.getDone(recentCommandsFuture)),
    *             executor);
-   * }</pre>
+   * }
    *
    * @since 20.0
    */
-  @Beta
-  @CanIgnoreReturnValue // TODO(cpovirk): Consider removing, especially if we provide run(Runnable)
   @GwtCompatible
-  public static final class FutureCombiner<V> {
+  public static final class FutureCombiner<V extends @Nullable Object> {
     private final boolean allMustSucceed;
     private final ImmutableList<ListenableFuture<? extends V>> futures;
 
@@ -624,9 +721,16 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
      * ExecutionException} that gets thrown by the returned combined future.
      *
      * <p>Canceling this future will attempt to cancel all the component futures.
+     *
+     * @return a future whose result is based on {@code combiner} (or based on the input futures
+     *     passed to {@code whenAllSucceed}, if that is the method you used to create this {@code
+     *     FutureCombiner}). Even if you don't care about the value of the future, you should
+     *     typically check whether it failed: See <a
+     *     href="https://errorprone.info/bugpattern/FutureReturnValueIgnored">https://errorprone.info/bugpattern/FutureReturnValueIgnored</a>.
      */
-    public <C> ListenableFuture<C> callAsync(AsyncCallable<C> combiner, Executor executor) {
-      return new CombinedFuture<C>(futures, allMustSucceed, executor, combiner);
+    public <C extends @Nullable Object> ListenableFuture<C> callAsync(
+        AsyncCallable<C> combiner, Executor executor) {
+      return new CombinedFuture<>(futures, allMustSucceed, executor, combiner);
     }
 
     /**
@@ -642,10 +746,16 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
      * ExecutionException} that gets thrown by the returned combined future.
      *
      * <p>Canceling this future will attempt to cancel all the component futures.
+     *
+     * @return a future whose result is based on {@code combiner} (or based on the input futures
+     *     passed to {@code whenAllSucceed}, if that is the method you used to create this {@code
+     *     FutureCombiner}). Even if you don't care about the value of the future, you should
+     *     typically check whether it failed: See <a
+     *     href="https://errorprone.info/bugpattern/FutureReturnValueIgnored">https://errorprone.info/bugpattern/FutureReturnValueIgnored</a>.
      */
-    @CanIgnoreReturnValue // TODO(cpovirk): Remove this
-    public <C> ListenableFuture<C> call(Callable<C> combiner, Executor executor) {
-      return new CombinedFuture<C>(futures, allMustSucceed, executor, combiner);
+    public <C extends @Nullable Object> ListenableFuture<C> call(
+        Callable<C> combiner, Executor executor) {
+      return new CombinedFuture<>(futures, allMustSucceed, executor, combiner);
     }
 
     /**
@@ -658,17 +768,14 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
      * <p>Canceling this Future will attempt to cancel all the component futures.
      *
      * @since 23.6
+     * @return a future whose result is based on {@code combiner} (or based on the input futures
+     *     passed to {@code whenAllSucceed}, if that is the method you used to create this {@code
+     *     FutureCombiner}). Even though the future never produces a value other than {@code null},
+     *     you should typically check whether it failed: See <a
+     *     href="https://errorprone.info/bugpattern/FutureReturnValueIgnored">https://errorprone.info/bugpattern/FutureReturnValueIgnored</a>.
      */
-    public ListenableFuture<?> run(final Runnable combiner, Executor executor) {
-      return call(
-          new Callable<Void>() {
-            @Override
-            public Void call() throws Exception {
-              combiner.run();
-              return null;
-            }
-          },
-          executor);
+    public ListenableFuture<?> run(Runnable combiner, Executor executor) {
+      return call(callable(combiner), executor);
     }
   }
 
@@ -679,8 +786,8 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * @since 15.0
    */
-  @Beta
-  public static <V> ListenableFuture<V> nonCancellationPropagating(ListenableFuture<V> future) {
+  public static <V extends @Nullable Object> ListenableFuture<V> nonCancellationPropagating(
+      ListenableFuture<V> future) {
     if (future.isDone()) {
       return future;
     }
@@ -690,11 +797,11 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
   }
 
   /** A wrapped future that does not propagate cancellation to its delegate. */
-  private static final class NonCancellationPropagatingFuture<V>
+  private static final class NonCancellationPropagatingFuture<V extends @Nullable Object>
       extends AbstractFuture.TrustedFuture<V> implements Runnable {
-    private ListenableFuture<V> delegate;
+    @LazyInit private @Nullable ListenableFuture<V> delegate;
 
-    NonCancellationPropagatingFuture(final ListenableFuture<V> delegate) {
+    NonCancellationPropagatingFuture(ListenableFuture<V> delegate) {
       this.delegate = delegate;
     }
 
@@ -702,15 +809,15 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
     public void run() {
       // This prevents cancellation from propagating because we don't call setFuture(delegate) until
       // delegate is already done, so calling cancel() on this future won't affect it.
-      ListenableFuture<V> localDelegate = delegate;
+      @RetainedLocalRef ListenableFuture<V> localDelegate = delegate;
       if (localDelegate != null) {
         setFuture(localDelegate);
       }
     }
 
     @Override
-    protected String pendingToString() {
-      ListenableFuture<V> localDelegate = delegate;
+    protected @Nullable String pendingToString() {
+      @RetainedLocalRef ListenableFuture<V> localDelegate = delegate;
       if (localDelegate != null) {
         return "delegate=[" + localDelegate + "]";
       }
@@ -730,16 +837,32 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * {@code null} (which is indistinguishable from the future having a successful value of {@code
    * null}).
    *
+   * <p>The list of results is in the same order as the input list.
+   *
+   * <p>This differs from {@link #allAsList(ListenableFuture[])} in that it's tolerant of failed
+   * futures for any of the items, representing them as {@code null} in the result list.
+   *
    * <p>Canceling this future will attempt to cancel all the component futures.
    *
    * @param futures futures to combine
    * @return a future that provides a list of the results of the component futures
    * @since 10.0
    */
-  @Beta
   @SafeVarargs
-  public static <V> ListenableFuture<List<V>> successfulAsList(
+  public static <V extends @Nullable Object> ListenableFuture<List<@Nullable V>> successfulAsList(
       ListenableFuture<? extends V>... futures) {
+    /*
+     * Another way to express this signature would be to bound <V> by @NonNull and accept
+     * LF<? extends @Nullable V>. That might be better: There's currently no difference between the
+     * outputs users get when calling this with <Foo> and calling it with <@Nullable Foo>. The only
+     * difference is that calling it with <Foo> won't work when an input Future has a @Nullable
+     * type. So why even make that error possible by giving callers the choice?
+     *
+     * On the other hand, the current signature is consistent with the similar allAsList method. And
+     * eventually this method may go away entirely in favor of an API like
+     * whenAllComplete().collectSuccesses(). That API would have a signature more like the current
+     * one.
+     */
     return new ListFuture<V>(ImmutableList.copyOf(futures), false);
   }
 
@@ -750,14 +873,18 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * {@code null} (which is indistinguishable from the future having a successful value of {@code
    * null}).
    *
+   * <p>The list of results is in the same order as the input list.
+   *
+   * <p>This differs from {@link #allAsList(Iterable)} in that it's tolerant of failed futures for
+   * any of the items, representing them as {@code null} in the result list.
+   *
    * <p>Canceling this future will attempt to cancel all the component futures.
    *
    * @param futures futures to combine
    * @return a future that provides a list of the results of the component futures
    * @since 10.0
    */
-  @Beta
-  public static <V> ListenableFuture<List<V>> successfulAsList(
+  public static <V extends @Nullable Object> ListenableFuture<List<@Nullable V>> successfulAsList(
       Iterable<? extends ListenableFuture<? extends V>> futures) {
     return new ListFuture<V>(ImmutableList.copyOf(futures), false);
   }
@@ -783,49 +910,46 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * @since 17.0
    */
-  @Beta
-  public static <T> ImmutableList<ListenableFuture<T>> inCompletionOrder(
+  public static <T extends @Nullable Object> ImmutableList<ListenableFuture<T>> inCompletionOrder(
       Iterable<? extends ListenableFuture<? extends T>> futures) {
-    // Can't use Iterables.toArray because it's not gwt compatible
-    final Collection<ListenableFuture<? extends T>> collection;
+    ListenableFuture<? extends T>[] copy = gwtCompatibleToArray(futures);
+    InCompletionOrderState<T> state = new InCompletionOrderState<>(copy);
+    ImmutableList.Builder<AbstractFuture<T>> delegatesBuilder =
+        ImmutableList.builderWithExpectedSize(copy.length);
+    for (int i = 0; i < copy.length; i++) {
+      delegatesBuilder.add(new InCompletionOrderFuture<T>(state));
+    }
+
+    ImmutableList<AbstractFuture<T>> delegates = delegatesBuilder.build();
+    for (int i = 0; i < copy.length; i++) {
+      int localI = i;
+      copy[i].addListener(() -> state.recordInputCompletion(delegates, localI), directExecutor());
+    }
+
+    @SuppressWarnings("unchecked") // safe covariant cast
+    ImmutableList<ListenableFuture<T>> delegatesCast = (ImmutableList) delegates;
+    return delegatesCast;
+  }
+
+  /** Can't use Iterables.toArray because it's not gwt compatible */
+  @SuppressWarnings("unchecked")
+  private static <T extends @Nullable Object> ListenableFuture<? extends T>[] gwtCompatibleToArray(
+      Iterable<? extends ListenableFuture<? extends T>> futures) {
+    Collection<ListenableFuture<? extends T>> collection;
     if (futures instanceof Collection) {
       collection = (Collection<ListenableFuture<? extends T>>) futures;
     } else {
       collection = ImmutableList.copyOf(futures);
     }
-    @SuppressWarnings("unchecked")
-    ListenableFuture<? extends T>[] copy =
-        (ListenableFuture<? extends T>[])
-            collection.toArray(new ListenableFuture[collection.size()]);
-    final InCompletionOrderState<T> state = new InCompletionOrderState<>(copy);
-    ImmutableList.Builder<AbstractFuture<T>> delegatesBuilder = ImmutableList.builder();
-    for (int i = 0; i < copy.length; i++) {
-      delegatesBuilder.add(new InCompletionOrderFuture<T>(state));
-    }
-
-    final ImmutableList<AbstractFuture<T>> delegates = delegatesBuilder.build();
-    for (int i = 0; i < copy.length; i++) {
-      final int localI = i;
-      copy[i].addListener(
-          new Runnable() {
-            @Override
-            public void run() {
-              state.recordInputCompletion(delegates, localI);
-            }
-          },
-          directExecutor());
-    }
-
-    @SuppressWarnings("unchecked")
-    ImmutableList<ListenableFuture<T>> delegatesCast = (ImmutableList) delegates;
-    return delegatesCast;
+    return (ListenableFuture<? extends T>[]) collection.toArray(new ListenableFuture<?>[0]);
   }
 
   // This can't be a TrustedFuture, because TrustedFuture has clever optimizations that
   // mean cancel won't be called if this Future is passed into setFuture, and then
   // cancelled.
-  private static final class InCompletionOrderFuture<T> extends AbstractFuture<T> {
-    private InCompletionOrderState<T> state;
+  private static final class InCompletionOrderFuture<T extends @Nullable Object>
+      extends AbstractFuture<T> {
+    private @Nullable InCompletionOrderState<T> state;
 
     private InCompletionOrderFuture(InCompletionOrderState<T> state) {
       this.state = state;
@@ -835,7 +959,15 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
     public boolean cancel(boolean interruptIfRunning) {
       InCompletionOrderState<T> localState = state;
       if (super.cancel(interruptIfRunning)) {
-        localState.recordOutputCancellation(interruptIfRunning);
+        /*
+         * requireNonNull is generally safe: If cancel succeeded, then this Future was still
+         * pending, so its `state` field hasn't been nulled out yet.
+         *
+         * OK, it's technically possible for this to fail in the presence of unsafe publishing, as
+         * discussed in the comments in TimeoutFuture. TODO(cpovirk): Maybe check for null before
+         * calling recordOutputCancellation?
+         */
+        requireNonNull(localState).recordOutputCancellation(interruptIfRunning);
         return true;
       }
       return false;
@@ -847,7 +979,7 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
     }
 
     @Override
-    protected String pendingToString() {
+    protected @Nullable String pendingToString() {
       InCompletionOrderState<T> localState = state;
       if (localState != null) {
         // Don't print the actual array! We don't want inCompletionOrder(list).toString() to have
@@ -862,14 +994,15 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
     }
   }
 
-  private static final class InCompletionOrderState<T> {
+  private static final class InCompletionOrderState<T extends @Nullable Object> {
     // A happens-before edge between the writes of these fields and their reads exists, because
     // in order to read these fields, the corresponding write to incompleteOutputCount must have
     // been read.
     private boolean wasCancelled = false;
     private boolean shouldInterrupt = true;
     private final AtomicInteger incompleteOutputCount;
-    private final ListenableFuture<? extends T>[] inputFutures;
+    // We set the elements of the array to null as they complete.
+    private final @Nullable ListenableFuture<? extends T>[] inputFutures;
     private volatile int delegateIndex = 0;
 
     private InCompletionOrderState(ListenableFuture<? extends T>[] inputFutures) {
@@ -889,11 +1022,15 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
 
     private void recordInputCompletion(
         ImmutableList<AbstractFuture<T>> delegates, int inputFutureIndex) {
-      ListenableFuture<? extends T> inputFuture = inputFutures[inputFutureIndex];
+      /*
+       * requireNonNull is safe because we accepted an Iterable of non-null Future instances, and we
+       * don't overwrite an element in the array until after reading it.
+       */
+      ListenableFuture<? extends T> inputFuture = requireNonNull(inputFutures[inputFutureIndex]);
       // Null out our reference to this future, so it can be GCed
       inputFutures[inputFutureIndex] = null;
       for (int i = delegateIndex; i < delegates.size(); i++) {
-        if (delegates.get(i).setFuture(inputFuture)) {
+        if (delegates.get(i).setFutureInternal(inputFuture)) {
           recordCompletion();
           // this is technically unnecessary, but should speed up later accesses
           delegateIndex = i + 1;
@@ -906,9 +1043,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
       delegateIndex = delegates.size();
     }
 
+    @SuppressWarnings("Interruption") // We are propagating an interrupt from a caller.
     private void recordCompletion() {
       if (incompleteOutputCount.decrementAndGet() == 0 && wasCancelled) {
-        for (ListenableFuture<?> toCancel : inputFutures) {
+        for (ListenableFuture<? extends T> toCancel : inputFutures) {
           if (toCancel != null) {
             toCancel.cancel(shouldInterrupt);
           }
@@ -926,9 +1064,14 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * callbacks, but any callback added through this method is guaranteed to be called once the
    * computation is complete.
    *
+   * <p>Exceptions thrown by a {@code callback} will be propagated up to the executor. Any exception
+   * thrown during {@code Executor.execute} (e.g., a {@code RejectedExecutionException} or an
+   * exception thrown by {@linkplain MoreExecutors#directExecutor direct execution}) will be caught
+   * and logged.
+   *
    * <p>Example:
    *
-   * <pre>{@code
+   * {@snippet :
    * ListenableFuture<QueryResult> future = ...;
    * Executor e = ...
    * addCallback(future,
@@ -940,12 +1083,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *         reportError(t);
    *       }
    *     }, e);
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
-   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
-   * documentation. All its warnings about heavyweight listeners are also applicable to heavyweight
-   * callbacks passed to this method.
+   * the warnings the {@link MoreExecutors#directExecutor} documentation.
    *
    * <p>For a more general interface to attach a completion listener to a {@code Future}, see {@link
    * ListenableFuture#addListener addListener}.
@@ -955,33 +1096,40 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @param executor The executor to run {@code callback} when the future completes.
    * @since 10.0
    */
-  public static <V> void addCallback(
-      final ListenableFuture<V> future,
-      final FutureCallback<? super V> callback,
-      Executor executor) {
+  public static <V extends @Nullable Object> void addCallback(
+      ListenableFuture<V> future, FutureCallback<? super V> callback, Executor executor) {
     Preconditions.checkNotNull(callback);
     future.addListener(new CallbackListener<V>(future, callback), executor);
   }
 
   /** See {@link #addCallback(ListenableFuture, FutureCallback, Executor)} for behavioral notes. */
-  private static final class CallbackListener<V> implements Runnable {
-    final Future<V> future;
+  private static final class CallbackListener<V extends @Nullable Object> implements Runnable {
+    final ListenableFuture<V> future;
     final FutureCallback<? super V> callback;
 
-    CallbackListener(Future<V> future, FutureCallback<? super V> callback) {
+    CallbackListener(ListenableFuture<V> future, FutureCallback<? super V> callback) {
       this.future = future;
       this.callback = callback;
     }
 
     @Override
     public void run() {
-      final V value;
+      if (future instanceof InternalFutureFailureAccess) {
+        Throwable failure =
+            InternalFutures.tryInternalFastPathGetFailure((InternalFutureFailureAccess) future);
+        if (failure != null) {
+          callback.onFailure(failure);
+          return;
+        }
+      }
+      V value;
       try {
         value = getDone(future);
       } catch (ExecutionException e) {
         callback.onFailure(e.getCause());
         return;
-      } catch (RuntimeException | Error e) {
+      } catch (Throwable e) {
+        // Any Exception is either a RuntimeException or sneaky checked exception.
         callback.onFailure(e);
         return;
       }
@@ -1015,14 +1163,14 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    */
   @CanIgnoreReturnValue
   // TODO(cpovirk): Consider calling getDone() in our own code.
-  public static <V> V getDone(Future<V> future) throws ExecutionException {
+  @ParametricNullness
+  public static <V extends @Nullable Object> V getDone(Future<V> future) throws ExecutionException {
     /*
      * We throw IllegalStateException, since the call could succeed later. Perhaps we "should" throw
      * IllegalArgumentException, since the call could succeed with a different argument. Those
      * exceptions' docs suggest that either is acceptable. Google's Java Practices page recommends
      * IllegalArgumentException here, in part to keep its recommendation simple: Static methods
      * should throw IllegalStateException only when they use static state.
-     *
      *
      * Why do we deviate here? The answer: We want for fluentFuture.getDone() to throw the same
      * exception as Futures.getDone(fluentFuture).
@@ -1057,10 +1205,10 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *
    * <p>Instances of {@code exceptionClass} are created by choosing an arbitrary public constructor
    * that accepts zero or more arguments, all of type {@code String} or {@code Throwable}
-   * (preferring constructors with at least one {@code String}) and calling the constructor via
-   * reflection. If the exception did not already have a cause, one is set by calling {@link
-   * Throwable#initCause(Throwable)} on it. If no such constructor exists, an {@code
-   * IllegalArgumentException} is thrown.
+   * (preferring constructors with at least one {@code String}, then preferring constructors with at
+   * least one {@code Throwable}) and calling the constructor via reflection. If the exception did
+   * not already have a cause, one is set by calling {@link Throwable#initCause(Throwable)} on it.
+   * If no such constructor exists, an {@code IllegalArgumentException} is thrown.
    *
    * @throws X if {@code get} throws any checked exception except for an {@code ExecutionException}
    *     whose cause is not itself a checked exception
@@ -1073,12 +1221,66 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *     does not have a suitable constructor
    * @since 19.0 (in 10.0 as {@code get})
    */
-  @Beta
   @CanIgnoreReturnValue
+  @J2ktIncompatible
   @GwtIncompatible // reflection
-  public static <V, X extends Exception> V getChecked(Future<V> future, Class<X> exceptionClass)
-      throws X {
+  @ParametricNullness
+  public static <V extends @Nullable Object, X extends Exception> V getChecked(
+      Future<V> future, Class<X> exceptionClass) throws X {
     return FuturesGetChecked.getChecked(future, exceptionClass);
+  }
+
+  /**
+   * Returns the result of {@link Future#get(long, TimeUnit)}, converting most exceptions to a new
+   * instance of the given checked exception type. This reduces boilerplate for a common use of
+   * {@code Future} in which it is unnecessary to programmatically distinguish between exception
+   * types or to extract other information from the exception instance.
+   *
+   * <p>Exceptions from {@code Future.get} are treated as follows:
+   *
+   * <ul>
+   *   <li>Any {@link ExecutionException} has its <i>cause</i> wrapped in an {@code X} if the cause
+   *       is a checked exception, an {@link UncheckedExecutionException} if the cause is a {@code
+   *       RuntimeException}, or an {@link ExecutionError} if the cause is an {@code Error}.
+   *   <li>Any {@link InterruptedException} is wrapped in an {@code X} (after restoring the
+   *       interrupt).
+   *   <li>Any {@link TimeoutException} is wrapped in an {@code X}.
+   *   <li>Any {@link CancellationException} is propagated untouched, as is any other {@link
+   *       RuntimeException} (though {@code get} implementations are discouraged from throwing such
+   *       exceptions).
+   * </ul>
+   *
+   * <p>The overall principle is to continue to treat every checked exception as a checked
+   * exception, every unchecked exception as an unchecked exception, and every error as an error. In
+   * addition, the cause of any {@code ExecutionException} is wrapped in order to ensure that the
+   * new stack trace matches that of the current thread.
+   *
+   * <p>Instances of {@code exceptionClass} are created by choosing an arbitrary public constructor
+   * that accepts zero or more arguments, all of type {@code String} or {@code Throwable}
+   * (preferring constructors with at least one {@code String}, then preferring constructors with at
+   * least one {@code Throwable}) and calling the constructor via reflection. If the exception did
+   * not already have a cause, one is set by calling {@link Throwable#initCause(Throwable)} on it.
+   * If no such constructor exists, an {@code IllegalArgumentException} is thrown.
+   *
+   * @throws X if {@code get} throws any checked exception except for an {@code ExecutionException}
+   *     whose cause is not itself a checked exception
+   * @throws UncheckedExecutionException if {@code get} throws an {@code ExecutionException} with a
+   *     {@code RuntimeException} as its cause
+   * @throws ExecutionError if {@code get} throws an {@code ExecutionException} with an {@code
+   *     Error} as its cause
+   * @throws CancellationException if {@code get} throws a {@code CancellationException}
+   * @throws IllegalArgumentException if {@code exceptionClass} extends {@code RuntimeException} or
+   *     does not have a suitable constructor
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @CanIgnoreReturnValue
+  @J2ktIncompatible
+  @GwtIncompatible // reflection
+  @ParametricNullness
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  public static <V extends @Nullable Object, X extends Exception> V getChecked(
+      Future<V> future, Class<X> exceptionClass, Duration timeout) throws X {
+    return getChecked(future, exceptionClass, toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -1124,11 +1326,12 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    *     does not have a suitable constructor
    * @since 19.0 (in 10.0 as {@code get} and with different parameter order)
    */
-  @Beta
   @CanIgnoreReturnValue
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   @SuppressWarnings("GoodTime") // should accept a java.time.Duration
-  public static <V, X extends Exception> V getChecked(
+  @ParametricNullness
+  public static <V extends @Nullable Object, X extends Exception> V getChecked(
       Future<V> future, Class<X> exceptionClass, long timeout, TimeUnit unit) throws X {
     return FuturesGetChecked.getChecked(future, exceptionClass, timeout, unit);
   }
@@ -1168,26 +1371,22 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * @since 10.0
    */
   @CanIgnoreReturnValue
-  public static <V> V getUnchecked(Future<V> future) {
+  @ParametricNullness
+  public static <V extends @Nullable Object> V getUnchecked(Future<V> future) {
     checkNotNull(future);
     try {
       return getUninterruptibly(future);
-    } catch (ExecutionException e) {
-      wrapAndThrowUnchecked(e.getCause());
-      throw new AssertionError();
+    } catch (ExecutionException wrapper) {
+      if (wrapper.getCause() instanceof Error) {
+        throw new ExecutionError((Error) wrapper.getCause());
+      }
+      /*
+       * It's an Exception. (Or it's a non-Error, non-Exception Throwable. From my survey of such
+       * classes, I believe that most users intended to extend Exception, so we'll treat it like an
+       * Exception.)
+       */
+      throw new UncheckedExecutionException(wrapper.getCause());
     }
-  }
-
-  private static void wrapAndThrowUnchecked(Throwable cause) {
-    if (cause instanceof Error) {
-      throw new ExecutionError((Error) cause);
-    }
-    /*
-     * It's an Exception. (Or it's a non-Error, non-Exception Throwable. From my survey of such
-     * classes, I believe that most users intended to extend Exception, so we'll treat it like an
-     * Exception.)
-     */
-    throw new UncheckedExecutionException(cause);
   }
 
   /*
@@ -1198,7 +1397,7 @@ public final class Futures extends GwtFuturesCatchingSpecialization {
    * the computation -- makes sense, and if we don't convert it, the user still has to write a
    * try-catch block.
    *
-   * If you think you would use this method, let us know. You might also also look into the
-   * Fork-Join framework: http://docs.oracle.com/javase/tutorial/essential/concurrency/forkjoin.html
+   * If you think you would use this method, let us know. You might also look into the
+   * Fork-Join framework: https://docs.oracle.com/javase/tutorial/essential/concurrency/forkjoin.html
    */
 }

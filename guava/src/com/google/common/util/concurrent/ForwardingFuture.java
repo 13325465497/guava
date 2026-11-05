@@ -22,20 +22,30 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link Future} which forwards all its method calls to another future. Subclasses should
  * override one or more methods to modify the behavior of the backing future as desired per the <a
  * href="http://en.wikipedia.org/wiki/Decorator_pattern">decorator pattern</a>.
  *
+ * <p><b>Warning:</b> The methods of {@code ForwardingFuture} forward <b>indiscriminately</b> to the
+ * methods of the delegate. For example, overriding {@link #get(long, TimeUnit)} alone <b>will
+ * not</b> change the behavior of {@link #get()}, which can lead to unexpected behavior. In this
+ * case, you should override {@code get()} as well.
+ *
+ * <p><b>{@code default} method warning:</b> This class does <i>not</i> forward calls to {@code
+ * default} methods. Instead, it inherits their default implementations. When those implementations
+ * invoke methods, they invoke methods on the {@code ForwardingFuture}.
+ *
  * <p>Most subclasses can just use {@link SimpleForwardingFuture}.
  *
  * @author Sven Mawson
  * @since 1.0
  */
-@CanIgnoreReturnValue // TODO(cpovirk): Consider being more strict.
 @GwtCompatible
-public abstract class ForwardingFuture<V> extends ForwardingObject implements Future<V> {
+public abstract class ForwardingFuture<V extends @Nullable Object> extends ForwardingObject
+    implements Future<V> {
   /** Constructor for use by subclasses. */
   protected ForwardingFuture() {}
 
@@ -43,6 +53,7 @@ public abstract class ForwardingFuture<V> extends ForwardingObject implements Fu
   protected abstract Future<? extends V> delegate();
 
   @Override
+  @CanIgnoreReturnValue
   public boolean cancel(boolean mayInterruptIfRunning) {
     return delegate().cancel(mayInterruptIfRunning);
   }
@@ -58,11 +69,15 @@ public abstract class ForwardingFuture<V> extends ForwardingObject implements Fu
   }
 
   @Override
+  @CanIgnoreReturnValue
+  @ParametricNullness
   public V get() throws InterruptedException, ExecutionException {
     return delegate().get();
   }
 
   @Override
+  @CanIgnoreReturnValue
+  @ParametricNullness
   public V get(long timeout, TimeUnit unit)
       throws InterruptedException, ExecutionException, TimeoutException {
     return delegate().get(timeout, unit);
@@ -75,9 +90,11 @@ public abstract class ForwardingFuture<V> extends ForwardingObject implements Fu
    *
    * @since 9.0
    */
-  public abstract static class SimpleForwardingFuture<V> extends ForwardingFuture<V> {
+  public abstract static class SimpleForwardingFuture<V extends @Nullable Object>
+      extends ForwardingFuture<V> {
     private final Future<V> delegate;
 
+    /** Constructor for use by subclasses. */
     protected SimpleForwardingFuture(Future<V> delegate) {
       this.delegate = Preconditions.checkNotNull(delegate);
     }

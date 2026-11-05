@@ -18,12 +18,14 @@ package com.google.common.graph;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /** Tests for {@link ImmutableValueGraph} . */
 @RunWith(JUnit4.class)
+@NullUnmarked
 public class ImmutableValueGraphTest {
 
   @Test
@@ -33,7 +35,6 @@ public class ImmutableValueGraphTest {
     ImmutableValueGraph<String, Integer> immutableValueGraph =
         ImmutableValueGraph.copyOf(mutableValueGraph);
 
-    assertThat(immutableValueGraph.asGraph()).isInstanceOf(ImmutableGraph.class);
     assertThat(immutableValueGraph).isNotInstanceOf(MutableValueGraph.class);
     assertThat(immutableValueGraph).isEqualTo(mutableValueGraph);
 
@@ -48,6 +49,25 @@ public class ImmutableValueGraphTest {
     ValueGraph<String, Integer> graph2 = ImmutableValueGraph.copyOf(graph1);
 
     assertThat(graph2).isSameInstanceAs(graph1);
+  }
+
+  @Test
+  public void incidentEdgeOrder_stable() {
+    ImmutableValueGraph<String, Integer> immutableValueGraph =
+        ImmutableValueGraph.copyOf(ValueGraphBuilder.directed().<String, Integer>build());
+
+    assertThat(immutableValueGraph.incidentEdgeOrder()).isEqualTo(ElementOrder.stable());
+  }
+
+  @Test
+  public void incidentEdgeOrder_fromUnorderedGraph_stable() {
+    ImmutableValueGraph<String, Integer> immutableValueGraph =
+        ImmutableValueGraph.copyOf(
+            ValueGraphBuilder.directed()
+                .incidentEdgeOrder(ElementOrder.unordered())
+                .<String, Integer>build());
+
+    assertThat(immutableValueGraph.incidentEdgeOrder()).isEqualTo(ElementOrder.stable());
   }
 
   @Test
@@ -121,5 +141,40 @@ public class ImmutableValueGraphTest {
     assertThat(graph.nodes()).containsExactly("A", "B");
     assertThat(graph.edges()).containsExactly(EndpointPair.ordered("A", "B"));
     assertThat(graph.edgeValueOrDefault("A", "B", null)).isEqualTo(10);
+  }
+
+  @Test
+  public void immutableValueGraphBuilder_incidentEdges_preservesIncidentEdgesOrder() {
+    ImmutableValueGraph<Integer, String> graph =
+        ValueGraphBuilder.directed()
+            .<Integer, String>immutable()
+            .putEdgeValue(2, 1, "2-1")
+            .putEdgeValue(2, 3, "2-3")
+            .putEdgeValue(1, 2, "1-2")
+            .build();
+
+    assertThat(graph.incidentEdges(2))
+        .containsExactly(
+            EndpointPair.ordered(2, 1), EndpointPair.ordered(2, 3), EndpointPair.ordered(1, 2))
+        .inOrder();
+  }
+
+  @Test
+  public void immutableValueGraphBuilder_incidentEdgeOrder_stable() {
+    ImmutableValueGraph<Integer, String> graph =
+        ValueGraphBuilder.directed().<Integer, String>immutable().build();
+
+    assertThat(graph.incidentEdgeOrder()).isEqualTo(ElementOrder.stable());
+  }
+
+  @Test
+  public void immutableValueGraphBuilder_fromUnorderedBuilder_incidentEdgeOrder_stable() {
+    ImmutableValueGraph<Integer, String> graph =
+        ValueGraphBuilder.directed()
+            .incidentEdgeOrder(ElementOrder.unordered())
+            .<Integer, String>immutable()
+            .build();
+
+    assertThat(graph.incidentEdgeOrder()).isEqualTo(ElementOrder.stable());
   }
 }

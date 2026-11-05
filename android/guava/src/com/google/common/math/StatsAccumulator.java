@@ -16,13 +16,16 @@ package com.google.common.math;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.math.DoubleUtils.ensureNonNegative;
-import static com.google.common.primitives.Doubles.isFinite;
 import static java.lang.Double.NaN;
+import static java.lang.Double.isFinite;
 import static java.lang.Double.isNaN;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.Iterator;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 /**
  * A mutable object which accumulates double values and tracks some basic statistics over all the
@@ -32,9 +35,11 @@ import java.util.Iterator;
  * @author Kevin Bourrillion
  * @since 20.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 public final class StatsAccumulator {
+  /** Creates a new accumulator. */
+  public StatsAccumulator() {}
 
   // These fields must satisfy the requirements of Stats' constructor as well as those of the stat
   // methods of this class.
@@ -129,6 +134,40 @@ public final class StatsAccumulator {
   }
 
   /**
+   * Adds the given values to the dataset. The stream will be completely consumed by this method.
+   *
+   * @param values a series of values
+   * @since 33.4.0 (but since 28.2 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using streams.
+  public void addAll(DoubleStream values) {
+    addAll(values.collect(StatsAccumulator::new, StatsAccumulator::add, StatsAccumulator::addAll));
+  }
+
+  /**
+   * Adds the given values to the dataset. The stream will be completely consumed by this method.
+   *
+   * @param values a series of values
+   * @since 33.4.0 (but since 28.2 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using streams.
+  public void addAll(IntStream values) {
+    addAll(values.collect(StatsAccumulator::new, StatsAccumulator::add, StatsAccumulator::addAll));
+  }
+
+  /**
+   * Adds the given values to the dataset. The stream will be completely consumed by this method.
+   *
+   * @param values a series of values, which will be converted to {@code double} values (this may
+   *     cause loss of precision for longs of magnitude over 2^53 (slightly over 9e15))
+   * @since 33.4.0 (but since 28.2 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using streams.
+  public void addAll(LongStream values) {
+    addAll(values.collect(StatsAccumulator::new, StatsAccumulator::add, StatsAccumulator::addAll));
+  }
+
+  /**
    * Adds the given statistics to the dataset, as if the individual values used to compute the
    * statistics had been added directly.
    */
@@ -136,27 +175,47 @@ public final class StatsAccumulator {
     if (values.count() == 0) {
       return;
     }
+    merge(values.count(), values.mean(), values.sumOfSquaresOfDeltas(), values.min(), values.max());
+  }
 
+  /**
+   * Adds the given statistics to the dataset, as if the individual values used to compute the
+   * statistics had been added directly.
+   *
+   * @since 28.2
+   */
+  public void addAll(StatsAccumulator values) {
+    if (values.count() == 0) {
+      return;
+    }
+    merge(values.count(), values.mean(), values.sumOfSquaresOfDeltas(), values.min(), values.max());
+  }
+
+  private void merge(
+      long otherCount,
+      double otherMean,
+      double otherSumOfSquaresOfDeltas,
+      double otherMin,
+      double otherMax) {
     if (count == 0) {
-      count = values.count();
-      mean = values.mean();
-      sumOfSquaresOfDeltas = values.sumOfSquaresOfDeltas();
-      min = values.min();
-      max = values.max();
+      count = otherCount;
+      mean = otherMean;
+      sumOfSquaresOfDeltas = otherSumOfSquaresOfDeltas;
+      min = otherMin;
+      max = otherMax;
     } else {
-      count += values.count();
-      if (isFinite(mean) && isFinite(values.mean())) {
+      count += otherCount;
+      if (isFinite(mean) && isFinite(otherMean)) {
         // This is a generalized version of the calculation in add(double) above.
-        double delta = values.mean() - mean;
-        mean += delta * values.count() / count;
-        sumOfSquaresOfDeltas +=
-            values.sumOfSquaresOfDeltas() + delta * (values.mean() - mean) * values.count();
+        double delta = otherMean - mean;
+        mean += delta * otherCount / count;
+        sumOfSquaresOfDeltas += otherSumOfSquaresOfDeltas + delta * (otherMean - mean) * otherCount;
       } else {
-        mean = calculateNewMeanNonFinite(mean, values.mean());
+        mean = calculateNewMeanNonFinite(mean, otherMean);
         sumOfSquaresOfDeltas = NaN;
       }
-      min = Math.min(min, values.min());
-      max = Math.max(max, values.max());
+      min = Math.min(min, otherMin);
+      max = Math.max(max, otherMax);
     }
   }
 
@@ -177,7 +236,7 @@ public final class StatsAccumulator {
    * <p>If these values are a sample drawn from a population, this is also an unbiased estimator of
    * the arithmetic mean of the population.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains {@link Double#NaN} then the result is {@link Double#NaN}. If it
    * contains both {@link Double#POSITIVE_INFINITY} and {@link Double#NEGATIVE_INFINITY} then the
@@ -196,7 +255,7 @@ public final class StatsAccumulator {
   /**
    * Returns the sum of the values.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains {@link Double#NaN} then the result is {@link Double#NaN}. If it
    * contains both {@link Double#POSITIVE_INFINITY} and {@link Double#NEGATIVE_INFINITY} then the
@@ -205,7 +264,7 @@ public final class StatsAccumulator {
    * If it contains {@link Double#NEGATIVE_INFINITY} and finite values only or {@link
    * Double#NEGATIVE_INFINITY} only, the result is {@link Double#NEGATIVE_INFINITY}.
    */
-  public final double sum() {
+  public double sum() {
     return mean * count;
   }
 
@@ -217,14 +276,14 @@ public final class StatsAccumulator {
    * is not guaranteed to return zero when the dataset consists of the same value multiple times,
    * due to numerical errors. However, it is guaranteed never to return a negative result.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
    *
    * @throws IllegalStateException if the dataset is empty
    */
-  public final double populationVariance() {
+  public double populationVariance() {
     checkState(count != 0);
     if (isNaN(sumOfSquaresOfDeltas)) {
       return NaN;
@@ -244,14 +303,14 @@ public final class StatsAccumulator {
    * is not guaranteed to return zero when the dataset consists of the same value multiple times,
    * due to numerical errors. However, it is guaranteed never to return a negative result.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
    *
    * @throws IllegalStateException if the dataset is empty
    */
-  public final double populationStandardDeviation() {
+  public double populationStandardDeviation() {
     return Math.sqrt(populationVariance());
   }
 
@@ -264,14 +323,14 @@ public final class StatsAccumulator {
    * <p>This is not guaranteed to return zero when the dataset consists of the same value multiple
    * times, due to numerical errors. However, it is guaranteed never to return a negative result.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
    *
    * @throws IllegalStateException if the dataset is empty or contains a single value
    */
-  public final double sampleVariance() {
+  public double sampleVariance() {
     checkState(count > 1);
     if (isNaN(sumOfSquaresOfDeltas)) {
       return NaN;
@@ -290,21 +349,21 @@ public final class StatsAccumulator {
    * <p>This is not guaranteed to return zero when the dataset consists of the same value multiple
    * times, due to numerical errors. However, it is guaranteed never to return a negative result.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains any non-finite values ({@link Double#POSITIVE_INFINITY}, {@link
    * Double#NEGATIVE_INFINITY}, or {@link Double#NaN}) then the result is {@link Double#NaN}.
    *
    * @throws IllegalStateException if the dataset is empty or contains a single value
    */
-  public final double sampleStandardDeviation() {
+  public double sampleStandardDeviation() {
     return Math.sqrt(sampleVariance());
   }
 
   /**
    * Returns the lowest value in the dataset. The count must be non-zero.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains {@link Double#NaN} then the result is {@link Double#NaN}. If it
    * contains {@link Double#NEGATIVE_INFINITY} and not {@link Double#NaN} then the result is {@link
@@ -322,7 +381,7 @@ public final class StatsAccumulator {
   /**
    * Returns the highest value in the dataset. The count must be non-zero.
    *
-   * <h3>Non-finite values</h3>
+   * <h4>Non-finite values</h4>
    *
    * <p>If the dataset contains {@link Double#NaN} then the result is {@link Double#NaN}. If it
    * contains {@link Double#POSITIVE_INFINITY} and not {@link Double#NaN} then the result is {@link

@@ -17,10 +17,15 @@ package com.google.common.base;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.ForOverride;
+import com.google.errorprone.annotations.InlineMe;
 import java.io.Serializable;
+import java.util.Objects;
 import java.util.function.BiPredicate;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A strategy for determining whether two instances are considered equivalent, and for computing
@@ -34,7 +39,12 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *     source-compatible</a> since 4.0)
  */
 @GwtCompatible
-public abstract class Equivalence<T> implements BiPredicate<T, T> {
+/*
+ * The type parameter is <T> rather than <T extends @Nullable> so that we can use T in the
+ * doEquivalent and doHash methods to indicate that the parameter cannot be null.
+ */
+@SuppressWarnings("UngroupedOverloads")
+public abstract class Equivalence<T> implements BiPredicate<@Nullable T, @Nullable T> {
   /** Constructor for use by subclasses. */
   protected Equivalence() {}
 
@@ -70,6 +80,7 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    *     instead.
    * @since 21.0
    */
+  @InlineMe(replacement = "this.equivalent(t, u)")
   @Deprecated
   @Override
   public final boolean test(@Nullable T t, @Nullable T u) {
@@ -87,6 +98,22 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    */
   @ForOverride
   protected abstract boolean doEquivalent(T a, T b);
+
+  /**
+   * <i>May</i> return {@code true} if {@code object} is a {@code Equivalence} that behaves
+   * identically to this equivalence.
+   *
+   * <p><b>Warning: do not depend</b> on the behavior of this method.
+   *
+   * <p>Historically, {@code Equivalence} instances in this library have implemented this method to
+   * recognize certain cases where distinct {@code Equivalence} instances would in fact behave
+   * identically. However, as code migrates to {@code java.util.function}, that behavior will
+   * disappear. It is best not to depend on it.
+   */
+  @Override
+  public boolean equals(@Nullable Object object) {
+    return super.equals(object);
+  }
 
   /**
    * Returns a hash code for {@code t}.
@@ -133,9 +160,9 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    *
    * <p>For example:
    *
-   * <pre>{@code
+   * {@snippet :
    * Equivalence<Person> SAME_AGE = Equivalence.equals().onResultOf(GET_PERSON_AGE);
-   * }</pre>
+   * }
    *
    * <p>{@code function} will never be invoked with a null value.
    *
@@ -147,7 +174,7 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    *
    * @since 10.0
    */
-  public final <F> Equivalence<F> onResultOf(Function<F, ? extends T> function) {
+  public final <F> Equivalence<F> onResultOf(Function<? super F, ? extends @Nullable T> function) {
     return new FunctionalEquivalence<>(function, this);
   }
 
@@ -156,10 +183,13 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    * Object.equals()} such that {@code wrap(a).equals(wrap(b))} if and only if {@code equivalent(a,
    * b)}.
    *
+   * <p>The returned object is serializable if both this {@code Equivalence} and {@code reference}
+   * are serializable (including when {@code reference} is null).
+   *
    * @since 10.0
    */
-  public final <S extends T> Wrapper<S> wrap(@Nullable S reference) {
-    return new Wrapper<S>(this, reference);
+  public final <S extends @Nullable T> Wrapper<S> wrap(@ParametricNullness S reference) {
+    return new Wrapper<>(this, reference);
   }
 
   /**
@@ -169,30 +199,40 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    * <p>For example, given an {@link Equivalence} for {@link String strings} named {@code equiv}
    * that tests equivalence using their lengths:
    *
-   * <pre>{@code
+   * {@snippet :
    * equiv.wrap("a").equals(equiv.wrap("b")) // true
    * equiv.wrap("a").equals(equiv.wrap("hello")) // false
-   * }</pre>
+   * }
    *
    * <p>Note in particular that an equivalence wrapper is never equal to the object it wraps.
    *
-   * <pre>{@code
+   * {@snippet :
    * equiv.wrap(obj).equals(obj) // always false
-   * }</pre>
+   * }
    *
    * @since 10.0
    */
-  public static final class Wrapper<T> implements Serializable {
-    private final Equivalence<? super T> equivalence;
-    private final @Nullable T reference;
+  public static final class Wrapper<T extends @Nullable Object> implements Serializable {
+    /*
+     * Equivalence's type argument is always non-nullable: Equivalence<Number>, never
+     * Equivalence<@Nullable Number>. That can still produce wrappers of various types --
+     * Wrapper<Number>, Wrapper<Integer>, Wrapper<@Nullable Integer>, etc. If we used just
+     * Equivalence<? super T> below, no type could satisfy both that bound and T's own
+     * bound. With this type, they have some overlap: in our example, Equivalence<Number>
+     * and Equivalence<Object>.
+     */
+    private final Equivalence<? super @NonNull T> equivalence;
 
-    private Wrapper(Equivalence<? super T> equivalence, @Nullable T reference) {
+    @ParametricNullness private final T reference;
+
+    private Wrapper(Equivalence<? super @NonNull T> equivalence, @ParametricNullness T reference) {
       this.equivalence = checkNotNull(equivalence);
       this.reference = reference;
     }
 
     /** Returns the (possibly null) reference wrapped by this instance. */
-    public @Nullable T get() {
+    @ParametricNullness
+    public T get() {
       return reference;
     }
 
@@ -237,7 +277,7 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
       return equivalence + ".wrap(" + reference + ")";
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
@@ -249,13 +289,14 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    * <p>Note that this method performs a similar function for equivalences as {@link
    * com.google.common.collect.Ordering#lexicographical} does for orderings.
    *
+   * <p>The returned object is serializable if this object is serializable.
+   *
    * @since 10.0
    */
-  @GwtCompatible(serializable = true)
-  public final <S extends T> Equivalence<Iterable<S>> pairwise() {
+  public final <S extends @Nullable T> Equivalence<Iterable<S>> pairwise() {
     // Ideally, the returned equivalence would support Iterable<? extends T>. However,
     // the need for this is so rare that it's not worth making callers deal with the ugly wildcard.
-    return new PairwiseEquivalence<S>(this);
+    return new PairwiseEquivalence<>(this);
   }
 
   /**
@@ -264,11 +305,12 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
    *
    * @since 10.0
    */
-  public final Predicate<T> equivalentTo(@Nullable T target) {
-    return new EquivalentToPredicate<T>(this, target);
+  public final Predicate<@Nullable T> equivalentTo(@Nullable T target) {
+    return new EquivalentToPredicate<>(this, target);
   }
 
-  private static final class EquivalentToPredicate<T> implements Predicate<T>, Serializable {
+  private static final class EquivalentToPredicate<T>
+      implements Predicate<@Nullable T>, Serializable {
 
     private final Equivalence<T> equivalence;
     private final @Nullable T target;
@@ -290,14 +332,14 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
       }
       if (obj instanceof EquivalentToPredicate) {
         EquivalentToPredicate<?> that = (EquivalentToPredicate<?>) obj;
-        return equivalence.equals(that.equivalence) && Objects.equal(target, that.target);
+        return equivalence.equals(that.equivalence) && Objects.equals(target, that.target);
       }
       return false;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hashCode(equivalence, target);
+      return Objects.hash(equivalence, target);
     }
 
     @Override
@@ -305,7 +347,7 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
       return equivalence + ".equivalentTo(" + target + ")";
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
@@ -352,7 +394,7 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
       return INSTANCE;
     }
 
-    private static final long serialVersionUID = 1;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 1;
   }
 
   static final class Identity extends Equivalence<Object> implements Serializable {
@@ -373,6 +415,6 @@ public abstract class Equivalence<T> implements BiPredicate<T, T> {
       return INSTANCE;
     }
 
-    private static final long serialVersionUID = 1;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 1;
   }
 }

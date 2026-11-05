@@ -16,24 +16,29 @@
 
 package com.google.common.base;
 
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static com.google.common.truth.Truth.assertThat;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Equivalence.Wrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.EquivalenceTester;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.SerializableTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link Equivalence}.
  *
  * @author Jige Yu
  */
-@GwtCompatible(emulated = true)
+@NullMarked
+@GwtCompatible
 public class EquivalenceTest extends TestCase {
-  @SuppressWarnings("unchecked") // varargs
   public void testPairwiseEquivalent() {
     EquivalenceTester.of(Equivalence.equals().<String>pairwise())
         .addEquivalenceGroup(ImmutableList.<String>of())
@@ -69,23 +74,26 @@ public class EquivalenceTest extends TestCase {
             LENGTH_EQUIVALENCE.wrap("hello"),
             LENGTH_EQUIVALENCE.wrap("world"))
         .addEqualityGroup(LENGTH_EQUIVALENCE.wrap("hi"), LENGTH_EQUIVALENCE.wrap("yo"))
-        .addEqualityGroup(LENGTH_EQUIVALENCE.wrap(null), LENGTH_EQUIVALENCE.wrap(null))
+        .addEqualityGroup(
+            LENGTH_EQUIVALENCE.<@Nullable String>wrap(null),
+            LENGTH_EQUIVALENCE.<@Nullable String>wrap(null))
         .addEqualityGroup(Equivalence.equals().wrap("hello"))
-        .addEqualityGroup(Equivalence.equals().wrap(null))
+        .addEqualityGroup(Equivalence.equals().<@Nullable Object>wrap(null))
         .testEquals();
   }
 
   public void testWrap_get() {
     String test = "test";
     Wrapper<String> wrapper = LENGTH_EQUIVALENCE.wrap(test);
-    assertSame(test, wrapper.get());
+    assertThat(wrapper.get()).isSameInstanceAs(test);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // SerializableTester
   public void testSerialization() {
-    SerializableTester.reserializeAndAssert(LENGTH_EQUIVALENCE.wrap("hello"));
-    SerializableTester.reserializeAndAssert(Equivalence.equals());
-    SerializableTester.reserializeAndAssert(Equivalence.identity());
+    reserializeAndAssert(LENGTH_EQUIVALENCE.wrap("hello"));
+    reserializeAndAssert(Equivalence.equals());
+    reserializeAndAssert(Equivalence.identity());
   }
 
   private static class IntValue {
@@ -119,11 +127,11 @@ public class EquivalenceTest extends TestCase {
   }
 
   public void testEquivalentTo() {
-    Predicate<Object> equalTo1 = Equivalence.equals().equivalentTo("1");
+    Predicate<@Nullable Object> equalTo1 = Equivalence.equals().equivalentTo("1");
     assertTrue(equalTo1.apply("1"));
     assertFalse(equalTo1.apply("2"));
     assertFalse(equalTo1.apply(null));
-    Predicate<Object> isNull = Equivalence.equals().equivalentTo(null);
+    Predicate<@Nullable Object> isNull = Equivalence.equals().equivalentTo(null);
     assertFalse(isNull.apply("1"));
     assertFalse(isNull.apply("2"));
     assertTrue(isNull.apply(null));
@@ -135,17 +143,25 @@ public class EquivalenceTest extends TestCase {
         .testEquals();
   }
 
+  /*
+   * We use MyInteger to avoid the integer cache. Normally, we'd accomplish that merely by using
+   * `new Integer` instead of `Integer.valueOf`. However, under J2KT, `new Integer` gets translated
+   * back to `Integer.valueOf` because that is the only thing J2KT can support. And anyway, it's
+   * nice to avoid `Integer.valueOf` because the Android toolchain optimizes multiple
+   * `Integer.valueOf` calls into one! So we use a custom class.
+   */
+
   public void testEqualsEquivalent() {
     EquivalenceTester.of(Equivalence.equals())
-        .addEquivalenceGroup(new Integer(42), 42)
+        .addEquivalenceGroup(new MyInteger(42_000_000), new MyInteger(42_000_000))
         .addEquivalenceGroup("a")
         .test();
   }
 
   public void testIdentityEquivalent() {
     EquivalenceTester.of(Equivalence.identity())
-        .addEquivalenceGroup(new Integer(42))
-        .addEquivalenceGroup(new Integer(42))
+        .addEquivalenceGroup(new MyInteger(42_000_000))
+        .addEquivalenceGroup(new MyInteger(42_000_000))
         .addEquivalenceGroup("a")
         .test();
   }
@@ -157,10 +173,37 @@ public class EquivalenceTest extends TestCase {
         .testEquals();
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
-  public void testNulls() {
-    new NullPointerTester().testAllPublicStaticMethods(Equivalence.class);
-    new NullPointerTester().testAllPublicInstanceMethods(Equivalence.equals());
-    new NullPointerTester().testAllPublicInstanceMethods(Equivalence.identity());
+  public void testNulls() throws NoSuchMethodException {
+    NullPointerTester tester = new NullPointerTester();
+    // Necessary until JDK15:
+    // https://bugs.openjdk.org/browse/JDK-8202469
+    tester.ignore(Equivalence.class.getMethod("wrap", Object.class));
+
+    tester.testAllPublicStaticMethods(Equivalence.class);
+    tester.testAllPublicInstanceMethods(Equivalence.equals());
+    tester.testAllPublicInstanceMethods(Equivalence.identity());
+  }
+
+  private static final class MyInteger {
+    final int value;
+
+    MyInteger(int value) {
+      this.value = value;
+    }
+
+    @Override
+    public boolean equals(@Nullable Object obj) {
+      if (obj instanceof MyInteger) {
+        return value == ((MyInteger) obj).value;
+      }
+      return false;
+    }
+
+    @Override
+    public int hashCode() {
+      return value;
+    }
   }
 }

@@ -17,19 +17,26 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.collect.Iterators.unmodifiableIterator;
+import static com.google.common.collect.Maps.unmodifiableEntryIterator;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableMap.IteratorBasedImmutableMap;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.EnumMap;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link ImmutableMap} backed by a non-empty {@link java.util.EnumMap}.
  *
  * @author Louis Wasserman
  */
-@GwtCompatible(serializable = true, emulated = true)
+@GwtCompatible
 @SuppressWarnings("serial") // we're overriding default serialization
 final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutableMap<K, V> {
   static <K extends Enum<K>, V> ImmutableMap<K, V> asImmutable(EnumMap<K, V> map) {
@@ -37,7 +44,7 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
       case 0:
         return ImmutableMap.of();
       case 1:
-        Entry<K, V> entry = Iterables.getOnlyElement(map.entrySet());
+        Entry<K, V> entry = getOnlyElement(map.entrySet());
         return ImmutableMap.of(entry.getKey(), entry.getValue());
       default:
         return new ImmutableEnumMap<>(map);
@@ -53,7 +60,7 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
 
   @Override
   UnmodifiableIterator<K> keyIterator() {
-    return Iterators.unmodifiableIterator(delegate.keySet().iterator());
+    return unmodifiableIterator(delegate.keySet().iterator());
   }
 
   @Override
@@ -62,17 +69,17 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
   }
 
   @Override
-  public boolean containsKey(@NullableDecl Object key) {
+  public boolean containsKey(@Nullable Object key) {
     return delegate.containsKey(key);
   }
 
   @Override
-  public V get(Object key) {
+  public @Nullable V get(@Nullable Object key) {
     return delegate.get(key);
   }
 
   @Override
-  public boolean equals(Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object == this) {
       return true;
     }
@@ -84,7 +91,7 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
 
   @Override
   UnmodifiableIterator<Entry<K, V>> entryIterator() {
-    return Maps.unmodifiableEntryIterator(delegate.entrySet().iterator());
+    return unmodifiableEntryIterator(delegate.entrySet().iterator());
   }
 
   @Override
@@ -94,14 +101,21 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
 
   // All callers of the constructor are restricted to <K extends Enum<K>>.
   @Override
+  @J2ktIncompatible // serialization
   Object writeReplace() {
     return new EnumSerializedForm<>(delegate);
+  }
+
+  @J2ktIncompatible // serialization
+  private void readObject(ObjectInputStream stream) throws InvalidObjectException {
+    throw new InvalidObjectException("Use EnumSerializedForm");
   }
 
   /*
    * This class is used to serialize ImmutableEnumMap instances.
    */
-  private static class EnumSerializedForm<K extends Enum<K>, V> implements Serializable {
+  @J2ktIncompatible // serialization
+  private static final class EnumSerializedForm<K extends Enum<K>, V> implements Serializable {
     final EnumMap<K, V> delegate;
 
     EnumSerializedForm(EnumMap<K, V> delegate) {
@@ -112,6 +126,6 @@ final class ImmutableEnumMap<K extends Enum<K>, V> extends IteratorBasedImmutabl
       return new ImmutableEnumMap<>(delegate);
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible private static final long serialVersionUID = 0;
   }
 }

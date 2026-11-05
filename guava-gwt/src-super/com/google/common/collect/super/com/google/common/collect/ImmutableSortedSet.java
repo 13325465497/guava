@@ -18,8 +18,9 @@ package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
 
-import com.google.common.annotations.Beta;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -29,7 +30,7 @@ import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collector;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * GWT emulation of {@link com.google.common.collect.ImmutableSortedSet}.
@@ -51,13 +52,13 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     throw new UnsupportedOperationException();
   }
 
-  // TODO: Can we find a way to remove this @SuppressWarnings even for eclipse?
-  @SuppressWarnings("unchecked")
-  private static final Comparator NATURAL_ORDER = Ordering.natural();
+  private static final Comparator<?> NATURAL_ORDER = Ordering.natural();
 
-  @SuppressWarnings("unchecked")
+  // TODO(b/345814817): Move this to RegularImmutableSortedSet?
+  @SuppressWarnings({"unchecked", "ClassInitializationDeadlock"})
   private static final ImmutableSortedSet<Object> NATURAL_EMPTY_SET =
-      new RegularImmutableSortedSet<Object>(new TreeSet<Object>(NATURAL_ORDER), false);
+      new RegularImmutableSortedSet<Object>(
+          new TreeSet<Object>((Comparator<Object>) NATURAL_ORDER), false);
 
   static <E> ImmutableSortedSet<E> emptySet(Comparator<? super E> comparator) {
     checkNotNull(comparator);
@@ -68,7 +69,6 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     }
   }
 
-  @Beta
   public static <E> Collector<E, ?, ImmutableSortedSet<E>> toImmutableSortedSet(
       Comparator<? super E> comparator) {
     return CollectCollectors.toImmutableSortedSet(comparator);
@@ -79,8 +79,8 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     return (ImmutableSortedSet<E>) NATURAL_EMPTY_SET;
   }
 
-  public static <E extends Comparable<? super E>> ImmutableSortedSet<E> of(E element) {
-    return ofInternal(Ordering.natural(), element);
+  public static <E extends Comparable<? super E>> ImmutableSortedSet<E> of(E e1) {
+    return ofInternal(Ordering.natural(), e1);
   }
 
   @SuppressWarnings("unchecked")
@@ -112,7 +112,7 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     Collections.addAll(all, e1, e2, e3, e4, e5, e6);
     Collections.addAll(all, remaining);
     // This is messed up. See TODO at top of file.
-    return ofInternal(Ordering.natural(), (E[]) all.toArray(new Comparable[0]));
+    return ofInternal(Ordering.natural(), (E[]) all.toArray(new Comparable<?>[0]));
   }
 
   private static <E> ImmutableSortedSet<E> ofInternal(
@@ -131,16 +131,22 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     }
   }
 
+  // Unsafe, see ImmutableSortedSetFauxverideShim.
+  @SuppressWarnings("unchecked")
   public static <E> ImmutableSortedSet<E> copyOf(Collection<? extends E> elements) {
-    return copyOfInternal((Ordering<E>) Ordering.natural(), (Collection) elements, false);
+    return copyOfInternal((Ordering<E>) Ordering.natural(), (Collection<E>) elements, false);
   }
 
+  // Unsafe, see ImmutableSortedSetFauxverideShim.
+  @SuppressWarnings("unchecked")
   public static <E> ImmutableSortedSet<E> copyOf(Iterable<? extends E> elements) {
-    return copyOfInternal((Ordering<E>) Ordering.natural(), (Iterable) elements, false);
+    return copyOfInternal((Ordering<E>) Ordering.natural(), (Iterable<E>) elements, false);
   }
 
+  // Unsafe, see ImmutableSortedSetFauxverideShim.
+  @SuppressWarnings("unchecked")
   public static <E> ImmutableSortedSet<E> copyOf(Iterator<? extends E> elements) {
-    return copyOfInternal((Ordering<E>) Ordering.natural(), (Iterator) elements);
+    return copyOfInternal((Ordering<E>) Ordering.natural(), (Iterator<E>) elements);
   }
 
   public static <E extends Comparable<? super E>> ImmutableSortedSet<E> copyOf(E[] elements) {
@@ -165,11 +171,12 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     return copyOfInternal(comparator, elements);
   }
 
+  // We use NATURAL_ORDER only if the input was already using natural ordering.
   @SuppressWarnings("unchecked")
   public static <E> ImmutableSortedSet<E> copyOfSorted(SortedSet<E> sortedSet) {
     Comparator<? super E> comparator = sortedSet.comparator();
     if (comparator == null) {
-      comparator = NATURAL_ORDER;
+      comparator = (Comparator<? super E>) NATURAL_ORDER;
     }
     return copyOfInternal(comparator, sortedSet.iterator());
   }
@@ -224,7 +231,7 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
   static <E> ImmutableSortedSet<E> unsafeDelegateSortedSet(
       SortedSet<E> delegate, boolean isSubset) {
     return delegate.isEmpty()
-        ? emptySet(delegate.comparator())
+        ? emptySet(requireNonNull(delegate.comparator()))
         : new RegularImmutableSortedSet<E>(delegate, isSubset);
   }
 
@@ -250,8 +257,9 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     this.sortedDelegate = Collections.unmodifiableSortedSet(sortedDelegate);
   }
 
+  @Override
   public Comparator<? super E> comparator() {
-    return sortedDelegate.comparator();
+    return requireNonNull(sortedDelegate.comparator());
   }
 
   @Override // needed to unify SortedIterable and Collection iterator() methods
@@ -261,11 +269,19 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
 
   @Override
   public Object[] toArray() {
-    return ObjectArrays.toArrayImpl(this);
+    /*
+     * ObjectArrays.toArrayImpl returns `@Nullable Object[]` rather than `Object[]` but only because
+     * it can be used with collections that may contain null. This collection is a collection of
+     * non-null elements, so we can treat it as a plain `Object[]`.
+     */
+    @SuppressWarnings("nullness")
+    Object[] result = ObjectArrays.toArrayImpl(this);
+    return result;
   }
 
   @Override
-  public <T> T[] toArray(T[] other) {
+  @SuppressWarnings("nullness") // b/192354773 in our checker affects toArray declarations
+  public <T extends @Nullable Object> T[] toArray(T[] other) {
     return ObjectArrays.toArrayImpl(this, other);
   }
 
@@ -296,10 +312,12 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     }
   }
 
+  @Override
   public E first() {
     return sortedDelegate.first();
   }
 
+  @Override
   public ImmutableSortedSet<E> headSet(E toElement) {
     checkNotNull(toElement);
     try {
@@ -309,7 +327,7 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     }
   }
 
-  E higher(E e) {
+  @Nullable E higher(E e) {
     checkNotNull(e);
     Iterator<E> iterator = tailSet(e).iterator();
     while (iterator.hasNext()) {
@@ -321,7 +339,17 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     return null;
   }
 
-  ImmutableSortedSet<E> headSet(E toElement, boolean inclusive) {
+  public @Nullable E ceiling(E e) {
+    ImmutableSortedSet<E> set = tailSet(e, true);
+    return !set.isEmpty() ? set.first() : null;
+  }
+
+  public @Nullable E floor(E e) {
+    ImmutableSortedSet<E> set = headSet(e, true);
+    return !set.isEmpty() ? set.last() : null;
+  }
+
+  public ImmutableSortedSet<E> headSet(E toElement, boolean inclusive) {
     checkNotNull(toElement);
     if (inclusive) {
       E tmp = higher(toElement);
@@ -333,10 +361,12 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     return headSet(toElement);
   }
 
+  @Override
   public E last() {
     return sortedDelegate.last();
   }
 
+  @Override
   public ImmutableSortedSet<E> subSet(E fromElement, E toElement) {
     return subSet(fromElement, true, toElement, false);
   }
@@ -353,6 +383,7 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     return tailSet(fromElement, fromInclusive).headSet(toElement, toInclusive);
   }
 
+  @Override
   public ImmutableSortedSet<E> tailSet(E fromElement) {
     checkNotNull(fromElement);
     try {
@@ -362,7 +393,7 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
     }
   }
 
-  ImmutableSortedSet<E> tailSet(E fromElement, boolean inclusive) {
+  public ImmutableSortedSet<E> tailSet(E fromElement, boolean inclusive) {
     checkNotNull(fromElement);
     if (!inclusive) {
       E tmp = higher(fromElement);
@@ -393,30 +424,40 @@ public abstract class ImmutableSortedSet<E> extends ForwardingImmutableSet<E>
       this.comparator = checkNotNull(comparator);
     }
 
+    Builder(Comparator<? super E> comparator, int expectedSize) {
+      super(expectedSize);
+      this.comparator = checkNotNull(comparator);
+    }
+
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> add(E element) {
       super.add(element);
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> add(E... elements) {
       super.add(elements);
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> addAll(Iterable<? extends E> elements) {
       super.addAll(elements);
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> addAll(Iterator<? extends E> elements) {
       super.addAll(elements);
       return this;
     }
 
+    @CanIgnoreReturnValue
     Builder<E> combine(Builder<E> builder) {
       super.combine(builder);
       return this;

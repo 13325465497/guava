@@ -17,17 +17,20 @@ package com.google.common.hash;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.Immutable;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import org.jspecify.annotations.Nullable;
 
 /**
- * An abstract composition of multiple hash functions. {@linkplain #newHasher()} delegates to the
- * {@code Hasher} objects of the delegate hash functions, and in the end, they are used by
- * {@linkplain #makeHash(Hasher[])} that constructs the final {@code HashCode}.
+ * An abstract composition of multiple hash functions. {@link #newHasher()} delegates to the {@code
+ * Hasher} objects of the delegate hash functions, and in the end, they are used by {@link
+ * #makeHash(Hasher[])} that constructs the final {@code HashCode}.
  *
  * @author Dimitris Andreou
  */
+@J2ktIncompatible
 @Immutable
 abstract class AbstractCompositeHashFunction extends AbstractHashFunction {
 
@@ -68,7 +71,7 @@ abstract class AbstractCompositeHashFunction extends AbstractHashFunction {
     return fromHashers(hashers);
   }
 
-  private Hasher fromHashers(final Hasher[] hashers) {
+  private Hasher fromHashers(Hasher[] hashers) {
     return new Hasher() {
       @Override
       public Hasher putByte(byte b) {
@@ -98,7 +101,7 @@ abstract class AbstractCompositeHashFunction extends AbstractHashFunction {
       public Hasher putBytes(ByteBuffer bytes) {
         int pos = bytes.position();
         for (Hasher hasher : hashers) {
-          bytes.position(pos);
+          Java8Compatibility.position(bytes, pos);
           hasher.putBytes(bytes);
         }
         return this;
@@ -177,7 +180,8 @@ abstract class AbstractCompositeHashFunction extends AbstractHashFunction {
       }
 
       @Override
-      public <T> Hasher putObject(T instance, Funnel<? super T> funnel) {
+      public <T extends @Nullable Object> Hasher putObject(
+          @ParametricNullness T instance, Funnel<? super T> funnel) {
         for (Hasher hasher : hashers) {
           hasher.putObject(instance, funnel);
         }

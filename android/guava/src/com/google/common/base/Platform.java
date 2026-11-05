@@ -17,29 +17,19 @@ package com.google.common.base;
 import com.google.common.annotations.GwtCompatible;
 import java.lang.ref.WeakReference;
 import java.util.Locale;
-import java.util.ServiceConfigurationError;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Methods factored out so that they can be emulated differently in GWT.
  *
  * @author Jesse Wilson
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 final class Platform {
-  private static final Logger logger = Logger.getLogger(Platform.class.getName());
   private static final PatternCompiler patternCompiler = loadPatternCompiler();
 
   private Platform() {}
-
-  /** Calls {@link System#nanoTime()}. */
-  @SuppressWarnings("GoodTime") // reading system time without TimeSource
-  static long systemNanoTime() {
-    return System.nanoTime();
-  }
 
   static CharMatcher precomputeCharMatcher(CharMatcher matcher) {
     return matcher.precomputedInternal();
@@ -47,23 +37,54 @@ final class Platform {
 
   static <T extends Enum<T>> Optional<T> getEnumIfPresent(Class<T> enumClass, String value) {
     WeakReference<? extends Enum<?>> ref = Enums.getEnumConstants(enumClass).get(value);
-    return ref == null ? Optional.<T>absent() : Optional.of(enumClass.cast(ref.get()));
+    /*
+     * We use `fromNullable` instead of `of` because `WeakReference.get()` has a nullable return
+     * type.
+     *
+     * In practice, we are very unlikely to see `null`: The `WeakReference` to the enum constant
+     * won't be cleared as long as the enum constant is referenced somewhere, and the enum constant
+     * is referenced somewhere for as long as the enum class is loaded. *Maybe in theory* the enum
+     * class could be unloaded after the above call to `getEnumConstants` but before we call
+     * `get()`, but that is vanishingly unlikely.
+     */
+    return ref == null ? Optional.absent() : Optional.fromNullable(enumClass.cast(ref.get()));
   }
 
   static String formatCompact4Digits(double value) {
     return String.format(Locale.ROOT, "%.4g", value);
   }
 
-  static boolean stringIsNullOrEmpty(@NullableDecl String string) {
+  static boolean stringIsNullOrEmpty(@Nullable String string) {
     return string == null || string.isEmpty();
   }
 
-  static String nullToEmpty(@NullableDecl String string) {
+  /**
+   * Returns the string if it is not null, or an empty string otherwise.
+   *
+   * @param string the string to test and possibly return
+   * @return {@code string} if it is not null; {@code ""} otherwise
+   */
+  static String nullToEmpty(@Nullable String string) {
     return (string == null) ? "" : string;
   }
 
-  static String emptyToNull(@NullableDecl String string) {
+  /**
+   * Returns the string if it is not empty, or a null string otherwise.
+   *
+   * @param string the string to test and possibly return
+   * @return {@code string} if it is not empty; {@code null} otherwise
+   */
+  static @Nullable String emptyToNull(@Nullable String string) {
     return stringIsNullOrEmpty(string) ? null : string;
+  }
+
+  static String lenientFormat(
+      @Nullable String template, @Nullable Object @Nullable ... args) {
+    return Strings.lenientFormat(template, args);
+  }
+
+  static String stringValueOf(@Nullable Object o) {
+    return String.valueOf(o);
   }
 
   static CommonPattern compilePattern(String pattern) {
@@ -76,16 +97,12 @@ final class Platform {
   }
 
   private static PatternCompiler loadPatternCompiler() {
-    /*
-     * We'd normally use ServiceLoader here, but it hurts Android startup performance. To avoid
-     * that, we hardcode the JDK Pattern compiler on Android (and, inadvertently, on App Engine and
-     * in Guava, at least for now).
-     */
+    // We want the JDK Pattern compiler:
+    // - under Android (where it hurts startup performance)
+    // - even for the JVM in our open-source release (https://github.com/google/guava/issues/3147)
+    // If anyone in our monorepo uses the Android copy of Guava on a JVM, that would be unfortunate.
+    // But that is only likely to happen in Robolectric tests, where the risks of JDK regex are low.
     return new JdkPatternCompiler();
-  }
-
-  private static void logPatternCompilerError(ServiceConfigurationError e) {
-    logger.log(Level.WARNING, "Error loading regex compiler, falling back to next option", e);
   }
 
   private static final class JdkPatternCompiler implements PatternCompiler {

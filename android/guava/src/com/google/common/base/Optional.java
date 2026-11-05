@@ -16,12 +16,14 @@ package com.google.common.base;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.errorprone.annotations.DoNotMock;
 import java.io.Serializable;
 import java.util.Iterator;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable object that may contain a non-null reference to another object. Each instance of
@@ -51,6 +53,9 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * <p>This class is not intended as a direct analogue of any existing "option" or "maybe" construct
  * from other programming environments, though it may bear some similarities.
  *
+ * <p>An instance of this class is serializable if its reference is absent or is a serializable
+ * object.
+ *
  * <p><b>Comparison to {@code java.util.Optional} (JDK 8 and higher):</b> A new {@code Optional}
  * class was added for Java 8. The two classes are extremely similar, but incompatible (they cannot
  * share a common supertype). <i>All</i> known differences are listed either here or with the
@@ -79,7 +84,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@GwtCompatible(serializable = true)
+@DoNotMock("Use Optional.of(value) or Optional.absent()")
+@GwtCompatible
 public abstract class Optional<T> implements Serializable {
   /**
    * Returns an {@code Optional} instance with no contained reference.
@@ -100,7 +106,7 @@ public abstract class Optional<T> implements Serializable {
    * @throws NullPointerException if {@code reference} is null
    */
   public static <T> Optional<T> of(T reference) {
-    return new Present<T>(checkNotNull(reference));
+    return new Present<>(checkNotNull(reference));
   }
 
   /**
@@ -110,8 +116,61 @@ public abstract class Optional<T> implements Serializable {
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method is equivalent to Java 8's
    * {@code Optional.ofNullable}.
    */
-  public static <T> Optional<T> fromNullable(@NullableDecl T nullableReference) {
-    return (nullableReference == null) ? Optional.<T>absent() : new Present<T>(nullableReference);
+  public static <T> Optional<T> fromNullable(@Nullable T nullableReference) {
+    return nullableReference == null ? absent() : new Present<>(nullableReference);
+  }
+
+  /**
+   * Returns the equivalent {@code com.google.common.base.Optional} value to the given {@code
+   * java.util.Optional}, or {@code null} if the argument is null.
+   *
+   * @since 33.4.0 (but since 21.0 in the JRE flavor)
+   */
+  @SuppressWarnings("NullableOptional") // Null passthrough is reasonable for type conversions
+  @IgnoreJRERequirement // Users will use this only if they're already using Optional.
+  public static <T> @Nullable Optional<T> fromJavaUtil(
+      java.util.@Nullable Optional<T> javaUtilOptional) {
+    return (javaUtilOptional == null) ? null : fromNullable(javaUtilOptional.orElse(null));
+  }
+
+  /**
+   * Returns the equivalent {@code java.util.Optional} value to the given {@code
+   * com.google.common.base.Optional}, or {@code null} if the argument is null.
+   *
+   * <p>If {@code googleOptional} is known to be non-null, use {@code googleOptional.toJavaUtil()}
+   * instead.
+   *
+   * <p>Unfortunately, the method reference {@code Optional::toJavaUtil} will not work, because it
+   * could refer to either the static or instance version of this method. Write out the lambda
+   * expression {@code o -> Optional.toJavaUtil(o)} instead.
+   *
+   * @since 33.4.0 (but since 21.0 in the JRE flavor)
+   */
+  @SuppressWarnings({
+    "AmbiguousMethodReference", // We chose the name despite knowing this risk.
+    "NullableOptional", // Null passthrough is reasonable for type conversions
+  })
+  // If users use this when they shouldn't, we hope that NewApi will catch subsequent Optional calls
+  @IgnoreJRERequirement
+  public static <T> java.util.@Nullable Optional<T> toJavaUtil(
+      @Nullable Optional<T> googleOptional) {
+    return googleOptional == null ? null : googleOptional.toJavaUtil();
+  }
+
+  /**
+   * Returns the equivalent {@code java.util.Optional} value to this optional.
+   *
+   * <p>Unfortunately, the method reference {@code Optional::toJavaUtil} will not work, because it
+   * could refer to either the static or instance version of this method. Write out the lambda
+   * expression {@code o -> o.toJavaUtil()} instead.
+   *
+   * @since 33.4.0 (but since 21.0 in the JRE flavor)
+   */
+  @SuppressWarnings("AmbiguousMethodReference") // We chose the name despite knowing this risk.
+  // If users use this when they shouldn't, we hope that NewApi will catch subsequent Optional calls
+  @IgnoreJRERequirement
+  public final java.util.Optional<T> toJavaUtil() {
+    return java.util.Optional.ofNullable(orNull());
   }
 
   Optional() {}
@@ -128,7 +187,7 @@ public abstract class Optional<T> implements Serializable {
    * {@link #or(Object)} or {@link #orNull} instead.
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> when the value is absent, this method
-   * throws {@link IllegalStateException}, whereas the Java 8 counterpart throws {@link
+   * throws {@link IllegalStateException}, whereas the {@code java.util} counterpart throws {@link
    * java.util.NoSuchElementException NoSuchElementException}.
    *
    * @throws IllegalStateException if the instance is absent ({@link #isPresent} returns {@code
@@ -146,27 +205,27 @@ public abstract class Optional<T> implements Serializable {
    * restrictive. However, the ideal signature, {@code public <S super T> S or(S)}, is not legal
    * Java. As a result, some sensible operations involving subtypes are compile errors:
    *
-   * <pre>{@code
+   * {@snippet :
    * Optional<Integer> optionalInt = getSomeOptionalInt();
    * Number value = optionalInt.or(0.5); // error
    *
    * FluentIterable<? extends Number> numbers = getSomeNumbers();
    * Optional<? extends Number> first = numbers.first();
    * Number value = first.or(0.5); // error
-   * }</pre>
+   * }
    *
    * <p>As a workaround, it is always safe to cast an {@code Optional<? extends T>} to {@code
    * Optional<T>}. Casting either of the above example {@code Optional} instances to {@code
    * Optional<Number>} (where {@code Number} is the desired output type) solves the problem:
    *
-   * <pre>{@code
+   * {@snippet :
    * Optional<Number> optionalInt = (Optional) getSomeOptionalInt();
    * Number value = optionalInt.or(0.5); // fine
    *
    * FluentIterable<? extends Number> numbers = getSomeNumbers();
    * Optional<Number> first = (Optional) numbers.first();
    * Number value = first.or(0.5); // fine
-   * }</pre>
+   * }
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method is similar to Java 8's {@code
    * Optional.orElse}, but will not accept {@code null} as a {@code defaultValue} ({@link #orNull}
@@ -189,12 +248,11 @@ public abstract class Optional<T> implements Serializable {
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method is similar to Java 8's {@code
    * Optional.orElseGet}, except when {@code supplier} returns {@code null}. In this case this
-   * method throws an exception, whereas the Java 8 method returns the {@code null} to the caller.
+   * method throws an exception, whereas the Java 8+ method returns the {@code null} to the caller.
    *
    * @throws NullPointerException if this optional's value is absent and the supplier returns {@code
    *     null}
    */
-  @Beta
   public abstract T or(Supplier<? extends T> supplier);
 
   /**
@@ -204,8 +262,7 @@ public abstract class Optional<T> implements Serializable {
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method is equivalent to Java 8's
    * {@code Optional.orElse(null)}.
    */
-  @NullableDecl
-  public abstract T orNull();
+  public abstract @Nullable T orNull();
 
   /**
    * Returns an immutable singleton {@link Set} whose only element is the contained instance if it
@@ -214,17 +271,17 @@ public abstract class Optional<T> implements Serializable {
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method has no equivalent in Java 8's
    * {@code Optional} class. However, this common usage:
    *
-   * <pre>{@code
+   * {@snippet :
    * for (Foo foo : possibleFoo.asSet()) {
    *   doSomethingWith(foo);
    * }
-   * }</pre>
+   * }
    *
    * ... can be replaced with:
    *
-   * <pre>{@code
+   * {@snippet :
    * possibleFoo.ifPresent(foo -> doSomethingWith(foo));
-   * }</pre>
+   * }
    *
    * <p><b>Java 9 users:</b> some use cases can be written with calls to {@code optional.stream()}.
    *
@@ -238,7 +295,7 @@ public abstract class Optional<T> implements Serializable {
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> this method is similar to Java 8's {@code
    * Optional.map}, except when {@code function} returns {@code null}. In this case this method
-   * throws an exception, whereas the Java 8 method returns {@code Optional.absent()}.
+   * throws an exception, whereas the Java 8+ method returns {@code Optional.absent()}.
    *
    * @throws NullPointerException if the function returns {@code null}
    * @since 12.0
@@ -253,13 +310,13 @@ public abstract class Optional<T> implements Serializable {
    * <p><b>Comparison to {@code java.util.Optional}:</b> no differences.
    */
   @Override
-  public abstract boolean equals(@NullableDecl Object object);
+  public abstract boolean equals(@Nullable Object object);
 
   /**
    * Returns a hash code for this instance.
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> this class leaves the specific choice of
-   * hash code unspecified, unlike the Java 8 equivalent.
+   * hash code unspecified, unlike the Java 8+ equivalent.
    */
   @Override
   public abstract int hashCode();
@@ -268,7 +325,7 @@ public abstract class Optional<T> implements Serializable {
    * Returns a string representation for this instance.
    *
    * <p><b>Comparison to {@code java.util.Optional}:</b> this class leaves the specific string
-   * representation unspecified, unlike the Java 8 equivalent.
+   * representation unspecified, unlike the Java 8+ equivalent.
    */
   @Override
   public abstract String toString();
@@ -286,19 +343,16 @@ public abstract class Optional<T> implements Serializable {
    *
    * @since 11.0 (generics widened in 13.0)
    */
-  @Beta
   public static <T> Iterable<T> presentInstances(
-      final Iterable<? extends Optional<? extends T>> optionals) {
+      Iterable<? extends Optional<? extends T>> optionals) {
     checkNotNull(optionals);
-    return new Iterable<T>() {
-      @Override
-      public Iterator<T> iterator() {
-        return new AbstractIterator<T>() {
-          private final Iterator<? extends Optional<? extends T>> iterator =
+    return () ->
+        new AbstractIterator<T>() {
+          final Iterator<? extends Optional<? extends T>> iterator =
               checkNotNull(optionals.iterator());
 
           @Override
-          protected T computeNext() {
+          protected @Nullable T computeNext() {
             while (iterator.hasNext()) {
               Optional<? extends T> optional = iterator.next();
               if (optional.isPresent()) {
@@ -308,9 +362,7 @@ public abstract class Optional<T> implements Serializable {
             return endOfData();
           }
         };
-      }
-    };
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

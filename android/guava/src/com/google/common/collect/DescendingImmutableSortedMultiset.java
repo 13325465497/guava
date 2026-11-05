@@ -15,7 +15,8 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtIncompatible;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A descending wrapper around an {@code ImmutableSortedMultiset}
@@ -32,17 +33,17 @@ final class DescendingImmutableSortedMultiset<E> extends ImmutableSortedMultiset
   }
 
   @Override
-  public int count(@NullableDecl Object element) {
+  public int count(@Nullable Object element) {
     return forward.count(element);
   }
 
   @Override
-  public Entry<E> firstEntry() {
+  public @Nullable Entry<E> firstEntry() {
     return forward.lastEntry();
   }
 
   @Override
-  public Entry<E> lastEntry() {
+  public @Nullable Entry<E> lastEntry() {
     return forward.firstEntry();
   }
 
@@ -79,5 +80,13 @@ final class DescendingImmutableSortedMultiset<E> extends ImmutableSortedMultiset
   @Override
   boolean isPartialView() {
     return forward.isPartialView();
+  }
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible // serialization
+  Object writeReplace() {
+    return super.writeReplace();
   }
 }

@@ -17,14 +17,17 @@
 package com.google.common.eventbus;
 
 import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.List;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Validate that {@link EventBus} behaves carefully when listeners publish their own events.
  *
  * @author Jesse Wilson
  */
+@NullUnmarked
 public class ReentrantEventsTest extends TestCase {
 
   static final String FIRST = "one";
@@ -44,9 +47,9 @@ public class ReentrantEventsTest extends TestCase {
         hater.eventsReceived);
   }
 
-  public class ReentrantEventsHater {
+  public final class ReentrantEventsHater {
     boolean ready = true;
-    List<Object> eventsReceived = Lists.newArrayList();
+    final List<Object> eventsReceived = new ArrayList<>();
 
     @Subscribe
     public void listenForStrings(String event) {
@@ -81,15 +84,15 @@ public class ReentrantEventsTest extends TestCase {
         recorder.eventsReceived);
   }
 
-  public class EventProcessor {
+  public final class EventProcessor {
     @Subscribe
     public void listenForStrings(String event) {
       bus.post(SECOND);
     }
   }
 
-  public class EventRecorder {
-    List<Object> eventsReceived = Lists.newArrayList();
+  static final class EventRecorder {
+    final List<Object> eventsReceived = new ArrayList<>();
 
     @Subscribe
     public void listenForEverything(Object event) {

@@ -16,7 +16,9 @@
 
 package com.google.common.collect.testing;
 
+import static com.google.common.collect.testing.Helpers.copyToList;
 import static com.google.common.collect.testing.features.CollectionFeature.KNOWN_ORDER;
+import static java.util.Collections.emptySet;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.DerivedCollectionGenerators.Bound;
@@ -24,12 +26,12 @@ import com.google.common.collect.testing.DerivedCollectionGenerators.SortedMapSu
 import com.google.common.collect.testing.features.Feature;
 import com.google.common.collect.testing.testers.SortedMapNavigationTester;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Creates, based on your criteria, a JUnit test suite that exhaustively tests a SortedMap
@@ -44,9 +46,10 @@ public class SortedMapTestSuiteBuilder<K, V> extends MapTestSuiteBuilder<K, V> {
     return result;
   }
 
+  @SuppressWarnings("rawtypes") // class literals
   @Override
   protected List<Class<? extends AbstractTester>> getTesters() {
-    List<Class<? extends AbstractTester>> testers = Helpers.copyToList(super.getTesters());
+    List<Class<? extends AbstractTester>> testers = copyToList(super.getTesters());
     testers.add(SortedMapNavigationTester.class);
     return testers;
   }
@@ -54,7 +57,7 @@ public class SortedMapTestSuiteBuilder<K, V> extends MapTestSuiteBuilder<K, V> {
   @Override
   public TestSuite createTestSuite() {
     if (!getFeatures().contains(KNOWN_ORDER)) {
-      List<Feature<?>> features = Helpers.copyToList(getFeatures());
+      List<Feature<?>> features = copyToList(getFeatures());
       features.add(KNOWN_ORDER);
       withFeatures(features);
     }
@@ -88,13 +91,13 @@ public class SortedMapTestSuiteBuilder<K, V> extends MapTestSuiteBuilder<K, V> {
    * To avoid infinite recursion, test suites with these marker features won't have derived suites
    * created for them.
    */
-  enum NoRecurse implements Feature<Void> {
+  enum NoRecurse implements Feature<@Nullable Void> {
     SUBMAP,
     DESCENDING;
 
     @Override
-    public Set<Feature<? super Void>> getImpliedFeatures() {
-      return Collections.emptySet();
+    public Set<Feature<? super @Nullable Void>> getImpliedFeatures() {
+      return emptySet();
     }
   }
 
@@ -105,12 +108,12 @@ public class SortedMapTestSuiteBuilder<K, V> extends MapTestSuiteBuilder<K, V> {
    * these extreme values rather than relying on their regular sort ordering.
    */
   final TestSuite createSubmapSuite(
-      final FeatureSpecificTestSuiteBuilder<
+      FeatureSpecificTestSuiteBuilder<
               ?, ? extends OneSizeTestContainerGenerator<Map<K, V>, Entry<K, V>>>
           parentBuilder,
-      final Bound from,
-      final Bound to) {
-    final TestSortedMapGenerator<K, V> delegate =
+      Bound from,
+      Bound to) {
+    TestSortedMapGenerator<K, V> delegate =
         (TestSortedMapGenerator<K, V>) parentBuilder.getSubjectGenerator().getInnerGenerator();
 
     List<Feature<?>> features = new ArrayList<>();
@@ -121,6 +124,8 @@ public class SortedMapTestSuiteBuilder<K, V> extends MapTestSuiteBuilder<K, V> {
         .named(parentBuilder.getName() + " subMap " + from + "-" + to)
         .withFeatures(features)
         .suppressing(parentBuilder.getSuppressedTests())
+        .withSetUp(parentBuilder.getSetUp())
+        .withTearDown(parentBuilder.getTearDown())
         .createTestSuite();
   }
 

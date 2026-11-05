@@ -18,18 +18,29 @@ package com.google.common.base;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link Objects}.
  *
  * @author Laurence Gonsalves
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
 public class ObjectsTest extends TestCase {
 
-  public void testEqual() throws Exception {
+  @SuppressWarnings({
+    "ObjectEqualsForPrimitives", // test of a trivial call
+    "EqualsInteger", // test of a trivial call
+    "EqualsLong", // b/273939864
+    "EqualsDouble", // b/273939864
+    "EqualsFloat", // b/273939864
+    "YodaCondition", // test of reversed call
+  })
+  public void testEqual() {
     assertTrue(Objects.equal(1, 1));
     assertTrue(Objects.equal(null, null));
 
@@ -44,9 +55,9 @@ public class ObjectsTest extends TestCase {
     assertFalse(Objects.equal("1", 1));
   }
 
-  public void testHashCode() throws Exception {
+  public void testHashCode() {
     int h1 = Objects.hashCode(1, "two", 3.0);
-    int h2 = Objects.hashCode(new Integer(1), new String("two"), new Double(3.0));
+    int h2 = Objects.hashCode(Integer.valueOf(1), new String("two"), Double.valueOf(3.0));
     // repeatable
     assertEquals(h1, h2);
 
@@ -58,6 +69,7 @@ public class ObjectsTest extends TestCase {
     assertTrue(Objects.hashCode(1, 2, 3) != Objects.hashCode(2, 3, 1));
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointers() {
     NullPointerTester tester = new NullPointerTester();

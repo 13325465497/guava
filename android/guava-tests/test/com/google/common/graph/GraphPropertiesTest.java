@@ -20,6 +20,7 @@ import static com.google.common.graph.Graphs.hasCycle;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.collect.ImmutableList;
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,6 +29,7 @@ import org.junit.runners.JUnit4;
 /** Tests for {@link Graphs#hasCycle(Graph)} and {@link Graphs#hasCycle(Network)}. */
 // TODO(user): Consider moving this to GraphsTest.
 @RunWith(JUnit4.class)
+@NullUnmarked
 public class GraphPropertiesTest {
   ImmutableList<MutableGraph<Integer>> graphsToTest;
   Graph<Integer> directedGraph;
@@ -91,6 +93,18 @@ public class GraphPropertiesTest {
   }
 
   @Test
+  public void hasCycle_selfLoopEdgeAndIsolatedNodes() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      graph.putEdge(1, 2);
+      graph.putEdge(2, 2);
+      graph.addNode(3);
+      graph.addNode(4); // fewer edges than nodes, so the undirected shortcut doesn't apply
+    }
+    assertThat(hasCycle(directedGraph)).isTrue();
+    assertThat(hasCycle(undirectedGraph)).isTrue();
+  }
+
+  @Test
   public void hasCycle_twoAcyclicEdges() {
     for (MutableGraph<Integer> graph : graphsToTest) {
       graph.putEdge(1, 2);
@@ -122,11 +136,35 @@ public class GraphPropertiesTest {
   }
 
   @Test
+  public void hasCycle_threeAcyclicEdgesAndIsolatedNode() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      graph.putEdge(1, 2);
+      graph.putEdge(2, 3);
+      graph.putEdge(1, 3);
+      graph.addNode(4); // fewer edges than nodes, so the undirected shortcut doesn't apply
+    }
+    assertThat(hasCycle(directedGraph)).isFalse();
+    assertThat(hasCycle(undirectedGraph)).isTrue(); // cyclic in undirected case
+  }
+
+  @Test
   public void hasCycle_threeCyclicEdges() {
     for (MutableGraph<Integer> graph : graphsToTest) {
       graph.putEdge(1, 2);
       graph.putEdge(2, 3);
       graph.putEdge(3, 1);
+    }
+    assertThat(hasCycle(directedGraph)).isTrue();
+    assertThat(hasCycle(undirectedGraph)).isTrue();
+  }
+
+  @Test
+  public void hasCycle_threeCyclicEdgesAndIsolatedNode() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      graph.putEdge(1, 2);
+      graph.putEdge(2, 3);
+      graph.putEdge(3, 1);
+      graph.addNode(4); // fewer edges than nodes, so the undirected shortcut doesn't apply
     }
     assertThat(hasCycle(directedGraph)).isTrue();
     assertThat(hasCycle(undirectedGraph)).isTrue();
@@ -156,6 +194,43 @@ public class GraphPropertiesTest {
   }
 
   @Test
+  public void hasCycle_multipleCyclesAndIsolatedNode() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      graph.putEdge(1, 2);
+      graph.putEdge(2, 1);
+      graph.putEdge(2, 3);
+      graph.putEdge(3, 1);
+      graph.addNode(4); // fewer edges than nodes, so the undirected shortcut doesn't apply
+    }
+    assertThat(hasCycle(directedGraph)).isTrue();
+    assertThat(hasCycle(undirectedGraph)).isTrue();
+  }
+
+  @Test
+  public void hasCycle_deepPathGraph() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      for (int i = 0; i < 100000; i++) {
+        graph.putEdge(i, i + 1);
+      }
+    }
+    assertThat(hasCycle(directedGraph)).isFalse();
+    assertThat(hasCycle(undirectedGraph)).isFalse();
+  }
+
+  @Test
+  public void hasCycle_deepCycleGraph() {
+    for (MutableGraph<Integer> graph : graphsToTest) {
+      for (int i = 0; i < 100000; i++) {
+        graph.putEdge(i, i + 1);
+      }
+      graph.putEdge(100000, 0);
+      graph.addNode(100001); // fewer edges than nodes, so the undirected shortcut doesn't apply
+    }
+    assertThat(hasCycle(directedGraph)).isTrue();
+    assertThat(hasCycle(undirectedGraph)).isTrue();
+  }
+
+  @Test
   public void hasCycle_twoParallelEdges() {
     for (MutableNetwork<Integer, String> network : networksToTest) {
       network.addEdge(1, 2, "1-2a");
@@ -172,6 +247,42 @@ public class GraphPropertiesTest {
       network.addEdge(1, 2, "1-2b");
       network.addEdge(2, 3, "2-3");
       network.addEdge(3, 1, "3-1");
+    }
+    assertThat(hasCycle(directedNetwork)).isTrue();
+    assertThat(hasCycle(undirectedNetwork)).isTrue();
+  }
+
+  @Test
+  public void hasCycle_threeCyclicEdgesAndIsolatedNode_network() {
+    for (MutableNetwork<Integer, String> network : networksToTest) {
+      network.addEdge(1, 2, "1-2");
+      network.addEdge(2, 3, "2-3");
+      network.addEdge(3, 1, "3-1");
+      network.addNode(4); // fewer edges than nodes, so the undirected shortcut doesn't apply
+    }
+    assertThat(hasCycle(directedNetwork)).isTrue();
+    assertThat(hasCycle(undirectedNetwork)).isTrue();
+  }
+
+  @Test
+  public void hasCycle_deepPathNetwork() {
+    for (MutableNetwork<Integer, String> network : networksToTest) {
+      for (int i = 0; i < 100000; i++) {
+        network.addEdge(i, i + 1, Integer.toString(i));
+      }
+    }
+    assertThat(hasCycle(directedNetwork)).isFalse();
+    assertThat(hasCycle(undirectedNetwork)).isFalse();
+  }
+
+  @Test
+  public void hasCycle_deepCycleNetwork() {
+    for (MutableNetwork<Integer, String> network : networksToTest) {
+      for (int i = 0; i < 100000; i++) {
+        network.addEdge(i, i + 1, Integer.toString(i));
+      }
+      network.addEdge(100000, 0, "cycle");
+      network.addNode(100001); // fewer edges than nodes, so the undirected shortcut doesn't apply
     }
     assertThat(hasCycle(directedNetwork)).isTrue();
     assertThat(hasCycle(undirectedNetwork)).isTrue();

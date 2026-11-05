@@ -18,12 +18,14 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.CompatibleWith;
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A semi-persistent mapping from keys to values. Cache entries are manually added using {@link
@@ -33,9 +35,12 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * <p>Implementations of this interface are expected to be thread-safe, and can be safely accessed
  * by multiple concurrent threads.
  *
+ * @param <K> the type of the cache's keys, which are not permitted to be null
+ * @param <V> the type of the cache's values, which are not permitted to be null
  * @author Charles Fry
  * @since 10.0
  */
+@DoNotMock("Use CacheBuilder.newBuilder().build()")
 @GwtCompatible
 public interface Cache<K, V> {
 
@@ -45,8 +50,8 @@ public interface Cache<K, V> {
    *
    * @since 11.0
    */
-  @NullableDecl
-  V getIfPresent(@CompatibleWith("K") Object key);
+  @CanIgnoreReturnValue // TODO(b/27479612): consider removing this?
+  @Nullable V getIfPresent(@CompatibleWith("K") Object key);
 
   /**
    * Returns the value associated with {@code key} in this cache, obtaining that value from {@code
@@ -94,6 +99,7 @@ public interface Cache<K, V> {
    * @throws ExecutionError if an error was thrown while loading the value
    * @since 11.0
    */
+  @CanIgnoreReturnValue // TODO(b/27479612): consider removing this
   V get(K key, Callable<? extends V> loader) throws ExecutionException;
 
   /**
@@ -102,7 +108,11 @@ public interface Cache<K, V> {
    *
    * @since 11.0
    */
-  ImmutableMap<K, V> getAllPresent(Iterable<?> keys);
+  /*
+   * <? extends Object> is mostly the same as <?> to plain Java. But to nullness checkers, they
+   * differ: <? extends Object> means "non-null types," while <?> means "all types."
+   */
+  ImmutableMap<K, V> getAllPresent(Iterable<? extends Object> keys);
 
   /**
    * Associates {@code value} with {@code key} in this cache. If the cache previously contained a
@@ -116,7 +126,7 @@ public interface Cache<K, V> {
   void put(K key, V value);
 
   /**
-   * Copies all of the mappings from the specified map to the cache. The effect of this call is
+   * Copies all the mappings from the specified map to the cache. The effect of this call is
    * equivalent to that of calling {@code put(k, v)} on this map once for each mapping from key
    * {@code k} to value {@code v} in the specified map. The behavior of this operation is undefined
    * if the specified map is modified while the operation is in progress.
@@ -133,7 +143,8 @@ public interface Cache<K, V> {
    *
    * @since 11.0
    */
-  void invalidateAll(Iterable<?> keys);
+  // For discussion of <? extends Object>, see getAllPresent.
+  void invalidateAll(Iterable<? extends Object> keys);
 
   /** Discards all entries in the cache. */
   void invalidateAll();

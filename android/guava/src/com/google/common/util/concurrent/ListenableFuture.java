@@ -14,9 +14,12 @@
 
 package com.google.common.util.concurrent;
 
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link Future} that accepts completion listeners. Each listener has an associated executor, and
@@ -30,25 +33,30 @@ import java.util.concurrent.RejectedExecutionException;
  *
  * <p>This class is GWT-compatible.
  *
- * <h3>Purpose</h3>
+ * <h2>Purpose</h2>
  *
  * <p>The main purpose of {@code ListenableFuture} is to help you chain together a graph of
  * asynchronous operations. You can chain them together manually with calls to methods like {@link
- * Futures#transform(ListenableFuture, com.google.common.base.Function, Executor)
- * Futures.transform}, but you will often find it easier to use a framework. Frameworks automate the
- * process, often adding features like monitoring, debugging, and cancellation. Examples of
- * frameworks include:
+ * Futures#transform(ListenableFuture, com.google.common.base.Function, Executor) Futures.transform}
+ * (or {@link FluentFuture#transform(com.google.common.base.Function, Executor)
+ * FluentFuture.transform}), but you will often find it easier to use a framework. Frameworks
+ * automate the process, often adding features like monitoring, debugging, and cancellation.
+ * Examples of frameworks include:
  *
  * <ul>
- *   <li><a href="http://dagger.dev/producers.html">Dagger Producers</a>
+ *   <li><a href="https://dagger.dev/producers.html">Dagger Producers</a>
  * </ul>
+ *
+ * <p>If the operations in your chain create objects that must be closed when the computation is
+ * done, such as database connections or file handles, consider {@link ClosingFuture}. It closes
+ * them once the whole computation completes, fails, or is cancelled.
  *
  * <p>The main purpose of {@link #addListener addListener} is to support this chaining. You will
  * rarely use it directly, in part because it does not provide direct access to the {@code Future}
  * result. (If you want such access, you may prefer {@link Futures#addCallback
  * Futures.addCallback}.) Still, direct {@code addListener} calls are occasionally useful:
  *
- * <pre>{@code
+ * {@snippet :
  * final String name = ...;
  * inFlight.add(name);
  * ListenableFuture<Result> future = service.query(name);
@@ -60,9 +68,9 @@ import java.util.concurrent.RejectedExecutionException;
  *     logger.info("Done with {0}", name);
  *   }
  * }, executor);
- * }</pre>
+ * }
  *
- * <h3>How to get an instance</h3>
+ * <h2>How to get an instance</h2>
  *
  * <p>We encourage you to return {@code ListenableFuture} from your methods so that your users can
  * take advantage of the {@linkplain Futures utilities built atop the class}. The way that you will
@@ -94,11 +102,32 @@ import java.util.concurrent.RejectedExecutionException;
  * JdkFutureAdapters}. However, when possible, it is more efficient and reliable to create a {@code
  * ListenableFuture} directly.
  *
+ * <p><b>{@link java.util.concurrent.CompletableFuture}</b>: If you need to adapt between {@link
+ * ListenableFuture} and {@code CompletableFuture}, consider <a
+ * href="https://github.com/lukas-krecan/future-converter">Future Converter</a>.
+ *
  * @author Sven Mawson
  * @author Nishant Thakkar
  * @since 1.0
  */
-public interface ListenableFuture<V> extends Future<V> {
+/*
+ * Some of the annotations below were added after we released our separate
+ * com.google.guava:listenablefuture:1.0 artifact. (For more on that artifact, see
+ * https://github.com/google/guava/releases/tag/v27.0) This means that the copy of ListenableFuture
+ * in com.google.guava:guava differs from the "frozen" copy in the listenablefuture artifact. This
+ * could in principle cause problems for some users. Still, we expect that the benefits of the
+ * nullness annotations in particular will outweigh the costs. (And it's worth noting that we have
+ * released multiple ListenableFuture.class files that are not byte-for-byte compatible even from
+ * the beginning, thanks to using different `-source -target` values for compiling our `-jre` and
+ * `-android` "flavors.")
+ *
+ * (We could consider releasing a listenablefuture:1.0.1 someday. But we would want to look into how
+ * that affects users, especially users of the Android Gradle Plugin, since the plugin developers
+ * put in a special hack for us: https://issuetracker.google.com/issues/131431257)
+ */
+@DoNotMock("Use the methods in Futures (like immediateFuture) or SettableFuture")
+@NullMarked
+public interface ListenableFuture<V extends @Nullable Object> extends Future<V> {
   /**
    * Registers a listener to be {@linkplain Executor#execute(Runnable) run} on the given executor.
    * The listener will run when the {@code Future}'s computation is {@linkplain Future#isDone()
@@ -112,27 +141,17 @@ public interface ListenableFuture<V> extends Future<V> {
    * thrown by {@linkplain MoreExecutors#directExecutor direct execution}) will be caught and
    * logged.
    *
-   * <p>Note: For fast, lightweight listeners that would be safe to execute in any thread, consider
-   * {@link MoreExecutors#directExecutor}. Otherwise, avoid it. Heavyweight {@code directExecutor}
-   * listeners can cause problems, and these problems can be difficult to reproduce because they
-   * depend on timing. For example:
-   *
-   * <ul>
-   *   <li>The listener may be executed by the caller of {@code addListener}. That caller may be a
-   *       UI thread or other latency-sensitive thread. This can harm UI responsiveness.
-   *   <li>The listener may be executed by the thread that completes this {@code Future}. That
-   *       thread may be an internal system thread such as an RPC network thread. Blocking that
-   *       thread may stall progress of the whole system. It may even cause a deadlock.
-   *   <li>The listener may delay other listeners, even listeners that are not themselves {@code
-   *       directExecutor} listeners.
-   * </ul>
+   * <p>Note: If your listener is lightweight -- and will not cause stack overflow by completing
+   * more futures or adding more {@code directExecutor()} listeners inline -- consider {@link
+   * MoreExecutors#directExecutor}. Otherwise, avoid it: See the warnings on the docs for {@code
+   * directExecutor}.
    *
    * <p>This is the most general listener interface. For common operations performed using
    * listeners, see {@link Futures}. For a simplified but general listener interface, see {@link
    * Futures#addCallback addCallback()}.
    *
    * <p>Memory consistency effects: Actions in a thread prior to adding a listener <a
-   * href="https://docs.oracle.com/javase/specs/jls/se7/html/jls-17.html#jls-17.4.5">
+   * href="https://docs.oracle.com/javase/specs/jls/se27/html/jls-17.html#jls-17.4.5">
    * <i>happen-before</i></a> its execution begins, perhaps in another thread.
    *
    * <p>Guava implementations of {@code ListenableFuture} promptly release references to listeners

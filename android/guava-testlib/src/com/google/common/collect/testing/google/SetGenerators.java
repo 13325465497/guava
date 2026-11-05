@@ -18,11 +18,15 @@ package com.google.common.collect.testing.google;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Lists.newArrayList;
+import static com.google.common.collect.Sets.newHashSet;
 import static com.google.common.collect.Sets.newTreeSet;
 import static com.google.common.collect.testing.SampleElements.Strings.AFTER_LAST;
 import static com.google.common.collect.testing.SampleElements.Strings.AFTER_LAST_2;
 import static com.google.common.collect.testing.SampleElements.Strings.BEFORE_FIRST;
 import static com.google.common.collect.testing.SampleElements.Strings.BEFORE_FIRST_2;
+import static java.lang.Math.max;
+import static java.util.Arrays.asList;
+import static java.util.Collections.sort;
 import static junit.framework.Assert.assertEquals;
 
 import com.google.common.annotations.GwtCompatible;
@@ -31,11 +35,8 @@ import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.DiscreteDomain;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Range;
-import com.google.common.collect.Sets;
-import com.google.common.collect.testing.TestCollectionGenerator;
 import com.google.common.collect.testing.TestCollidingSetGenerator;
 import com.google.common.collect.testing.TestIntegerSortedSetGenerator;
 import com.google.common.collect.testing.TestSetGenerator;
@@ -44,12 +45,14 @@ import com.google.common.collect.testing.TestStringSetGenerator;
 import com.google.common.collect.testing.TestStringSortedSetGenerator;
 import com.google.common.collect.testing.TestUnhashableCollectionGenerator;
 import com.google.common.collect.testing.UnhashableObject;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Generators of different types of sets and derived collections from sets.
@@ -58,7 +61,8 @@ import java.util.SortedSet;
  * @author Jared Levy
  * @author Hayward Chan
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class SetGenerators {
 
   public static class ImmutableSetCopyOfGenerator extends TestStringSetGenerator {
@@ -83,7 +87,7 @@ public class SetGenerators {
     @Override
     protected Set<String> create(String[] elements) {
       ImmutableSet.Builder<String> builder =
-          ImmutableSet.builderWithExpectedSize(Sets.newHashSet(elements).size());
+          ImmutableSet.builderWithExpectedSize(newHashSet(elements).size());
       for (String e : elements) {
         builder.add(e);
       }
@@ -95,7 +99,7 @@ public class SetGenerators {
     @Override
     protected Set<String> create(String[] elements) {
       ImmutableSet.Builder<String> builder =
-          ImmutableSet.builderWithExpectedSize(Sets.newHashSet(elements).size() + 1);
+          ImmutableSet.builderWithExpectedSize(newHashSet(elements).size() + 1);
       for (String e : elements) {
         builder.add(e);
       }
@@ -107,7 +111,7 @@ public class SetGenerators {
     @Override
     protected Set<String> create(String[] elements) {
       ImmutableSet.Builder<String> builder =
-          ImmutableSet.builderWithExpectedSize(Math.max(0, Sets.newHashSet(elements).size() - 1));
+          ImmutableSet.builderWithExpectedSize(max(0, newHashSet(elements).size() - 1));
       for (String e : elements) {
         builder.add(e);
       }
@@ -115,11 +119,7 @@ public class SetGenerators {
     }
   }
 
-  public static class ImmutableSetWithBadHashesGenerator extends TestCollidingSetGenerator
-      // Work around a GWT compiler bug.  Not explicitly listing this will
-      // cause the createArray() method missing in the generated javascript.
-      // TODO: Remove this once the GWT bug is fixed.
-      implements TestCollectionGenerator<Object> {
+  public static class ImmutableSetWithBadHashesGenerator extends TestCollidingSetGenerator {
     @Override
     public Set<Object> create(Object... elements) {
       return ImmutableSet.copyOf(elements);
@@ -127,12 +127,10 @@ public class SetGenerators {
   }
 
   public static class DegeneratedImmutableSetGenerator extends TestStringSetGenerator {
-    // Make sure we get what we think we're getting, or else this test
-    // is pointless
-    @SuppressWarnings("cast")
+    @SuppressWarnings("DistinctVarargsChecker") // deliberately testing deduplication
     @Override
     protected Set<String> create(String[] elements) {
-      return (ImmutableSet<String>) ImmutableSet.of(elements[0], elements[0]);
+      return ImmutableSet.of(elements[0], elements[0]);
     }
   }
 
@@ -146,7 +144,7 @@ public class SetGenerators {
   public static class ImmutableSortedSetHeadsetGenerator extends TestStringSortedSetGenerator {
     @Override
     protected SortedSet<String> create(String[] elements) {
-      List<String> list = Lists.newArrayList(elements);
+      List<String> list = newArrayList(elements);
       list.add("zzz");
       return ImmutableSortedSet.copyOf(list).headSet("zzy");
     }
@@ -155,7 +153,7 @@ public class SetGenerators {
   public static class ImmutableSortedSetTailsetGenerator extends TestStringSortedSetGenerator {
     @Override
     protected SortedSet<String> create(String[] elements) {
-      List<String> list = Lists.newArrayList(elements);
+      List<String> list = newArrayList(elements);
       list.add("\0");
       return ImmutableSortedSet.copyOf(list).tailSet("\0\0");
     }
@@ -164,7 +162,7 @@ public class SetGenerators {
   public static class ImmutableSortedSetSubsetGenerator extends TestStringSortedSetGenerator {
     @Override
     protected SortedSet<String> create(String[] elements) {
-      List<String> list = Lists.newArrayList(elements);
+      List<String> list = newArrayList(elements);
       list.add("\0");
       list.add("zzz");
       return ImmutableSortedSet.copyOf(list).subSet("\0\0", "zzy");
@@ -188,9 +186,15 @@ public class SetGenerators {
       return ImmutableSortedSet.orderedBy(STRING_REVERSED).add(elements).build();
     }
 
+    /*
+     * While the current implementation returns `this`, that's not something we mean to guarantee.
+     * Callers of TestContainerGenerator.order need to be prepared for implementations to return a new
+     * collection.
+     */
+    @SuppressWarnings("CanIgnoreReturnValueSuggester")
     @Override
     public List<String> order(List<String> insertionOrder) {
-      Collections.sort(insertionOrder, Collections.reverseOrder());
+      sort(insertionOrder, Collections.reverseOrder());
       return insertionOrder;
     }
   }
@@ -205,9 +209,10 @@ public class SetGenerators {
       return new ImmutableSortedSet.Builder<String>(COMPARABLE_REVERSED).add(elements).build();
     }
 
+    @SuppressWarnings("CanIgnoreReturnValueSuggester") // see ImmutableSortedSetExplicitComparator
     @Override
     public List<String> order(List<String> insertionOrder) {
-      Collections.sort(insertionOrder, Collections.reverseOrder());
+      sort(insertionOrder, Collections.reverseOrder());
       return insertionOrder;
     }
   }
@@ -216,14 +221,13 @@ public class SetGenerators {
 
     @Override
     protected SortedSet<String> create(String[] elements) {
-      return ImmutableSortedSet.<String>reverseOrder()
-          .addAll(Arrays.asList(elements).iterator())
-          .build();
+      return ImmutableSortedSet.<String>reverseOrder().addAll(asList(elements).iterator()).build();
     }
 
+    @SuppressWarnings("CanIgnoreReturnValueSuggester") // see ImmutableSortedSetExplicitComparator
     @Override
     public List<String> order(List<String> insertionOrder) {
-      Collections.sort(insertionOrder, Collections.reverseOrder());
+      sort(insertionOrder, Collections.reverseOrder());
       return insertionOrder;
     }
   }
@@ -246,7 +250,7 @@ public class SetGenerators {
     @Override
     protected List<String> create(String[] elements) {
       Comparator<String> comparator = createExplicitComparator(elements);
-      ImmutableSet<String> set = ImmutableSortedSet.copyOf(comparator, Arrays.asList(elements));
+      ImmutableSet<String> set = ImmutableSortedSet.copyOf(comparator, asList(elements));
       return set.asList();
     }
   }
@@ -314,13 +318,13 @@ public class SetGenerators {
   private static Ordering<String> createExplicitComparator(String[] elements) {
     // Collapse equal elements, which Ordering.explicit() doesn't support, while
     // maintaining the ordering by first occurrence.
-    Set<String> elementsPlus = Sets.newLinkedHashSet();
+    Set<String> elementsPlus = new LinkedHashSet<>();
     elementsPlus.add(BEFORE_FIRST);
     elementsPlus.add(BEFORE_FIRST_2);
-    elementsPlus.addAll(Arrays.asList(elements));
+    elementsPlus.addAll(asList(elements));
     elementsPlus.add(AFTER_LAST);
     elementsPlus.add(AFTER_LAST_2);
-    return Ordering.explicit(Lists.newArrayList(elementsPlus));
+    return Ordering.explicit(new ArrayList<>(elementsPlus));
   }
 
   /*
@@ -398,17 +402,18 @@ public class SetGenerators {
     }
 
     /** Sorts the elements in reverse natural order. */
+    @SuppressWarnings("CanIgnoreReturnValueSuggester") // see ImmutableSortedSetExplicitComparator
     @Override
     public List<Integer> order(List<Integer> insertionOrder) {
-      Collections.sort(insertionOrder, Ordering.natural().reverse());
+      sort(insertionOrder, Ordering.<Integer>natural().reverse());
       return insertionOrder;
     }
   }
 
   private abstract static class AbstractContiguousSetGenerator
       extends TestIntegerSortedSetGenerator {
-    protected final ContiguousSet<Integer> checkedCreate(SortedSet<Integer> elementsSet) {
-      List<Integer> elements = newArrayList(elementsSet);
+    static final ContiguousSet<Integer> checkedCreate(SortedSet<Integer> elementsSet) {
+      List<Integer> elements = new ArrayList<>(elementsSet);
       /*
        * A ContiguousSet can't have holes. If a test demands a hole, it should be changed so that it
        * doesn't need one, or it should be suppressed for ContiguousSet.
@@ -421,4 +426,12 @@ public class SetGenerators {
       return ContiguousSet.create(range, DiscreteDomain.integers());
     }
   }
+
+  /**
+   * Useless constructor for a class of static utility methods.
+   *
+   * @deprecated Do not instantiate this utility class.
+   */
+  @Deprecated
+  public SetGenerators() {}
 }

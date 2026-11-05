@@ -16,24 +16,34 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.InterruptionUtil.repeatedlyInterruptTestThread;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitTerminationUninterruptibly;
 import static com.google.common.util.concurrent.Uninterruptibles.awaitUninterruptibly;
 import static com.google.common.util.concurrent.Uninterruptibles.joinUninterruptibly;
 import static com.google.common.util.concurrent.Uninterruptibles.putUninterruptibly;
 import static com.google.common.util.concurrent.Uninterruptibles.takeUninterruptibly;
 import static com.google.common.util.concurrent.Uninterruptibles.tryAcquireUninterruptibly;
+import static com.google.common.util.concurrent.Uninterruptibles.tryLockUninterruptibly;
+import static java.util.concurrent.Executors.newFixedThreadPool;
+import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Stopwatch;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.TearDown;
 import com.google.common.testing.TearDownStack;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.time.Duration;
 import java.util.Date;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
@@ -42,13 +52,16 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link Uninterruptibles}.
  *
  * @author Anthony Zana
  */
-
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class UninterruptiblesTest extends TestCase {
   private static final String EXPECTED_TAKE = "expectedTake";
 
@@ -69,13 +82,7 @@ public class UninterruptiblesTest extends TestCase {
               + "Some test probably didn't clear the interrupt state");
     }
 
-    tearDownStack.addTearDown(
-        new TearDown() {
-          @Override
-          public void tearDown() {
-            Thread.interrupted();
-          }
-        });
+    tearDownStack.addTearDown(() -> Thread.interrupted());
   }
 
   @Override
@@ -83,7 +90,21 @@ public class UninterruptiblesTest extends TestCase {
     tearDownStack.runTearDown();
   }
 
-  public void testNull() throws Exception {
+  @Override
+  public void runBare() throws Throwable {
+    try {
+      super.runBare();
+    } catch (AssertionError e) {
+      if (e.getMessage() != null && e.getMessage().contains("InterruptedException to be thrown")) {
+        // Rerun test to work around Marshamallow class-loading issue b/456222735.
+        super.runBare();
+        return;
+      }
+      throw e;
+    }
+  }
+
+  public void testNull() {
     new NullPointerTester()
         .setDefault(CountDownLatch.class, new CountDownLatch(0))
         .setDefault(Semaphore.class, new Semaphore(999))
@@ -93,50 +114,215 @@ public class UninterruptiblesTest extends TestCase {
   // IncrementableCountDownLatch.await() tests
 
   // CountDownLatch.await() tests
+  public void testAwaitWithNoWait() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    CountDownLatch latch = new CountDownLatch(0);
+    awaitUninterruptibly(latch);
+    assertTrue(awaitUninterruptibly(latch, 0, MILLISECONDS));
+    assertTrue(awaitUninterruptibly(latch, -42, MILLISECONDS));
+    assertTrue(awaitUninterruptibly(latch, LONG_DELAY_MS, MILLISECONDS));
+    assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
+  }
+
+  public void testAwaitNoInterrupt() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 20);
+    latch.awaitSuccessfully();
+    assertNotInterrupted();
+  }
+
+  public void testAwaitTimeoutNoInterruptNotExpired() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 20);
+    latch.awaitSuccessfully(LONG_DELAY_MS);
+    assertNotInterrupted();
+  }
+
+  public void testAwaitTimeoutNoInterruptExpired() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ LONG_DELAY_MS);
+    latch.awaitUnsuccessfully(30);
+    assertNotInterrupted();
+  }
+
+  public void testAwaitSingleInterrupt() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 50);
+    requestInterruptIn(10);
+    latch.awaitSuccessfully();
+    assertInterrupted();
+  }
+
+  public void testAwaitTimeoutSingleInterruptNoExpire() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 50);
+    requestInterruptIn(10);
+    latch.awaitSuccessfully(LONG_DELAY_MS);
+    assertInterrupted();
+  }
+
+  public void testAwaitTimeoutSingleInterruptExpired() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ LONG_DELAY_MS);
+    requestInterruptIn(10);
+    latch.awaitUnsuccessfully(50);
+    assertInterrupted();
+  }
+
+  public void testAwaitMultiInterrupt() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 100);
+    repeatedlyInterruptTestThread(tearDownStack);
+    latch.awaitSuccessfully();
+    assertInterrupted();
+  }
+
+  public void testAwaitTimeoutMultiInterruptNoExpire() {
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ 100);
+    repeatedlyInterruptTestThread(tearDownStack);
+    latch.awaitSuccessfully(LONG_DELAY_MS);
+    assertInterrupted();
+  }
+
+  public void testAwaitTimeoutMultiInterruptExpired() {
+    /*
+     * We don't "need" to schedule a countDown() call at all here, but by doing
+     * so, we come the closest we can to testing that the wait time is
+     * appropriately decreased on each progressive await() call.
+     */
+    TimedLatch latch = new TimedLatch(/* countdownInMillis= */ LONG_DELAY_MS);
+    repeatedlyInterruptTestThread(tearDownStack);
+    latch.awaitUnsuccessfully(70);
+    assertInterrupted();
+  }
 
   // Condition.await() tests
+
+  /*
+   * RE: the WaitNotInLoop warnings:
+   *
+   * Our tests for awaitUninterruptibly are written under the assumption that no spurious wakeups
+   * occur except for those produced by awaitUninterruptibly itself in response to interrupts.
+   *
+   * This isn't guaranteed to work, so any further spurious wakeups would probably cause failures in
+   * tests that assert that a certain amount of time has passed, that the method returned `false`,
+   * or even that an interrupt occurred (if the spurious wakeup happens before the interrupt).
+   *
+   * Fundamentally, there's not really anything we can do about that. In the unlikely event that it
+   * comes up in practice (maybe through some kind of sanitizer-like testing that intentionally
+   * inflicts spurious interrupts on us?), we might have to accept some flakiness or disable some
+   * tests, at least under whichever environment (JRE or Android) we see such problems.
+   */
+
+  @SuppressWarnings("WaitNotInLoop") // see comment above
   public void testConditionAwaitTimeoutExceeded() {
     Stopwatch stopwatch = Stopwatch.createStarted();
     Condition condition = TestCondition.create();
 
-    boolean signaledBeforeTimeout = awaitUninterruptibly(condition, 500, MILLISECONDS);
+    boolean returnedBeforeTimeout = awaitUninterruptibly(condition, 500, MILLISECONDS);
 
-    assertFalse(signaledBeforeTimeout);
+    assertFalse(returnedBeforeTimeout);
     assertAtLeastTimePassed(stopwatch, 500);
     assertNotInterrupted();
   }
 
+  @SuppressWarnings("WaitNotInLoop") // see comment above
   public void testConditionAwaitTimeoutNotExceeded() {
     Stopwatch stopwatch = Stopwatch.createStarted();
     Condition condition = TestCondition.createAndSignalAfter(500, MILLISECONDS);
 
-    boolean signaledBeforeTimeout = awaitUninterruptibly(condition, 1500, MILLISECONDS);
+    boolean returnedBeforeTimeout = awaitUninterruptibly(condition, 1500, MILLISECONDS);
 
-    assertTrue(signaledBeforeTimeout);
+    assertTrue(returnedBeforeTimeout);
     assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
     assertNotInterrupted();
   }
 
+  @SuppressWarnings("WaitNotInLoop") // see comment above
   public void testConditionAwaitInterruptedTimeoutExceeded() {
     Stopwatch stopwatch = Stopwatch.createStarted();
     Condition condition = TestCondition.create();
     requestInterruptIn(500);
 
-    boolean signaledBeforeTimeout = awaitUninterruptibly(condition, 1000, MILLISECONDS);
+    boolean returnedBeforeTimeout = awaitUninterruptibly(condition, 1000, MILLISECONDS);
 
-    assertFalse(signaledBeforeTimeout);
-    assertAtLeastTimePassed(stopwatch, 1000);
+    assertTrue(returnedBeforeTimeout);
+    assertAtLeastTimePassed(stopwatch, 500);
     assertInterrupted();
   }
 
+  @SuppressWarnings("WaitNotInLoop") // see comment above
   public void testConditionAwaitInterruptedTimeoutNotExceeded() {
     Stopwatch stopwatch = Stopwatch.createStarted();
     Condition condition = TestCondition.createAndSignalAfter(1000, MILLISECONDS);
     requestInterruptIn(500);
 
-    boolean signaledBeforeTimeout = awaitUninterruptibly(condition, 1500, MILLISECONDS);
+    boolean returnedBeforeTimeout = awaitUninterruptibly(condition, 1500, MILLISECONDS);
 
-    assertTrue(signaledBeforeTimeout);
+    assertTrue(returnedBeforeTimeout);
+    assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
+    assertInterrupted();
+  }
+
+  @SuppressWarnings("WaitNotInLoop") // see comment above
+  public void testConditionAwaitMultiInterrupt() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    Condition condition = TestCondition.createAndSignalAfter(1000, MILLISECONDS);
+    repeatedlyInterruptTestThread(tearDownStack);
+
+    boolean returnedBeforeTimeout = awaitUninterruptibly(condition, Duration.ofHours(1));
+
+    assertTrue(returnedBeforeTimeout);
+    assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
+    assertInterrupted();
+  }
+
+  // Lock.tryLock() tests
+  public void testTryLockTimeoutExceeded() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    Lock lock = new ReentrantLock();
+    Thread lockThread = acquireFor(lock, 5, SECONDS);
+
+    boolean lockAcquired = tryLockUninterruptibly(lock, 500, MILLISECONDS);
+
+    assertFalse(lockAcquired);
+    assertAtLeastTimePassed(stopwatch, 500);
+    assertNotInterrupted();
+
+    // finish locking thread
+    lockThread.interrupt();
+  }
+
+  public void testTryLockTimeoutNotExceeded() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    Lock lock = new ReentrantLock();
+    acquireFor(lock, 500, MILLISECONDS);
+
+    boolean acquired = tryLockUninterruptibly(lock, 1500, MILLISECONDS);
+
+    assertTrue(acquired);
+    assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
+    assertNotInterrupted();
+  }
+
+  public void testTryLockInterruptedTimeoutExceeded() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    Lock lock = new ReentrantLock();
+    Thread lockThread = acquireFor(lock, 5, SECONDS);
+    requestInterruptIn(500);
+
+    boolean acquired = tryLockUninterruptibly(lock, 1000, MILLISECONDS);
+
+    assertFalse(acquired);
+    assertAtLeastTimePassed(stopwatch, 1000);
+    assertInterrupted();
+
+    // finish locking thread
+    lockThread.interrupt();
+  }
+
+  public void testTryLockInterruptedTimeoutNotExceeded() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    Lock lock = new ReentrantLock();
+    acquireFor(lock, 1000, MILLISECONDS);
+    requestInterruptIn(500);
+
+    boolean acquired = tryLockUninterruptibly(lock, 1500, MILLISECONDS);
+
+    assertTrue(acquired);
     assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
     assertInterrupted();
   }
@@ -147,7 +333,7 @@ public class UninterruptiblesTest extends TestCase {
     BlockingQueue<String> queue = new ArrayBlockingQueue<>(999);
     putUninterruptibly(queue, "");
     assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
-    assertEquals("", queue.peek());
+    assertThat(queue.peek()).isEqualTo("");
   }
 
   public void testPutNoInterrupt() {
@@ -165,7 +351,7 @@ public class UninterruptiblesTest extends TestCase {
 
   public void testPutMultiInterrupt() {
     TimedPutQueue queue = TimedPutQueue.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     queue.putSuccessfully();
     assertInterrupted();
   }
@@ -175,7 +361,7 @@ public class UninterruptiblesTest extends TestCase {
     Stopwatch stopwatch = Stopwatch.createStarted();
     BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
     assertTrue(queue.offer(""));
-    assertEquals("", takeUninterruptibly(queue));
+    assertThat(takeUninterruptibly(queue)).isEqualTo("");
     assertTimeNotPassed(stopwatch, LONG_DELAY_MS);
   }
 
@@ -194,7 +380,7 @@ public class UninterruptiblesTest extends TestCase {
 
   public void testTakeMultiInterrupt() {
     TimedTakeQueue queue = TimedTakeQueue.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     queue.takeSuccessfully();
     assertInterrupted();
   }
@@ -255,14 +441,14 @@ public class UninterruptiblesTest extends TestCase {
 
   public void testJoinMultiInterrupt() {
     TimedThread thread = TimedThread.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     thread.joinSuccessfully();
     assertInterrupted();
   }
 
   public void testJoinTimeoutMultiInterruptNoExpire() {
     TimedThread thread = TimedThread.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     thread.joinSuccessfully(LONG_DELAY_MS);
     assertInterrupted();
   }
@@ -274,7 +460,7 @@ public class UninterruptiblesTest extends TestCase {
      * appropriately decreased on each progressive join() call.
      */
     TimedThread thread = TimedThread.createWithDelay(LONG_DELAY_MS);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     thread.joinUnsuccessfully(70);
     assertInterrupted();
   }
@@ -291,7 +477,7 @@ public class UninterruptiblesTest extends TestCase {
   }
 
   public void testSleepMultiInterrupt() {
-    repeatedlyInterruptTestThread(10, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     sleepSuccessfully(100);
     assertInterrupted();
   }
@@ -334,7 +520,7 @@ public class UninterruptiblesTest extends TestCase {
 
   public void testTryAcquireTimeoutMultiInterruptNoExpire() {
     TimedSemaphore semaphore = TimedSemaphore.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     semaphore.tryAcquireSuccessfully(LONG_DELAY_MS);
     assertInterrupted();
   }
@@ -346,7 +532,7 @@ public class UninterruptiblesTest extends TestCase {
      * appropriately decreased on each progressive tryAcquire() call.
      */
     TimedSemaphore semaphore = TimedSemaphore.createWithDelay(LONG_DELAY_MS);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     semaphore.tryAcquireUnsuccessfully(70);
     assertInterrupted();
   }
@@ -388,7 +574,7 @@ public class UninterruptiblesTest extends TestCase {
 
   public void testTryAcquireTimeoutMultiInterruptNoExpireMultiPermit() {
     TimedSemaphore semaphore = TimedSemaphore.createWithDelay(100);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     semaphore.tryAcquireSuccessfully(10, LONG_DELAY_MS);
     assertInterrupted();
   }
@@ -400,8 +586,59 @@ public class UninterruptiblesTest extends TestCase {
      * appropriately decreased on each progressive tryAcquire() call.
      */
     TimedSemaphore semaphore = TimedSemaphore.createWithDelay(LONG_DELAY_MS);
-    repeatedlyInterruptTestThread(20, tearDownStack);
+    repeatedlyInterruptTestThread(tearDownStack);
     semaphore.tryAcquireUnsuccessfully(10, 70);
+    assertInterrupted();
+  }
+
+  // executor.awaitTermination Testcases
+  public void testTryAwaitTerminationUninterruptiblyDuration_success() {
+    ExecutorService executor = newFixedThreadPool(1);
+    requestInterruptIn(500);
+    executor.execute(new SleepTask(1000));
+    executor.shutdown();
+    assertTrue(awaitTerminationUninterruptibly(executor, Duration.ofMillis(LONG_DELAY_MS)));
+    assertTrue(executor.isTerminated());
+    assertInterrupted();
+  }
+
+  public void testTryAwaitTerminationUninterruptiblyDuration_failure() {
+    ExecutorService executor = newFixedThreadPool(1);
+    requestInterruptIn(500);
+    executor.execute(new SleepTask(10000));
+    executor.shutdown();
+    assertFalse(awaitTerminationUninterruptibly(executor, Duration.ofSeconds(1)));
+    assertFalse(executor.isTerminated());
+    assertInterrupted();
+  }
+
+  public void testTryAwaitTerminationUninterruptiblyLongTimeUnit_success() {
+    ExecutorService executor = newFixedThreadPool(1);
+    requestInterruptIn(500);
+    executor.execute(new SleepTask(1000));
+    executor.shutdown();
+    assertTrue(awaitTerminationUninterruptibly(executor, LONG_DELAY_MS, MILLISECONDS));
+    assertTrue(executor.isTerminated());
+    assertInterrupted();
+  }
+
+  public void testTryAwaitTerminationUninterruptiblyLongTimeUnit_failure() {
+    ExecutorService executor = newFixedThreadPool(1);
+    requestInterruptIn(500);
+    executor.execute(new SleepTask(10000));
+    executor.shutdown();
+    assertFalse(awaitTerminationUninterruptibly(executor, 1000, MILLISECONDS));
+    assertFalse(executor.isTerminated());
+    assertInterrupted();
+  }
+
+  public void testTryAwaitTerminationInfiniteTimeout() {
+    ExecutorService executor = newFixedThreadPool(1);
+    requestInterruptIn(500);
+    executor.execute(new SleepTask(1000));
+    executor.shutdown();
+    awaitTerminationUninterruptibly(executor);
+    assertTrue(executor.isTerminated());
     assertInterrupted();
   }
 
@@ -448,7 +685,72 @@ public class UninterruptiblesTest extends TestCase {
         elapsedMillis + 5 >= expectedMillis);
   }
 
-  // TODO(cpovirk): Split this into separate CountDownLatch and IncrementableCountDownLatch classes.
+  /** Manages a countdown and associated timings. */
+  private abstract static class AbstractTimedLatch {
+    final Completion completed;
+
+    AbstractTimedLatch(long countdownInMillis) {
+      this.completed = new Completion(countdownInMillis);
+    }
+
+    /** Awaits the latch and asserts that operation completed in the expected timeframe. */
+    final void awaitSuccessfully() {
+      awaitLatchUninterruptibly();
+      completed.assertCompletionExpected();
+      assertEquals(0, getCount());
+    }
+
+    /**
+     * Awaits the latch with a timeout and asserts that operation completed in the expected
+     * timeframe.
+     */
+    final void awaitSuccessfully(long timeoutMillis) {
+      assertTrue(awaitLatchUninterruptibly(timeoutMillis, MILLISECONDS));
+      completed.assertCompletionExpected();
+    }
+
+    /**
+     * Awaits the latch with a timeout and asserts that the wait returned within the expected
+     * timeout.
+     */
+    final void awaitUnsuccessfully(long timeoutMillis) {
+      assertFalse(awaitLatchUninterruptibly(timeoutMillis, MILLISECONDS));
+      completed.assertCompletionNotExpected(timeoutMillis);
+    }
+
+    abstract void awaitLatchUninterruptibly();
+
+    abstract boolean awaitLatchUninterruptibly(long timeout, TimeUnit unit);
+
+    abstract long getCount();
+  }
+
+  /** Manages a {@link CountDownLatch} and associated timings. */
+  private static final class TimedLatch extends AbstractTimedLatch {
+    final CountDownLatch latch;
+
+    TimedLatch(long countdownInMillis) {
+      super(countdownInMillis);
+      this.latch = new CountDownLatch(1);
+      // TODO(cpovirk): automatically fail the test if this thread throws
+      new Thread(new CountDown(latch, countdownInMillis)).start();
+    }
+
+    @Override
+    void awaitLatchUninterruptibly() {
+      Uninterruptibles.awaitUninterruptibly(latch);
+    }
+
+    @Override
+    boolean awaitLatchUninterruptibly(long timeout, TimeUnit unit) {
+      return Uninterruptibles.awaitUninterruptibly(latch, timeout, unit);
+    }
+
+    @Override
+    long getCount() {
+      return latch.getCount();
+    }
+  }
 
   /** Manages a {@link BlockingQueue} and associated timings for a {@code put} call. */
   private static final class TimedPutQueue {
@@ -474,7 +776,7 @@ public class UninterruptiblesTest extends TestCase {
     void putSuccessfully() {
       putUninterruptibly(queue, "");
       completed.assertCompletionExpected();
-      assertEquals("", queue.peek());
+      assertThat(queue.peek()).isEqualTo("");
     }
 
     private static void scheduleEnableWrites(BlockingQueue<String> queue, long countdownInMillis) {
@@ -506,7 +808,7 @@ public class UninterruptiblesTest extends TestCase {
 
     /** Perform a {@code take} and assert that operation completed in the expected timeframe. */
     void takeSuccessfully() {
-      assertEquals(EXPECTED_TAKE, takeUninterruptibly(queue));
+      assertThat(takeUninterruptibly(queue)).isEqualTo(EXPECTED_TAKE);
       completed.assertCompletionExpected();
       assertTrue(queue.isEmpty());
     }
@@ -576,7 +878,7 @@ public class UninterruptiblesTest extends TestCase {
   private abstract static class DelayedActionRunnable implements Runnable {
     private final long tMinus;
 
-    protected DelayedActionRunnable(long tMinus) {
+    DelayedActionRunnable(long tMinus) {
       this.tMinus = tMinus;
     }
 
@@ -590,19 +892,19 @@ public class UninterruptiblesTest extends TestCase {
       doAction();
     }
 
-    protected abstract void doAction();
+    abstract void doAction();
   }
 
   private static class CountDown extends DelayedActionRunnable {
     private final CountDownLatch latch;
 
-    public CountDown(CountDownLatch latch, long tMinus) {
+    CountDown(CountDownLatch latch, long tMinus) {
       super(tMinus);
       this.latch = latch;
     }
 
     @Override
-    protected void doAction() {
+    void doAction() {
       latch.countDown();
     }
   }
@@ -610,7 +912,7 @@ public class UninterruptiblesTest extends TestCase {
   private static class EnableWrites extends DelayedActionRunnable {
     private final BlockingQueue<String> queue;
 
-    public EnableWrites(BlockingQueue<String> queue, long tMinus) {
+    EnableWrites(BlockingQueue<String> queue, long tMinus) {
       super(tMinus);
       assertFalse(queue.isEmpty());
       assertFalse(queue.offer("shouldBeRejected"));
@@ -618,22 +920,22 @@ public class UninterruptiblesTest extends TestCase {
     }
 
     @Override
-    protected void doAction() {
-      assertNotNull(queue.remove());
+    void doAction() {
+      assertThat(queue.remove()).isNotNull();
     }
   }
 
   private static class EnableReads extends DelayedActionRunnable {
     private final BlockingQueue<String> queue;
 
-    public EnableReads(BlockingQueue<String> queue, long tMinus) {
+    EnableReads(BlockingQueue<String> queue, long tMinus) {
       super(tMinus);
       assertTrue(queue.isEmpty());
       this.queue = queue;
     }
 
     @Override
-    protected void doAction() {
+    void doAction() {
       assertTrue(queue.offer(EXPECTED_TAKE));
     }
   }
@@ -655,43 +957,52 @@ public class UninterruptiblesTest extends TestCase {
     void joinSuccessfully() {
       Uninterruptibles.joinUninterruptibly(thread);
       completed.assertCompletionExpected();
-      assertEquals(Thread.State.TERMINATED, thread.getState());
+      assertThat(thread.getState()).isEqualTo(Thread.State.TERMINATED);
     }
 
     void joinSuccessfully(long timeoutMillis) {
       Uninterruptibles.joinUninterruptibly(thread, timeoutMillis, MILLISECONDS);
       completed.assertCompletionExpected();
-      assertEquals(Thread.State.TERMINATED, thread.getState());
+      assertThat(thread.getState()).isEqualTo(Thread.State.TERMINATED);
     }
 
     void joinUnsuccessfully(long timeoutMillis) {
       Uninterruptibles.joinUninterruptibly(thread, timeoutMillis, MILLISECONDS);
       completed.assertCompletionNotExpected(timeoutMillis);
-      assertFalse(Thread.State.TERMINATED.equals(thread.getState()));
+      assertThat(thread.getState()).isNotEqualTo(Thread.State.TERMINATED);
     }
   }
 
   private static class JoinTarget extends DelayedActionRunnable {
-    public JoinTarget(long tMinus) {
+    JoinTarget(long tMinus) {
       super(tMinus);
     }
 
     @Override
-    protected void doAction() {}
+    void doAction() {}
   }
 
   private static class Release extends DelayedActionRunnable {
     private final Semaphore semaphore;
 
-    public Release(Semaphore semaphore, long tMinus) {
+    Release(Semaphore semaphore, long tMinus) {
       super(tMinus);
       this.semaphore = semaphore;
     }
 
     @Override
-    protected void doAction() {
+    void doAction() {
       semaphore.release(10);
     }
+  }
+
+  private static final class SleepTask extends DelayedActionRunnable {
+    SleepTask(long tMinus) {
+      super(tMinus);
+    }
+
+    @Override
+    void doAction() {}
   }
 
   private static void sleepSuccessfully(long sleepMillis) {
@@ -702,23 +1013,19 @@ public class UninterruptiblesTest extends TestCase {
 
   private static void assertTimeNotPassed(Stopwatch stopwatch, long timelimitMillis) {
     long elapsedMillis = stopwatch.elapsed(MILLISECONDS);
-    assertTrue(elapsedMillis < timelimitMillis);
+    assertThat(elapsedMillis).isLessThan(timelimitMillis);
   }
 
   /**
-   * Await an interrupt, then clear the interrupt status. Similar to {@code
+   * Awaits an interrupt, then clears the interrupted status. Similar to {@code
    * assertTrue(Thread.interrupted())} except that this version tolerates late interrupts.
    */
   private static void assertInterrupted() {
-    try {
-      /*
-       * The sleep() will end immediately if we've already been interrupted or
-       * wait patiently for the interrupt if not.
-       */
-      Thread.sleep(LONG_DELAY_MS);
-      fail("Dude, where's my interrupt?");
-    } catch (InterruptedException expected) {
-    }
+    /*
+     * The sleep() will end immediately if we've already been interrupted or wait patiently for the
+     * interrupt if not.
+     */
+    assertThrows(InterruptedException.class, () -> Thread.sleep(LONG_DELAY_MS));
   }
 
   private static void assertNotInterrupted() {
@@ -729,6 +1036,33 @@ public class UninterruptiblesTest extends TestCase {
     InterruptionUtil.requestInterruptIn(millis, MILLISECONDS);
   }
 
+  @CanIgnoreReturnValue
+  private static Thread acquireFor(Lock lock, long duration, TimeUnit unit) {
+    CountDownLatch latch = new CountDownLatch(1);
+    Thread thread =
+        new Thread() {
+          @Override
+          public void run() {
+            lock.lock();
+            try {
+
+              latch.countDown();
+              Thread.sleep(unit.toMillis(duration));
+            } catch (InterruptedException e) {
+              // simply finish execution
+            } finally {
+              lock.unlock();
+            }
+          }
+        };
+    thread.setDaemon(true);
+    thread.start();
+    awaitUninterruptibly(latch);
+    return thread;
+  }
+
+  // We are implementing Condition, so our callers are responsible for the loop.
+  @SuppressWarnings("WaitNotInLoop")
   private static class TestCondition implements Condition {
     private final Lock lock;
     private final Condition condition;
@@ -739,20 +1073,11 @@ public class UninterruptiblesTest extends TestCase {
     }
 
     static TestCondition createAndSignalAfter(long delay, TimeUnit unit) {
-      final TestCondition testCondition = create();
+      TestCondition testCondition = create();
 
-      ScheduledExecutorService scheduledPool = Executors.newScheduledThreadPool(1);
+      ScheduledExecutorService scheduledPool = newScheduledThreadPool(1);
       // If signal() fails somehow, we should see a failed test, even without looking at the Future.
-      Future<?> unused =
-          scheduledPool.schedule(
-              new Runnable() {
-                @Override
-                public void run() {
-                  testCondition.signal();
-                }
-              },
-              delay,
-              unit);
+      Future<?> unused = scheduledPool.schedule(testCondition::signal, delay, unit);
 
       return testCondition;
     }

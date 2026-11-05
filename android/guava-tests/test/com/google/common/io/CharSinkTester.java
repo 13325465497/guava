@@ -16,23 +16,26 @@
 
 package com.google.common.io;
 
-import static com.google.common.io.SourceSinkFactory.CharSinkFactory;
+import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.SourceSinkFactory.CharSinkFactory;
 import java.io.IOException;
 import java.io.Writer;
 import java.lang.reflect.Method;
 import java.util.Map.Entry;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A generator of {@code TestSuite} instances for testing {@code CharSink} implementations.
- * Generates tests of a all methods on a {@code CharSink} given various inputs written to it.
+ * Generates tests of all methods on a {@code CharSink} given various inputs written to it.
  *
  * @author Colin Decker
  */
-@AndroidIncompatible // Android doesn't understand tests that lack default constructors.
+@AndroidIncompatible // TODO(b/230620681): Make this available (even though we won't run it).
+@NullUnmarked
 public class CharSinkTester extends SourceSinkTester<CharSink, String, CharSinkFactory> {
 
   private static final ImmutableList<Method> testMethods = getTestMethods(CharSinkTester.class);
@@ -50,7 +53,7 @@ public class CharSinkTester extends SourceSinkTester<CharSink, String, CharSinkF
   static TestSuite suiteForString(
       String name, CharSinkFactory factory, String string, String desc) {
     TestSuite stringSuite = new TestSuite(name + " [" + desc + "]");
-    for (final Method method : testMethods) {
+    for (Method method : testMethods) {
       stringSuite.addTest(new CharSinkTester(factory, string, name, desc, method));
     }
     return stringSuite;
@@ -115,8 +118,22 @@ public class CharSinkTester extends SourceSinkTester<CharSink, String, CharSinkF
     assertContainsExpectedLines(separator);
   }
 
+  public void testWriteLinesStream_systemDefaultSeparator() throws IOException {
+    String separator = System.getProperty("line.separator");
+    sink.writeLines(lines.stream());
+
+    assertContainsExpectedLines(separator);
+  }
+
+  public void testWriteLinesStream_specificSeparator() throws IOException {
+    String separator = "\r\n";
+    sink.writeLines(lines.stream(), separator);
+
+    assertContainsExpectedLines(separator);
+  }
+
   private void assertContainsExpectedString() throws IOException {
-    assertEquals(expected, factory.getSinkContents());
+    assertThat(factory.getSinkContents()).isEqualTo(expected);
   }
 
   private void assertContainsExpectedLines(String separator) throws IOException {
@@ -125,6 +142,6 @@ public class CharSinkTester extends SourceSinkTester<CharSink, String, CharSinkF
       // if we wrote any lines in writeLines(), there will be a trailing newline
       expected += separator;
     }
-    assertEquals(expected, factory.getSinkContents());
+    assertThat(factory.getSinkContents()).isEqualTo(expected);
   }
 }

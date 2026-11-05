@@ -16,12 +16,16 @@
 
 package com.google.common.hash;
 
+import static com.google.common.collect.Sets.newHashSetWithExpectedSize;
+import static com.google.common.truth.Truth.assertThat;
+import static java.lang.Math.log;
+import static java.lang.System.arraycopy;
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 
-import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import com.google.common.primitives.Ints;
 import com.google.common.testing.EqualsTester;
 import java.nio.ByteBuffer;
@@ -30,6 +34,7 @@ import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Assert;
 
 /**
@@ -38,6 +43,7 @@ import org.junit.Assert;
  * @author Dimitris Andreou
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
 final class HashTestUtils {
   private HashTestUtils() {}
 
@@ -65,7 +71,7 @@ final class HashTestUtils {
       key[i] = (byte) i;
       int seed = 256 - i;
       byte[] hash = hashFunction.hash(Arrays.copyOf(key, i), seed);
-      System.arraycopy(hash, 0, hashes, i * hashBytes, hash.length);
+      arraycopy(hash, 0, hashes, i * hashBytes, hash.length);
     }
 
     // Then hash the result array
@@ -195,8 +201,8 @@ final class HashTestUtils {
         int limit = pos + random.nextInt(value.length - pos + 1);
         for (PrimitiveSink sink : sinks) {
           ByteBuffer buffer = ByteBuffer.wrap(value);
-          buffer.position(pos);
-          buffer.limit(limit);
+          Java8Compatibility.position(buffer, pos);
+          Java8Compatibility.limit(buffer, limit);
           sink.putBytes(buffer);
           assertEquals(limit, buffer.limit());
           assertEquals(limit, buffer.position());
@@ -219,7 +225,7 @@ final class HashTestUtils {
     PUT_STRING_LOW_SURROGATE() {
       @Override
       void performAction(Random random, Iterable<? extends PrimitiveSink> sinks) {
-        String s = new String(new char[] {randomLowSurrogate(random)});
+        String s = Character.toString(randomLowSurrogate(random));
         for (PrimitiveSink sink : sinks) {
           sink.putUnencodedChars(s);
         }
@@ -228,7 +234,7 @@ final class HashTestUtils {
     PUT_STRING_HIGH_SURROGATE() {
       @Override
       void performAction(Random random, Iterable<? extends PrimitiveSink> sinks) {
-        String s = new String(new char[] {randomHighSurrogate(random)});
+        String s = Character.toString(randomHighSurrogate(random));
         for (PrimitiveSink sink : sinks) {
           sink.putUnencodedChars(s);
         }
@@ -287,7 +293,7 @@ final class HashTestUtils {
       int diff = 0x0; // bitset for output bits with different values
       int count = 0;
       // originally was 2 * Math.log(...), making it try more times to avoid flakiness issues
-      int maxCount = (int) (4 * Math.log(2 * keyBits * hashBits) + 1);
+      int maxCount = (int) (4 * log(2 * keyBits * hashBits) + 1);
       while (same != 0xffffffff || diff != 0xffffffff) {
         int key1 = rand.nextInt();
         // flip input bit for key2
@@ -298,7 +304,7 @@ final class HashTestUtils {
         // test whether the hash values have same output bits
         same |= ~(hash1 ^ hash2);
         // test whether the hash values have different output bits
-        diff |= (hash1 ^ hash2);
+        diff |= hash1 ^ hash2;
 
         count++;
         // check whether we've exceeded the probabilistically
@@ -353,7 +359,7 @@ final class HashTestUtils {
       // measure probability and assert it's within margin of error
       for (int j = 0; j < hashBits; j++) {
         double prob = (double) diff[j] / (double) (diff[j] + same[j]);
-        Assert.assertEquals(0.50d, prob, epsilon);
+        assertThat(prob).isWithin(epsilon).of(0.50d);
       }
     }
   }
@@ -376,7 +382,7 @@ final class HashTestUtils {
       for (int j = 0; j < keyBits; j++) {
         if (j <= i) continue;
         int count = 0;
-        int maxCount = 20; // the probability of error here is miniscule
+        int maxCount = 20; // the probability of error here is minuscule
         boolean diff = false;
 
         while (!diff) {
@@ -450,7 +456,7 @@ final class HashTestUtils {
         // measure probability and assert it's within margin of error
         for (int j = 0; j < hashBits; j++) {
           double prob = (double) diff[j] / (double) (diff[j] + same[j]);
-          Assert.assertEquals(0.50d, prob, epsilon);
+          assertThat(prob).isWithin(epsilon).of(0.50d);
         }
       }
     }
@@ -462,7 +468,7 @@ final class HashTestUtils {
    */
   static void assertInvariants(HashFunction hashFunction) {
     int objects = 100;
-    Set<HashCode> hashcodes = Sets.newHashSetWithExpectedSize(objects);
+    Set<HashCode> hashcodes = newHashSetWithExpectedSize(objects);
     Random random = new Random(314159);
     for (int i = 0; i < objects; i++) {
       int value = random.nextInt();
@@ -473,7 +479,7 @@ final class HashTestUtils {
       Assert.assertEquals(hashFunction.bits(), hashcode1.asBytes().length * 8);
       hashcodes.add(hashcode1);
     }
-    Assert.assertTrue(hashcodes.size() > objects * 0.95); // quite relaxed test
+    assertThat((double) hashcodes.size()).isGreaterThan(objects * 0.95); // quite relaxed test
 
     assertHashBytesThrowsCorrectExceptions(hashFunction);
     assertIndependentHashers(hashFunction);
@@ -528,25 +534,15 @@ final class HashTestUtils {
   }
 
   static void assertHashBytesThrowsCorrectExceptions(HashFunction hashFunction) {
-    {
-      HashCode unused = hashFunction.hashBytes(new byte[64], 0, 0);
-    }
+    HashCode unused = hashFunction.hashBytes(new byte[64], 0, 0);
 
-    try {
-      hashFunction.hashBytes(new byte[128], -1, 128);
-      Assert.fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
-    try {
-      hashFunction.hashBytes(new byte[128], 64, 256 /* too long len */);
-      Assert.fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
-    try {
-      hashFunction.hashBytes(new byte[64], 0, -1);
-      Assert.fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> hashFunction.hashBytes(new byte[128], -1, 128));
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> hashFunction.hashBytes(new byte[128], 64, 256 /* too long len */));
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> hashFunction.hashBytes(new byte[64], 0, -1));
   }
 
   static void assertIndependentHashers(HashFunction hashFunction) {
@@ -626,15 +622,6 @@ final class HashTestUtils {
     assertEquals(hashFunction.hashLong(l), hashFunction.newHasher().putLong(l).hash());
   }
 
-  private static final ImmutableSet<Charset> CHARSETS =
-      ImmutableSet.of(
-          Charsets.ISO_8859_1,
-          Charsets.US_ASCII,
-          Charsets.UTF_16,
-          Charsets.UTF_16BE,
-          Charsets.UTF_16LE,
-          Charsets.UTF_8);
-
   private static void assertHashStringEquivalence(HashFunction hashFunction, Random random) {
     // Test that only data and data-order is important, not the individual operations.
     new EqualsTester()
@@ -657,11 +644,11 @@ final class HashTestUtils {
     int size = random.nextInt(2048);
     byte[] bytes = new byte[size];
     random.nextBytes(bytes);
-    String string = new String(bytes, Charsets.US_ASCII);
+    String string = new String(bytes, US_ASCII);
     assertEquals(
         hashFunction.hashUnencodedChars(string),
         hashFunction.newHasher().putUnencodedChars(string).hash());
-    for (Charset charset : CHARSETS) {
+    for (Charset charset : TestPlatform.getCharsets()) {
       assertEquals(
           hashFunction.hashString(string, charset),
           hashFunction.newHasher().putString(string, charset).hash());

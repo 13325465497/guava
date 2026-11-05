@@ -16,84 +16,104 @@
 
 package com.google.common.testing;
 
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.concurrent.Executors.newFixedThreadPool;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import java.util.EnumSet;
+import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
+import org.junit.Test;
 
 /**
  * Unit test for {@link FakeTicker}.
  *
  * @author Jige Yu
  */
-@GwtCompatible(emulated = true)
-public class FakeTickerTest extends TestCase {
+@GwtCompatible
+// We also want to test the TimeUnit overload (especially under GWT, where it's the only option).
+@SuppressWarnings("SetAutoIncrementStep_Nanos")
+@NullUnmarked
+public class FakeTickerTest {
 
+  @Test
   @GwtIncompatible // NullPointerTester
-  public void testNullPointerExceptions() {
+  public void nullPointerExceptions() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicInstanceMethods(new FakeTicker());
   }
 
+  @Test
   @GwtIncompatible // java.time.Duration
-  public void testAdvance() {
+  public void advance() {
     FakeTicker ticker = new FakeTicker();
     assertEquals(0, ticker.read());
-    assertSame(ticker, ticker.advance(10));
+    assertThat(ticker.advance(10)).isSameInstanceAs(ticker);
     assertEquals(10, ticker.read());
-    ticker.advance(1, TimeUnit.MILLISECONDS);
+    ticker.advance(1, MILLISECONDS);
     assertEquals(1000010L, ticker.read());
-    ticker.advance(java.time.Duration.ofMillis(1));
+    ticker.advance(Duration.ofMillis(1));
     assertEquals(2000010L, ticker.read());
   }
 
-  public void testAutoIncrementStep_returnsSameInstance() {
+  @Test
+  public void autoIncrementStep_returnsSameInstance() {
     FakeTicker ticker = new FakeTicker();
-    assertSame(ticker, ticker.setAutoIncrementStep(10, TimeUnit.NANOSECONDS));
+    assertThat(ticker.setAutoIncrementStep(10, NANOSECONDS)).isSameInstanceAs(ticker);
   }
 
-  public void testAutoIncrementStep_nanos() {
-    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(10, TimeUnit.NANOSECONDS);
+  @Test
+  public void autoIncrementStep_nanos() {
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(10, NANOSECONDS);
     assertEquals(0, ticker.read());
     assertEquals(10, ticker.read());
     assertEquals(20, ticker.read());
   }
 
-  public void testAutoIncrementStep_millis() {
-    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(1, TimeUnit.MILLISECONDS);
+  @Test
+  public void autoIncrementStep_millis() {
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(1, MILLISECONDS);
     assertEquals(0, ticker.read());
     assertEquals(1000000, ticker.read());
     assertEquals(2000000, ticker.read());
   }
 
-  public void testAutoIncrementStep_seconds() {
-    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(3, TimeUnit.SECONDS);
+  @Test
+  public void autoIncrementStep_seconds() {
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(3, SECONDS);
     assertEquals(0, ticker.read());
     assertEquals(3000000000L, ticker.read());
     assertEquals(6000000000L, ticker.read());
   }
 
+  @Test
   @GwtIncompatible // java.time.Duration
-  public void testAutoIncrementStep_duration() {
-    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(java.time.Duration.ofMillis(1));
+  public void autoIncrementStep_duration() {
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(Duration.ofMillis(1));
     assertEquals(0, ticker.read());
     assertEquals(1000000, ticker.read());
     assertEquals(2000000, ticker.read());
   }
 
-  public void testAutoIncrementStep_resetToZero() {
-    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(10, TimeUnit.NANOSECONDS);
+  @Test
+  public void autoIncrementStep_resetToZero() {
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(10, NANOSECONDS);
     assertEquals(0, ticker.read());
     assertEquals(10, ticker.read());
     assertEquals(20, ticker.read());
 
-    for (TimeUnit timeUnit : EnumSet.allOf(TimeUnit.class)) {
+    for (TimeUnit timeUnit : TimeUnit.values()) {
       ticker.setAutoIncrementStep(0, timeUnit);
       assertEquals(
           "Expected no auto-increment when setting autoIncrementStep to 0 " + timeUnit,
@@ -102,53 +122,44 @@ public class FakeTickerTest extends TestCase {
     }
   }
 
-  public void testAutoIncrement_negative() {
+  @Test
+  public void autoIncrement_negative() {
     FakeTicker ticker = new FakeTicker();
-    try {
-      ticker.setAutoIncrementStep(-1, TimeUnit.NANOSECONDS);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> ticker.setAutoIncrementStep(-1, NANOSECONDS));
   }
 
+  @Test
   @GwtIncompatible // concurrency
-
-  public void testConcurrentAdvance() throws Exception {
-    final FakeTicker ticker = new FakeTicker();
+  public void concurrentAdvance() throws Exception {
+    FakeTicker ticker = new FakeTicker();
 
     int numberOfThreads = 64;
     runConcurrentTest(
         numberOfThreads,
-        new Callable<Void>() {
-          @Override
-          public Void call() throws Exception {
-            // adds two nanoseconds to the ticker
-            ticker.advance(1L);
-            Thread.sleep(10);
-            ticker.advance(1L);
-            return null;
-          }
+        () -> {
+          // adds two nanoseconds to the ticker
+          ticker.advance(1L);
+          Thread.sleep(10);
+          ticker.advance(1L);
+          return null;
         });
 
     assertEquals(numberOfThreads * 2, ticker.read());
   }
 
+  @Test
   @GwtIncompatible // concurrency
-
-  public void testConcurrentAutoIncrementStep() throws Exception {
+  public void concurrentAutoIncrementStep() throws Exception {
     int incrementByNanos = 3;
-    final FakeTicker ticker =
-        new FakeTicker().setAutoIncrementStep(incrementByNanos, TimeUnit.NANOSECONDS);
+    FakeTicker ticker = new FakeTicker().setAutoIncrementStep(incrementByNanos, NANOSECONDS);
 
     int numberOfThreads = 64;
     runConcurrentTest(
         numberOfThreads,
-        new Callable<Void>() {
-          @Override
-          public Void call() throws Exception {
-            ticker.read();
-            return null;
-          }
+        () -> {
+          long unused = ticker.read();
+          return null;
         });
 
     assertEquals(incrementByNanos * numberOfThreads, ticker.read());
@@ -156,26 +167,27 @@ public class FakeTickerTest extends TestCase {
 
   /** Runs {@code callable} concurrently {@code numberOfThreads} times. */
   @GwtIncompatible // concurrency
-  private void runConcurrentTest(int numberOfThreads, final Callable<Void> callable)
+  private static void runConcurrentTest(int numberOfThreads, Callable<@Nullable Void> callable)
       throws Exception {
-    ExecutorService executorService = Executors.newFixedThreadPool(numberOfThreads);
-    final CountDownLatch startLatch = new CountDownLatch(numberOfThreads);
-    final CountDownLatch doneLatch = new CountDownLatch(numberOfThreads);
-    for (int i = numberOfThreads; i > 0; i--) {
-      @SuppressWarnings("unused") // go/futurereturn-lsc
-      Future<?> possiblyIgnoredError =
-          executorService.submit(
-              new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
+    ExecutorService executorService = newFixedThreadPool(numberOfThreads);
+    try {
+      CountDownLatch startLatch = new CountDownLatch(numberOfThreads);
+      CountDownLatch doneLatch = new CountDownLatch(numberOfThreads);
+      for (int i = numberOfThreads; i > 0; i--) {
+        @SuppressWarnings("unused") // https://errorprone.info/bugpattern/FutureReturnValueIgnored
+        Future<?> possiblyIgnoredError =
+            executorService.submit(
+                () -> {
                   startLatch.countDown();
                   startLatch.await();
                   callable.call();
                   doneLatch.countDown();
                   return null;
-                }
-              });
+                });
+      }
+      doneLatch.await();
+    } finally {
+      executorService.shutdown();
     }
-    doneLatch.await();
   }
 }

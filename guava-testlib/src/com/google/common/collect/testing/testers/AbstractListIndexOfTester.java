@@ -23,7 +23,7 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.WrongType;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
-import org.junit.Ignore;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Common parent class for {@link ListIndexOfTester} and {@link ListLastIndexOfTester}.
@@ -31,10 +31,9 @@ import org.junit.Ignore;
  * @author Chris Povirk
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public abstract class AbstractListIndexOfTester<E> extends AbstractListTester<E> {
   /** Override to call {@code indexOf()} or {@code lastIndexOf()}. */
-  protected abstract int find(Object o);
+  protected abstract int find(@Nullable Object o);
 
   /** Override to return "indexOf" or "lastIndexOf()" for use in failure messages. */
   protected abstract String getMethodName();

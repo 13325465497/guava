@@ -15,9 +15,10 @@
 package com.google.common.escape;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.System.arraycopy;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An object that converts literal text into a format safe for inclusion in a particular context
@@ -39,8 +40,8 @@ import com.google.common.annotations.GwtCompatible;
  * @author Sven Mawson
  * @since 15.0
  */
-@Beta
 @GwtCompatible
+@SuppressWarnings("EscapedEntity") // We do mean for the user to see "&lt;" etc.
 public abstract class CharEscaper extends Escaper {
   /** Constructor for use by subclasses. */
   protected CharEscaper() {}
@@ -80,7 +81,11 @@ public abstract class CharEscaper extends Escaper {
    * @param c the character to escape if necessary
    * @return the replacement characters, or {@code null} if no escaping was needed
    */
-  protected abstract char[] escape(char c);
+  protected abstract char @Nullable [] escape(char c);
+
+  final char @Nullable [] escapeInternal(char c) {
+    return escape(c);
+  }
 
   /**
    * Returns the escaped form of a given literal string, starting at the given index. This method is
@@ -134,7 +139,7 @@ public abstract class CharEscaper extends Escaper {
 
       // Copy the replacement string into the dest buffer as needed.
       if (rlen > 0) {
-        System.arraycopy(r, 0, dest, destIndex, rlen);
+        arraycopy(r, 0, dest, destIndex, rlen);
         destIndex += rlen;
       }
       lastEscape = index + 1;
@@ -165,7 +170,7 @@ public abstract class CharEscaper extends Escaper {
     }
     char[] copy = new char[size];
     if (index > 0) {
-      System.arraycopy(dest, 0, copy, 0, index);
+      arraycopy(dest, 0, copy, 0, index);
     }
     return copy;
   }

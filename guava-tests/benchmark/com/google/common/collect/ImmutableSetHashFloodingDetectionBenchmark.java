@@ -21,8 +21,10 @@ import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
 import com.google.common.math.IntMath;
 import java.math.RoundingMode;
+import org.jspecify.annotations.NullUnmarked;
 
-/** Benchmark of implementations of {@link ImmutableSet#hashFloodingDetected(Object[])}. */
+/** Benchmark of implementations of {@code hashFloodingDetected} for {@link ImmutableSet}. */
+@NullUnmarked
 public class ImmutableSetHashFloodingDetectionBenchmark {
   private static final int TEST_CASES = 0x100;
 
@@ -135,6 +137,50 @@ public class ImmutableSetHashFloodingDetectionBenchmark {
             }
           }
           if (!runGood) {
+            return true;
+          }
+        }
+        return false;
+      }
+    },
+    SKIPPING {
+      int maxRunBeforeFallback(int tableSize) {
+        return 13 * IntMath.log2(tableSize, RoundingMode.UNNECESSARY);
+      }
+
+      @Override
+      boolean hashFloodingDetected(Object[] hashTable) {
+        int maxRunBeforeFallback = maxRunBeforeFallback(hashTable.length);
+        int mask = hashTable.length - 1;
+
+        // Invariant: all elements at indices in [knownRunStart, knownRunEnd) are nonnull.
+        // If knownRunStart == knownRunEnd, this is vacuously true.
+        // When knownRunEnd exceeds hashTable.length, it "wraps", detecting runs around the end
+        // of the table.
+        int knownRunStart = 0;
+        int knownRunEnd = 0;
+
+        outerLoop:
+        while (knownRunStart < hashTable.length) {
+          if (knownRunStart == knownRunEnd && hashTable[knownRunStart] == null) {
+            if (hashTable[(knownRunStart + maxRunBeforeFallback - 1) & mask] == null) {
+              // There are only maxRunBeforeFallback - 1 elements between here and there,
+              // so even if they were all nonnull, we wouldn't detect a hash flood.  Therefore,
+              // we can skip them all.
+              knownRunStart += maxRunBeforeFallback;
+            } else {
+              knownRunStart++; // the only case in which maxRunEnd doesn't increase by mRBF
+              // happens about f * (1-f) for f = DESIRED_LOAD_FACTOR, so around 21% of the time
+            }
+            knownRunEnd = knownRunStart;
+          } else {
+            for (int j = knownRunStart + maxRunBeforeFallback - 1; j >= knownRunEnd; j--) {
+              if (hashTable[j & mask] == null) {
+                knownRunEnd = knownRunStart + maxRunBeforeFallback;
+                knownRunStart = j + 1;
+                continue outerLoop;
+              }
+            }
             return true;
           }
         }

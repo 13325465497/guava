@@ -15,11 +15,13 @@
 package com.google.common.base;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Collections.singleton;
 
 import com.google.common.annotations.GwtCompatible;
-import java.util.Collections;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /** Implementation of an {@link Optional} containing a reference. */
 @GwtCompatible
@@ -65,21 +67,21 @@ final class Present<T> extends Optional<T> {
 
   @Override
   public Set<T> asSet() {
-    return Collections.singleton(reference);
+    return singleton(reference);
   }
 
   @Override
   public <V> Optional<V> transform(Function<? super T, V> function) {
-    return new Present<V>(
+    return new Present<>(
         checkNotNull(
             function.apply(reference),
             "the Function passed to Optional.transform() must not return null."));
   }
 
   @Override
-  public boolean equals(@Nullable Object object) {
-    if (object instanceof Present) {
-      Present<?> other = (Present<?>) object;
+  public boolean equals(@Nullable Object obj) {
+    if (obj instanceof Present) {
+      Present<?> other = (Present<?>) obj;
       return reference.equals(other.reference);
     }
     return false;
@@ -95,5 +97,5 @@ final class Present<T> extends Optional<T> {
     return "Optional.of(" + reference + ")";
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

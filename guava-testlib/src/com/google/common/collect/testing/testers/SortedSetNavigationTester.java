@@ -16,18 +16,20 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.copyToList;
 import static com.google.common.collect.testing.features.CollectionSize.ONE;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static java.util.Collections.sort;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionSize;
-import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.SortedSet;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A generic JUnit test which tests operations on a SortedSet. Can't be invoked directly; please see
@@ -37,70 +39,55 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public class SortedSetNavigationTester<E> extends AbstractSetTester<E> {
+@NullMarked
+public class SortedSetNavigationTester<E extends @Nullable Object> extends AbstractSetTester<E> {
 
   private SortedSet<E> sortedSet;
   private List<E> values;
-  private E a;
-  private E b;
-  private E c;
+  private @Nullable E first;
+  private @Nullable E third;
 
   @Override
   public void setUp() throws Exception {
     super.setUp();
     sortedSet = (SortedSet<E>) getSet();
     values =
-        Helpers.copyToList(
+        copyToList(
             getSubjectGenerator()
                 .getSampleElements(getSubjectGenerator().getCollectionSize().getNumElements()));
-    Collections.sort(values, sortedSet.comparator());
+    sort(values, sortedSet.comparator());
 
     // some tests assume SEVERAL == 3
     if (values.size() >= 1) {
-      a = values.get(0);
+      first = values.get(0);
       if (values.size() >= 3) {
-        b = values.get(1);
-        c = values.get(2);
+        third = values.get(2);
       }
     }
   }
 
   @CollectionSize.Require(ZERO)
   public void testEmptySetFirst() {
-    try {
-      sortedSet.first();
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    assertThrows(NoSuchElementException.class, () -> sortedSet.first());
   }
 
   @CollectionSize.Require(ZERO)
   public void testEmptySetLast() {
-    try {
-      sortedSet.last();
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    assertThrows(NoSuchElementException.class, () -> sortedSet.last());
   }
 
-  @CollectionSize.Require(ONE)
-  public void testSingletonSetFirst() {
-    assertEquals(a, sortedSet.first());
+  @CollectionSize.Require(absent = ZERO)
+  public void testFirst() {
+    assertEquals(first, sortedSet.first());
   }
 
   @CollectionSize.Require(ONE)
   public void testSingletonSetLast() {
-    assertEquals(a, sortedSet.last());
+    assertEquals(first, sortedSet.last());
   }
 
   @CollectionSize.Require(SEVERAL)
-  public void testFirst() {
-    assertEquals(a, sortedSet.first());
-  }
-
-  @CollectionSize.Require(SEVERAL)
-  public void testLast() {
-    assertEquals(c, sortedSet.last());
+  public void testLargerSetLast() {
+    assertEquals(third, sortedSet.last());
   }
 }

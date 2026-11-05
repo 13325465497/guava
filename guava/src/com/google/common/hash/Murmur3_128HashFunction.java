@@ -25,13 +25,15 @@
 
 package com.google.common.hash;
 
-import static com.google.common.primitives.UnsignedBytes.toInt;
+import static com.google.common.hash.Hashing.GOOD_FAST_HASH_SEED;
+import static java.lang.Byte.toUnsignedInt;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.Immutable;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * See MurmurHash3_x64_128 in <a href="http://smhasher.googlecode.com/svn/trunk/MurmurHash3.cpp">the
@@ -40,12 +42,13 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Austin Appleby
  * @author Dimitris Andreou
  */
+@J2ktIncompatible
 @Immutable
+@SuppressWarnings("IdentifierName") // the best we could do for adjacent digit blocks
 final class Murmur3_128HashFunction extends AbstractHashFunction implements Serializable {
   static final HashFunction MURMUR3_128 = new Murmur3_128HashFunction(0);
 
-  static final HashFunction GOOD_FAST_HASH_128 =
-      new Murmur3_128HashFunction(Hashing.GOOD_FAST_HASH_SEED);
+  static final HashFunction GOOD_FAST_HASH_128 = new Murmur3_128HashFunction(GOOD_FAST_HASH_SEED);
 
   // TODO(user): when the shortcuts are implemented, update BloomFilterStrategies
   private final int seed;
@@ -127,36 +130,36 @@ final class Murmur3_128HashFunction extends AbstractHashFunction implements Seri
       length += bb.remaining();
       switch (bb.remaining()) {
         case 15:
-          k2 ^= (long) toInt(bb.get(14)) << 48; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(14)) << 48; // fall through
         case 14:
-          k2 ^= (long) toInt(bb.get(13)) << 40; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(13)) << 40; // fall through
         case 13:
-          k2 ^= (long) toInt(bb.get(12)) << 32; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(12)) << 32; // fall through
         case 12:
-          k2 ^= (long) toInt(bb.get(11)) << 24; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(11)) << 24; // fall through
         case 11:
-          k2 ^= (long) toInt(bb.get(10)) << 16; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(10)) << 16; // fall through
         case 10:
-          k2 ^= (long) toInt(bb.get(9)) << 8; // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(9)) << 8; // fall through
         case 9:
-          k2 ^= (long) toInt(bb.get(8)); // fall through
+          k2 ^= (long) toUnsignedInt(bb.get(8)); // fall through
         case 8:
           k1 ^= bb.getLong();
           break;
         case 7:
-          k1 ^= (long) toInt(bb.get(6)) << 48; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(6)) << 48; // fall through
         case 6:
-          k1 ^= (long) toInt(bb.get(5)) << 40; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(5)) << 40; // fall through
         case 5:
-          k1 ^= (long) toInt(bb.get(4)) << 32; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(4)) << 32; // fall through
         case 4:
-          k1 ^= (long) toInt(bb.get(3)) << 24; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(3)) << 24; // fall through
         case 3:
-          k1 ^= (long) toInt(bb.get(2)) << 16; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(2)) << 16; // fall through
         case 2:
-          k1 ^= (long) toInt(bb.get(1)) << 8; // fall through
+          k1 ^= (long) toUnsignedInt(bb.get(1)) << 8; // fall through
         case 1:
-          k1 ^= (long) toInt(bb.get(0));
+          k1 ^= (long) toUnsignedInt(bb.get(0));
           break;
         default:
           throw new AssertionError("Should never get here.");
@@ -166,7 +169,7 @@ final class Murmur3_128HashFunction extends AbstractHashFunction implements Seri
     }
 
     @Override
-    public HashCode makeHash() {
+    protected HashCode makeHash() {
       h1 ^= length;
       h2 ^= length;
 

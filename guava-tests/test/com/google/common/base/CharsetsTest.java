@@ -16,49 +16,65 @@
 
 package com.google.common.base;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Charsets}.
  *
  * @author Mike Bostock
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
 public class CharsetsTest extends TestCase {
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testUsAscii() {
-    assertEquals(Charset.forName("US-ASCII"), Charsets.US_ASCII);
+    assertThat(Charsets.US_ASCII).isEqualTo(Charset.forName("US-ASCII"));
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testIso88591() {
-    assertEquals(Charset.forName("ISO-8859-1"), Charsets.ISO_8859_1);
+    assertThat(Charsets.ISO_8859_1).isEqualTo(Charset.forName("ISO-8859-1"));
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
   public void testUtf8() {
-    assertEquals(Charset.forName("UTF-8"), Charsets.UTF_8);
+    assertThat(Charsets.UTF_8).isEqualTo(Charset.forName("UTF-8"));
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testUtf16be() {
-    assertEquals(Charset.forName("UTF-16BE"), Charsets.UTF_16BE);
+    assertThat(Charsets.UTF_16BE).isEqualTo(Charset.forName("UTF-16BE"));
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testUtf16le() {
-    assertEquals(Charset.forName("UTF-16LE"), Charsets.UTF_16LE);
+    assertThat(Charsets.UTF_16LE).isEqualTo(Charset.forName("UTF-16LE"));
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // We are testing our constant definition.
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testUtf16() {
-    assertEquals(Charset.forName("UTF-16"), Charsets.UTF_16);
+    assertThat(Charsets.UTF_16).isEqualTo(Charset.forName("UTF-16"));
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // Non-UTF-8 Charset
   public void testWhyUsAsciiIsDangerous() {
     byte[] b1 = "朝日新聞".getBytes(Charsets.US_ASCII);
@@ -67,9 +83,9 @@ public class CharsetsTest extends TestCase {
     byte[] b4 = "ニュース".getBytes(Charsets.US_ASCII);
     byte[] b5 = "スューー".getBytes(Charsets.US_ASCII);
     // Assert they are all equal (using the transitive property)
-    assertTrue(Arrays.equals(b1, b2));
-    assertTrue(Arrays.equals(b2, b3));
-    assertTrue(Arrays.equals(b3, b4));
-    assertTrue(Arrays.equals(b4, b5));
+    assertThat(b1).isEqualTo(b2);
+    assertThat(b2).isEqualTo(b3);
+    assertThat(b3).isEqualTo(b4);
+    assertThat(b4).isEqualTo(b5);
   }
 }

@@ -16,19 +16,22 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Tables.immutableCell;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.Table.Cell;
+import org.jspecify.annotations.NullMarked;
 
-/** @author Gregory Kick */
+/**
+ * @author Gregory Kick
+ */
 @GwtCompatible
+@NullMarked
 public class RegularImmutableTableTest extends AbstractImmutableTableTest {
   private static final ImmutableSet<Cell<Character, Integer, String>> CELLS =
       ImmutableSet.of(
-          Tables.immutableCell('a', 1, "foo"),
-          Tables.immutableCell('b', 1, "bar"),
-          Tables.immutableCell('a', 2, "baz"));
+          immutableCell('a', 1, "foo"), immutableCell('b', 1, "bar"), immutableCell('a', 2, "baz"));
 
   private static final ImmutableSet<Character> ROW_SPACE = ImmutableSet.of('a', 'b');
 
@@ -42,7 +45,7 @@ public class RegularImmutableTableTest extends AbstractImmutableTableTest {
 
   @Override
   Iterable<ImmutableTable<Character, Integer, String>> getTestInstances() {
-    return ImmutableList.<ImmutableTable<Character, Integer, String>>of(SPARSE, DENSE);
+    return ImmutableList.of(SPARSE, DENSE);
   }
 
   public void testCellSet() {
@@ -83,19 +86,19 @@ public class RegularImmutableTableTest extends AbstractImmutableTableTest {
     assertTrue(
         RegularImmutableTable.forCells(
                 ImmutableSet.of(
-                    Tables.immutableCell('a', 1, "blah"),
-                    Tables.immutableCell('b', 2, "blah"),
-                    Tables.immutableCell('c', 3, "blah")))
+                    immutableCell('a', 1, "blah"),
+                    immutableCell('b', 2, "blah"),
+                    immutableCell('c', 3, "blah")))
             instanceof SparseImmutableTable<?, ?, ?>);
   }
 
   public void testGet() {
     for (ImmutableTable<Character, Integer, String> testInstance : getTestInstances()) {
-      assertEquals("foo", testInstance.get('a', 1));
-      assertEquals("bar", testInstance.get('b', 1));
-      assertEquals("baz", testInstance.get('a', 2));
-      assertNull(testInstance.get('b', 2));
-      assertNull(testInstance.get('c', 3));
+      assertThat(testInstance.get('a', 1)).isEqualTo("foo");
+      assertThat(testInstance.get('b', 1)).isEqualTo("bar");
+      assertThat(testInstance.get('a', 2)).isEqualTo("baz");
+      assertThat(testInstance.get('b', 2)).isNull();
+      assertThat(testInstance.get('c', 3)).isNull();
     }
   }
 

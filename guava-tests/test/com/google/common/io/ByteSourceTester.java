@@ -16,15 +16,16 @@
 
 package com.google.common.io;
 
+import static com.google.common.hash.Hashing.sha512;
 import static com.google.common.io.SourceSinkFactory.ByteSourceFactory;
 import static com.google.common.io.SourceSinkFactory.CharSourceFactory;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertThrows;
 
-import com.google.common.base.Charsets;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.hash.HashCode;
-import com.google.common.hash.Hashing;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -34,16 +35,18 @@ import java.lang.reflect.Method;
 import java.util.Map.Entry;
 import java.util.Random;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A generator of {@code TestSuite} instances for testing {@code ByteSource} implementations.
- * Generates tests of a all methods on a {@code ByteSource} given various inputs the source is
- * expected to contain as well as as sub-suites for testing the {@code CharSource} view and {@code
+ * Generates tests of all methods on a {@code ByteSource} given various inputs the source is
+ * expected to contain as well as sub-suites for testing the {@code CharSource} view and {@code
  * slice()} views in the same way.
  *
  * @author Colin Decker
  */
-@AndroidIncompatible // Android doesn't understand tests that lack default constructors.
+@AndroidIncompatible // TODO(b/230620681): Make this available (even though we won't run it).
+@NullUnmarked
 public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteSourceFactory> {
 
   private static final ImmutableList<Method> testMethods = getTestMethods(ByteSourceTester.class);
@@ -55,8 +58,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
         suite.addTest(suiteForString(factory, entry.getValue(), name, entry.getKey()));
       } else {
         suite.addTest(
-            suiteForBytes(
-                factory, entry.getValue().getBytes(Charsets.UTF_8), name, entry.getKey(), true));
+            suiteForBytes(factory, entry.getValue().getBytes(UTF_8), name, entry.getKey(), true));
       }
     }
     return suite;
@@ -64,7 +66,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
 
   static TestSuite suiteForString(
       ByteSourceFactory factory, String string, String name, String desc) {
-    TestSuite suite = suiteForBytes(factory, string.getBytes(Charsets.UTF_8), name, desc, true);
+    TestSuite suite = suiteForBytes(factory, string.getBytes(UTF_8), name, desc, true);
     CharSourceFactory charSourceFactory = SourceSinkFactories.asCharSourceFactory(factory);
     suite.addTest(
         CharSourceTester.suiteForString(
@@ -117,7 +119,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
   }
 
   @Override
-  public void setUp() throws IOException {
+  protected void setUp() throws IOException {
     source = factory.createSource(data);
   }
 
@@ -153,12 +155,12 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
   }
 
   public void testCopyTo_byteSink() throws IOException {
-    final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
     // HERESY! but it's ok just for this I guess
     source.copyTo(
         new ByteSink() {
           @Override
-          public OutputStream openStream() throws IOException {
+          public OutputStream openStream() {
             return out;
           }
         });
@@ -173,7 +175,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
     assertEquals(expected.length, source.size());
   }
 
-  public void testSizeIfKnown() throws IOException {
+  public void testSizeIfKnown() {
     Optional<Long> sizeIfKnown = source.sizeIfKnown();
     if (sizeIfKnown.isPresent()) {
       assertEquals(expected.length, (long) sizeIfKnown.get());
@@ -185,7 +187,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
         source.contentEquals(
             new ByteSource() {
               @Override
-              public InputStream openStream() throws IOException {
+              public InputStream openStream() {
                 return new RandomAmountInputStream(
                     new ByteArrayInputStream(expected), new Random());
               }
@@ -199,7 +201,7 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
               final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
               @Override
-              public boolean processBytes(byte[] buf, int off, int len) throws IOException {
+              public boolean processBytes(byte[] buf, int off, int len) {
                 out.write(buf, off, len);
                 return true;
               }
@@ -214,22 +216,20 @@ public class ByteSourceTester extends SourceSinkTester<ByteSource, byte[], ByteS
   }
 
   public void testHash() throws IOException {
-    HashCode expectedHash = Hashing.md5().hashBytes(expected);
-    assertEquals(expectedHash, source.hash(Hashing.md5()));
+    HashCode expectedHash = sha512().hashBytes(expected);
+    assertEquals(expectedHash, source.hash(sha512()));
   }
 
   public void testSlice_illegalArguments() {
-    try {
-      source.slice(-1, 0);
-      fail("expected IllegalArgumentException for call to slice with offset -1: " + source);
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        "expected IllegalArgumentException for call to slice with offset -1: " + source,
+        IllegalArgumentException.class,
+        () -> source.slice(-1, 0));
 
-    try {
-      source.slice(0, -1);
-      fail("expected IllegalArgumentException for call to slice with length -1: " + source);
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        "expected IllegalArgumentException for call to slice with length -1: " + source,
+        IllegalArgumentException.class,
+        () -> source.slice(0, -1));
   }
 
   // Test that you can not expand the readable data in a previously sliced ByteSource.

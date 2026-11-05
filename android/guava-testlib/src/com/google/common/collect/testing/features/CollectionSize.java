@@ -16,14 +16,16 @@
 
 package com.google.common.collect.testing.features;
 
+import static com.google.common.collect.testing.Helpers.copyToSet;
+import static java.util.Collections.emptySet;
+
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.collect.testing.Helpers;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * When describing the features of the collection produced by a given generator (i.e. in a call to
@@ -41,8 +43,7 @@ import java.util.Set;
  *
  * @author George van den Driessche
  */
-// Enum values use constructors with generic varargs.
-@SuppressWarnings("unchecked")
+@SuppressWarnings("rawtypes") // maybe avoidable if we rework the whole package?
 @GwtCompatible
 public enum CollectionSize implements Feature<Collection>, Comparable<CollectionSize> {
   /** Test an empty collection. */
@@ -59,17 +60,17 @@ public enum CollectionSize implements Feature<Collection>, Comparable<Collection
   ANY(ZERO, ONE, SEVERAL);
 
   private final Set<Feature<? super Collection>> implied;
-  private final Integer numElements;
+  private final @Nullable Integer numElements;
 
   CollectionSize(int numElements) {
-    this.implied = Collections.emptySet();
+    this.implied = emptySet();
     this.numElements = numElements;
   }
 
   CollectionSize(Feature<? super Collection>... implied) {
     // Keep the order here, so that PerCollectionSizeTestSuiteBuilder
     // gives a predictable order of test suites.
-    this.implied = Helpers.copyToSet(implied);
+    this.implied = copyToSet(implied);
     this.numElements = null;
   }
 

@@ -21,7 +21,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@code Multimap} that can hold duplicate key-value pairs and that maintains the insertion
@@ -33,14 +33,14 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * {@link #asMap} has {@code List} values.
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap"> {@code
- * Multimap}</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap">{@code Multimap}</a>.
  *
  * @author Jared Levy
  * @since 2.0
  */
 @GwtCompatible
-public interface ListMultimap<K, V> extends Multimap<K, V> {
+public interface ListMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends Multimap<K, V> {
   /**
    * {@inheritDoc}
    *
@@ -49,7 +49,7 @@ public interface ListMultimap<K, V> extends Multimap<K, V> {
    * the {@link Multimap} interface.
    */
   @Override
-  List<V> get(@NullableDecl K key);
+  List<V> get(@ParametricNullness K key);
 
   /**
    * {@inheritDoc}
@@ -60,7 +60,7 @@ public interface ListMultimap<K, V> extends Multimap<K, V> {
    */
   @CanIgnoreReturnValue
   @Override
-  List<V> removeAll(@NullableDecl Object key);
+  List<V> removeAll(@Nullable Object key);
 
   /**
    * {@inheritDoc}
@@ -71,7 +71,7 @@ public interface ListMultimap<K, V> extends Multimap<K, V> {
    */
   @CanIgnoreReturnValue
   @Override
-  List<V> replaceValues(K key, Iterable<? extends V> values);
+  List<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values);
 
   /**
    * {@inheritDoc}
@@ -93,5 +93,5 @@ public interface ListMultimap<K, V> extends Multimap<K, V> {
    * empty {@code SetMultimap}.
    */
   @Override
-  boolean equals(@NullableDecl Object obj);
+  boolean equals(@Nullable Object obj);
 }

@@ -15,9 +15,11 @@
 package com.google.common.util.concurrent;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.time.Duration;
 
 /** This class is for {@code com.google.common.util.concurrent} use only! */
+@J2ktIncompatible
 @GwtIncompatible // java.time.Duration
 final class Internal {
 
@@ -28,7 +30,7 @@ final class Internal {
    * {@link Long#MAX_VALUE} or {@link Long#MIN_VALUE}. This behavior can be useful when decomposing
    * a duration in order to call a legacy API which requires a {@code long, TimeUnit} pair.
    */
-  static long saturatedToNanos(Duration duration) {
+  static long toNanosSaturated(Duration duration) {
     // Using a try/catch seems lazy, but the catch block will rarely get invoked (except for
     // durations longer than approximately +/- 292 years).
     try {

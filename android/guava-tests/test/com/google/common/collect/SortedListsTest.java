@@ -16,18 +16,21 @@ package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.SortedLists.KeyAbsentBehavior;
 import com.google.common.collect.SortedLists.KeyPresentBehavior;
 import com.google.common.testing.NullPointerTester;
 import java.util.List;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Tests for SortedLists.
  *
  * @author Louis Wasserman
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class SortedListsTest extends TestCase {
   private static final ImmutableList<Integer> LIST_WITH_DUPS =
       ImmutableList.of(1, 1, 2, 4, 4, 4, 8);
@@ -71,8 +74,6 @@ public class SortedListsTest extends TestCase {
           return;
         }
         break;
-      default:
-        throw new AssertionError();
     }
     // key is not present
     int nextHigherIndex = list.size();
@@ -89,9 +90,8 @@ public class SortedListsTest extends TestCase {
       case INVERTED_INSERTION_INDEX:
         assertEquals(-1 - nextHigherIndex, answer);
         return;
-      default:
-        throw new AssertionError();
     }
+    throw new AssertionError();
   }
 
   public void testWithoutDups() {
@@ -124,6 +124,7 @@ public class SortedListsTest extends TestCase {
     }
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNulls() {
     new NullPointerTester().testAllPublicStaticMethods(SortedLists.class);

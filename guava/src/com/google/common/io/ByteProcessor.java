@@ -14,10 +14,12 @@
 
 package com.google.common.io;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotMock;
 import java.io.IOException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A callback interface to process bytes from a stream.
@@ -28,9 +30,10 @@ import java.io.IOException;
  * @author Chris Nokleberg
  * @since 1.0
  */
-@Beta
+@DoNotMock("Implement it normally")
+@J2ktIncompatible
 @GwtIncompatible
-public interface ByteProcessor<T> {
+public interface ByteProcessor<T extends @Nullable Object> {
   /**
    * This method will be called for each chunk of bytes in an input stream. The implementation
    * should process the bytes from {@code buf[off]} through {@code buf[off + len - 1]} (inclusive).
@@ -44,5 +47,6 @@ public interface ByteProcessor<T> {
   boolean processBytes(byte[] buf, int off, int len) throws IOException;
 
   /** Return the result of processing all the bytes. */
+  @ParametricNullness
   T getResult();
 }

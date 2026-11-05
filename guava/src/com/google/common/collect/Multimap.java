@@ -21,13 +21,14 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.CompatibleWith;
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BiConsumer;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A collection that maps keys to values, similar to {@link Map}, but in which each key may be
@@ -54,11 +55,11 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * times when the first style is more useful, use the multimap's {@link #asMap} view (or create a
  * {@code Map<K, Collection<V>>} in the first place).
  *
- * <h3>Example</h3>
+ * <h2>Example</h2>
  *
  * <p>The following code:
  *
- * <pre>{@code
+ * {@snippet :
  * ListMultimap<String, String> multimap = ArrayListMultimap.create();
  * for (President pres : US_PRESIDENTS_IN_ORDER) {
  *   multimap.put(pres.firstName(), pres.lastName());
@@ -67,19 +68,19 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *   List<String> lastNames = multimap.get(firstName);
  *   out.println(firstName + ": " + lastNames);
  * }
- * }</pre>
+ * }
  *
  * ... produces output such as:
  *
- * <pre>{@code
+ * {@snippet :
  * Zachary: [Taylor]
  * John: [Adams, Adams, Tyler, Kennedy]  // Remember, Quincy!
  * George: [Washington, Bush, Bush]
  * Grover: [Cleveland, Cleveland]        // Two, non-consecutive terms, rep'ing NJ!
  * ...
- * }</pre>
+ * }
  *
- * <h3>Views</h3>
+ * <h2>Views</h2>
  *
  * <p>Much of the power of the multimap API comes from the <i>view collections</i> it provides.
  * These always reflect the latest state of the multimap itself. When they support modification, the
@@ -98,7 +99,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * removeAll} methods, which contain values that have just been removed from the multimap, are
  * naturally <i>not</i> views.
  *
- * <h3>Subinterfaces</h3>
+ * <h2>Subinterfaces</h2>
  *
  * <p>Instead of using the {@code Multimap} interface directly, prefer the subinterfaces {@link
  * ListMultimap} and {@link SetMultimap}. These take their names from the fact that the collections
@@ -114,7 +115,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * may not be equal and may or may not have the same {@code hashCode}. The recommended subinterfaces
  * provide much stronger guarantees.
  *
- * <h3>Comparison to a map of collections</h3>
+ * <h2>Comparison to a map of collections</h2>
  *
  * <p>Multimaps are commonly used in places where a {@code Map<K, Collection<V>>} would otherwise
  * have appeared. The differences include:
@@ -131,17 +132,20 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       Collections.min(multimap.values())} finds the smallest value across all keys.
  * </ul>
  *
- * <h3>Implementations</h3>
+ * <h2>Implementations</h2>
  *
- * <p>As always, prefer the immutable implementations, {@link ImmutableListMultimap} and {@link
- * ImmutableSetMultimap}. General-purpose mutable implementations are listed above under "All Known
- * Implementing Classes". You can also create a <i>custom</i> multimap, backed by any {@code Map}
- * and {@link Collection} types, using the {@link Multimaps#newMultimap Multimaps.newMultimap}
- * family of methods. Finally, another popular way to obtain a multimap is using {@link
- * Multimaps#index Multimaps.index}. See the {@link Multimaps} class for these and other static
- * utilities related to multimaps.
+ * <ul>
+ *   <li>{@link ImmutableListMultimap}
+ *   <li>{@link ImmutableSetMultimap}
+ *   <li>Configure your own mutable multimap with {@link MultimapBuilder}
+ *   <li>{@link LinkedListMultimap} (for one unusual kind of mutable {@code Multimap})
+ * </ul>
  *
- * <h3>Other Notes</h3>
+ * Guava contains a number of other multimap implementations, such as {@link ArrayListMultimap}. In
+ * new code, we recommend using {@link MultimapBuilder} instead: It provides better control of how
+ * keys and values are stored.
+ *
+ * <h2>Other Notes</h2>
  *
  * <p>As with {@code Map}, the behavior of a {@code Multimap} is not specified if key objects
  * already present in the multimap change in a manner that affects {@code equals} comparisons. Use
@@ -152,14 +156,14 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * {@link UnsupportedOperationException}.
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap"> {@code
- * Multimap}</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multimap">{@code Multimap}</a>.
  *
  * @author Jared Levy
  * @since 2.0
  */
+@DoNotMock("Use ImmutableMultimap, HashMultimap, or another implementation")
 @GwtCompatible
-public interface Multimap<K, V> {
+public interface Multimap<K extends @Nullable Object, V extends @Nullable Object> {
   // Query Operations
 
   /**
@@ -209,7 +213,7 @@ public interface Multimap<K, V> {
    *     multimap already contained the key-value pair and doesn't allow duplicates
    */
   @CanIgnoreReturnValue
-  boolean put(@Nullable K key, @Nullable V value);
+  boolean put(@ParametricNullness K key, @ParametricNullness V value);
 
   /**
    * Removes a single key-value pair with the key {@code key} and the value {@code value} from this
@@ -228,18 +232,18 @@ public interface Multimap<K, V> {
    * Stores a key-value pair in this multimap for each of {@code values}, all using the same key,
    * {@code key}. Equivalent to (but expected to be more efficient than):
    *
-   * <pre>{@code
+   * {@snippet :
    * for (V value : values) {
    *   put(key, value);
    * }
-   * }</pre>
+   * }
    *
    * <p>In particular, this is a no-op if {@code values} is empty.
    *
    * @return {@code true} if the multimap changed
    */
   @CanIgnoreReturnValue
-  boolean putAll(@Nullable K key, Iterable<? extends V> values);
+  boolean putAll(@ParametricNullness K key, Iterable<? extends V> values);
 
   /**
    * Stores all key-value pairs of {@code multimap} in this multimap, in the order returned by
@@ -260,7 +264,7 @@ public interface Multimap<K, V> {
    *     no effect on the multimap.
    */
   @CanIgnoreReturnValue
-  Collection<V> replaceValues(@Nullable K key, Iterable<? extends V> values);
+  Collection<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values);
 
   /**
    * Removes all values associated with the key {@code key}.
@@ -286,7 +290,7 @@ public interface Multimap<K, V> {
    *
    * <p>Changes to the returned collection will update the underlying multimap, and vice versa.
    */
-  Collection<V> get(@Nullable K key);
+  Collection<V> get(@ParametricNullness K key);
 
   /**
    * Returns a view collection of all <i>distinct</i> keys contained in this multimap. Note that the

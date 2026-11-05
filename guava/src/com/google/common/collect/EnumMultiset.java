@@ -18,9 +18,11 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.CollectPreconditions.checkNonnegative;
 import static com.google.common.collect.CollectPreconditions.checkRemove;
+import static java.util.Objects.requireNonNull;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
@@ -31,25 +33,26 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.ObjIntConsumer;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Multiset implementation specialized for enum elements, supporting all single-element operations
  * in O(1).
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multiset"> {@code
- * Multiset}</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#multiset">{@code Multiset}</a>.
  *
  * @author Jared Levy
  * @since 2.0
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@J2ktIncompatible
+@SuppressWarnings("EnumOrdinal") // This is one of the low-level utilities where it's suitable.
 public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
     implements Serializable {
   /** Creates an empty {@code EnumMultiset}. */
   public static <E extends Enum<E>> EnumMultiset<E> create(Class<E> type) {
-    return new EnumMultiset<E>(type);
+    return new EnumMultiset<>(type);
   }
 
   /**
@@ -107,7 +110,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
    * Returns {@code element} cast to {@code E}, if it actually is a nonnull E. Otherwise, throws
    * either a NullPointerException or a ClassCastException as appropriate.
    */
-  void checkIsE(@Nullable Object element) {
+  private void checkIsE(Object element) {
     checkNotNull(element);
     if (!isActuallyE(element)) {
       throw new ClassCastException("Expected an " + type + " but got " + element);
@@ -115,7 +118,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
   }
 
   @Override
-  int distinctElements() {
+  int internalDistinctElements() {
     return distinctElements;
   }
 
@@ -126,6 +129,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
 
   @Override
   public int count(@Nullable Object element) {
+    // isActuallyE checks for null, but we check explicitly to help nullness checkers.
     if (element == null || !isActuallyE(element)) {
       return 0;
     }
@@ -158,6 +162,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
   @CanIgnoreReturnValue
   @Override
   public int remove(@Nullable Object element, int occurrences) {
+    // isActuallyE checks for null, but we check explicitly to help nullness checkers.
     if (element == null || !isActuallyE(element)) {
       return 0;
     }
@@ -213,7 +218,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
     abstract T output(int index);
 
     @Override
-    public boolean hasNext() {
+    public final boolean hasNext() {
       for (; index < enumConstants.length; index++) {
         if (counts[index] > 0) {
           return true;
@@ -223,7 +228,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
     }
 
     @Override
-    public T next() {
+    public final T next() {
       if (!hasNext()) {
         throw new NoSuchElementException();
       }
@@ -234,7 +239,7 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
     }
 
     @Override
-    public void remove() {
+    public final void remove() {
       checkRemove(toRemove >= 0);
       if (counts[toRemove] > 0) {
         distinctElements--;
@@ -256,10 +261,10 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
   }
 
   @Override
-  Iterator<Entry<E>> entryIterator() {
+  Iterator<Entry<E>> internalEntryIterator() {
     return new Itr<Entry<E>>() {
       @Override
-      Entry<E> output(final int index) {
+      Entry<E> output(int index) {
         return new Multisets.AbstractEntry<E>() {
           @Override
           public E getElement() {
@@ -305,13 +310,12 @@ public final class EnumMultiset<E extends Enum<E>> extends AbstractMultiset<E>
   private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
     stream.defaultReadObject();
     @SuppressWarnings("unchecked") // reading data stored by writeObject
-    Class<E> localType = (Class<E>) stream.readObject();
+    Class<E> localType = (Class<E>) requireNonNull(stream.readObject());
     type = localType;
     enumConstants = type.getEnumConstants();
     counts = new int[enumConstants.length];
     Serialization.populateMultiset(this, stream);
   }
 
-  @GwtIncompatible // Not needed in emulated source
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible private static final long serialVersionUID = 0;
 }

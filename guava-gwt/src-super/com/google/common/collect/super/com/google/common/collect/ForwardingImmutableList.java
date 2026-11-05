@@ -18,7 +18,7 @@ package com.google.common.collect;
 
 import java.util.Collection;
 import java.util.List;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * GWT emulated version of {@link ImmutableList}. TODO(cpovirk): more doc
@@ -31,18 +31,22 @@ abstract class ForwardingImmutableList<E> extends ImmutableList<E> {
 
   abstract List<E> delegateList();
 
+  @Override
   public int indexOf(@Nullable Object object) {
     return delegateList().indexOf(object);
   }
 
+  @Override
   public int lastIndexOf(@Nullable Object object) {
     return delegateList().lastIndexOf(object);
   }
 
+  @Override
   public E get(int index) {
     return delegateList().get(index);
   }
 
+  @Override
   public ImmutableList<E> subList(int fromIndex, int toIndex) {
     return unsafeDelegateList(delegateList().subList(fromIndex, toIndex));
   }
@@ -55,7 +59,7 @@ abstract class ForwardingImmutableList<E> extends ImmutableList<E> {
   }
 
   @Override
-  public boolean equals(Object obj) {
+  public boolean equals(@Nullable Object obj) {
     return delegateList().equals(obj);
   }
 
@@ -79,6 +83,7 @@ abstract class ForwardingImmutableList<E> extends ImmutableList<E> {
     return delegateList().containsAll(targets);
   }
 
+  @Override
   public int size() {
     return delegateList().size();
   }
@@ -89,7 +94,7 @@ abstract class ForwardingImmutableList<E> extends ImmutableList<E> {
   }
 
   @Override
-  public <T> T[] toArray(T[] other) {
+  public <T extends @Nullable Object> T[] toArray(T[] other) {
     return delegateList().toArray(other);
   }
 

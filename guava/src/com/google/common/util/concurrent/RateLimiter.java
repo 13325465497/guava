@@ -16,13 +16,16 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.util.concurrent.Internal.saturatedToNanos;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
+import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
 import static java.lang.Math.max;
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.util.concurrent.SmoothRateLimiter.SmoothBursty;
@@ -31,7 +34,7 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A rate limiter. Conceptually, a rate limiter distributes permits at a configurable rate. Each
@@ -58,7 +61,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  * <p>As an example, imagine that we have a list of tasks to execute, but we don't want to submit
  * more than 2 per second:
  *
- * <pre>{@code
+ * {@snippet :
  * final RateLimiter rateLimiter = RateLimiter.create(2.0); // rate is "2 permits per second"
  * void submitTasks(List<Runnable> tasks, Executor executor) {
  *   for (Runnable task : tasks) {
@@ -66,19 +69,19 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
  *     executor.execute(task);
  *   }
  * }
- * }</pre>
+ * }
  *
  * <p>As another example, imagine that we produce a stream of data, and we want to cap it at 5kb per
  * second. This could be accomplished by requiring a permit per byte, and specifying a rate of 5000
  * permits per second:
  *
- * <pre>{@code
+ * {@snippet :
  * final RateLimiter rateLimiter = RateLimiter.create(5000.0); // rate = 5000 permits per second
  * void submitPacket(byte[] packet) {
  *   rateLimiter.acquire(packet.length);
  *   networkService.send(packet);
  * }
- * }</pre>
+ * }
  *
  * <p>It is important to note that the number of permits requested <i>never</i> affects the
  * throttling of the request itself (an invocation to {@code acquire(1)} and an invocation to {@code
@@ -93,6 +96,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 // TODO(user): switch to nano precision. A natural unit of cost is "bytes", and a micro precision
 // would mean a maximum rate of "1MB/s", which might be small in some cases.
 @Beta
+@J2ktIncompatible
 @GwtIncompatible
 public abstract class RateLimiter {
   /**
@@ -131,7 +135,7 @@ public abstract class RateLimiter {
 
   @VisibleForTesting
   static RateLimiter create(double permitsPerSecond, SleepingStopwatch stopwatch) {
-    RateLimiter rateLimiter = new SmoothBursty(stopwatch, 1.0 /* maxBurstSeconds */);
+    RateLimiter rateLimiter = new SmoothBursty(stopwatch, /* maxBurstSeconds= */ 1.0);
     rateLimiter.setRate(permitsPerSecond);
     return rateLimiter;
   }
@@ -158,10 +162,10 @@ public abstract class RateLimiter {
    *     before reaching its stable (maximum) rate
    * @throws IllegalArgumentException if {@code permitsPerSecond} is negative or zero or {@code
    *     warmupPeriod} is negative
-   * @since 28.0
+   * @since 28.0 (but only since 33.4.0 in the Android flavor)
    */
   public static RateLimiter create(double permitsPerSecond, Duration warmupPeriod) {
-    return create(permitsPerSecond, saturatedToNanos(warmupPeriod), TimeUnit.NANOSECONDS);
+    return create(permitsPerSecond, toNanosSaturated(warmupPeriod), NANOSECONDS);
   }
 
   /**
@@ -214,7 +218,7 @@ public abstract class RateLimiter {
   private final SleepingStopwatch stopwatch;
 
   // Can't be initialized in the constructor because mocks don't call the constructor.
-  @MonotonicNonNull private volatile Object mutexDoNotUseDirectly;
+  private volatile @Nullable Object mutexDoNotUseDirectly;
 
   private Object mutex() {
     Object mutex = mutexDoNotUseDirectly;
@@ -252,8 +256,7 @@ public abstract class RateLimiter {
    * @throws IllegalArgumentException if {@code permitsPerSecond} is negative or zero
    */
   public final void setRate(double permitsPerSecond) {
-    checkArgument(
-        permitsPerSecond > 0.0 && !Double.isNaN(permitsPerSecond), "rate must be positive");
+    checkArgument(permitsPerSecond > 0.0, "rate must be positive");
     synchronized (mutex()) {
       doSetRate(permitsPerSecond, stopwatch.readMicros());
     }
@@ -328,10 +331,10 @@ public abstract class RateLimiter {
    * @param timeout the maximum time to wait for the permit. Negative values are treated as zero.
    * @return {@code true} if the permit was acquired, {@code false} otherwise
    * @throws IllegalArgumentException if the requested number of permits is negative or zero
-   * @since 28.0
+   * @since 28.0 (but only since 33.4.0 in the Android flavor)
    */
   public boolean tryAcquire(Duration timeout) {
-    return tryAcquire(1, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return tryAcquire(1, toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -387,10 +390,10 @@ public abstract class RateLimiter {
    * @param timeout the maximum time to wait for the permits. Negative values are treated as zero.
    * @return {@code true} if the permits were acquired, {@code false} otherwise
    * @throws IllegalArgumentException if the requested number of permits is negative or zero
-   * @since 28.0
+   * @since 28.0 (but only since 33.4.0 in the Android flavor)
    */
   public boolean tryAcquire(int permits, Duration timeout) {
-    return tryAcquire(permits, saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    return tryAcquire(permits, toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -413,9 +416,8 @@ public abstract class RateLimiter {
       long nowMicros = stopwatch.readMicros();
       if (!canAcquire(nowMicros, timeoutMicros)) {
         return false;
-      } else {
-        microsToWait = reserveAndGetWaitLength(permits, nowMicros);
       }
+      microsToWait = reserveAndGetWaitLength(permits, nowMicros);
     }
     stopwatch.sleepMicrosUninterruptibly(microsToWait);
     return true;
@@ -453,7 +455,7 @@ public abstract class RateLimiter {
   abstract long reserveEarliestAvailable(int permits, long nowMicros);
 
   @Override
-  public String toString() {
+  public final String toString() {
     return String.format(Locale.ROOT, "RateLimiter[stableRate=%3.1fqps]", getRate());
   }
 
@@ -482,7 +484,7 @@ public abstract class RateLimiter {
         @Override
         protected void sleepMicrosUninterruptibly(long micros) {
           if (micros > 0) {
-            Uninterruptibles.sleepUninterruptibly(micros, MICROSECONDS);
+            sleepUninterruptibly(micros, MICROSECONDS);
           }
         }
       };

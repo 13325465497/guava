@@ -21,9 +21,11 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Equivalence;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.ArrayList;
 import java.util.List;
 import junit.framework.AssertionFailedError;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Implementation helper for {@link EqualsTester} and {@link EquivalenceTester} that tests for
@@ -32,12 +34,10 @@ import junit.framework.AssertionFailedError;
  * @author Gregory Kick
  */
 @GwtCompatible
+@NullMarked
 final class RelationshipTester<T> {
-
-  static class ItemReporter {
-    String reportItem(Item<?> item) {
-      return item.toString();
-    }
+  interface ItemReporter {
+    String reportItem(Item<?> item);
   }
 
   /**
@@ -52,7 +52,7 @@ final class RelationshipTester<T> {
   private final String relationshipName;
   private final String hashName;
   private final ItemReporter itemReporter;
-  private final List<ImmutableList<T>> groups = Lists.newArrayList();
+  private final List<ImmutableList<T>> groups = new ArrayList<>();
 
   RelationshipTester(
       Equivalence<? super T> equivalence,
@@ -66,6 +66,7 @@ final class RelationshipTester<T> {
   }
 
   // TODO(cpovirk): should we reject null items, since the tests already check null automatically?
+  @CanIgnoreReturnValue
   public RelationshipTester<T> addRelatedGroup(Iterable<? extends T> group) {
     groups.add(ImmutableList.copyOf(group));
     return this;
@@ -147,7 +148,7 @@ final class RelationshipTester<T> {
   }
 
   private Item<T> getItem(int groupNumber, int itemNumber) {
-    return new Item<T>(groups.get(groupNumber).get(itemNumber), groupNumber, itemNumber);
+    return new Item<>(groups.get(groupNumber).get(itemNumber), groupNumber, itemNumber);
   }
 
   static final class Item<T> {

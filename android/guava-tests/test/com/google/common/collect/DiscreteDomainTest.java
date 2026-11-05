@@ -17,10 +17,13 @@
 package com.google.common.collect;
 
 import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtIncompatible;
 import java.math.BigInteger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link DiscreteDomain}.
@@ -28,6 +31,7 @@ import junit.framework.TestCase;
  * @author Chris Povirk
  */
 @GwtIncompatible // SerializableTester
+@NullUnmarked
 public class DiscreteDomainTest extends TestCase {
   public void testSerialization() {
     reserializeAndAssert(DiscreteDomain.integers());
@@ -43,16 +47,10 @@ public class DiscreteDomainTest extends TestCase {
   }
 
   public void testIntegersOffsetExceptions() {
-    try {
-      DiscreteDomain.integers().offset(0, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      DiscreteDomain.integers().offset(Integer.MAX_VALUE, 1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> DiscreteDomain.integers().offset(0, -1));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DiscreteDomain.integers().offset(Integer.MAX_VALUE, 1));
   }
 
   public void testLongsOffset() {
@@ -61,16 +59,9 @@ public class DiscreteDomainTest extends TestCase {
   }
 
   public void testLongsOffsetExceptions() {
-    try {
-      DiscreteDomain.longs().offset(0L, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      DiscreteDomain.longs().offset(Long.MAX_VALUE, 1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> DiscreteDomain.longs().offset(0L, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> DiscreteDomain.longs().offset(Long.MAX_VALUE, 1));
   }
 
   public void testBigIntegersOffset() {
@@ -81,10 +72,45 @@ public class DiscreteDomainTest extends TestCase {
   }
 
   public void testBigIntegersOffsetExceptions() {
-    try {
-      DiscreteDomain.bigIntegers().offset(BigInteger.ZERO, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DiscreteDomain.bigIntegers().offset(BigInteger.ZERO, -1));
+  }
+
+  public void testCustomOffsetExceptions() {
+    assertThrows(IllegalArgumentException.class, () -> new MyIntegerDomain().offset(0, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> new MyIntegerDomain().offset(Integer.MAX_VALUE, 1));
+  }
+
+  private static final class MyIntegerDomain extends DiscreteDomain<Integer> {
+    static final DiscreteDomain<Integer> DELEGATE = DiscreteDomain.integers();
+
+    @Override
+    public @Nullable Integer next(Integer value) {
+      return DELEGATE.next(value);
+    }
+
+    @Override
+    public @Nullable Integer previous(Integer value) {
+      return DELEGATE.previous(value);
+    }
+
+    // Do *not* override offset() to delegate: We want to test the default implementation.
+
+    @Override
+    public long distance(Integer start, Integer end) {
+      return DELEGATE.distance(start, end);
+    }
+
+    @Override
+    public Integer minValue() {
+      return DELEGATE.minValue();
+    }
+
+    @Override
+    public Integer maxValue() {
+      return DELEGATE.maxValue();
     }
   }
 }

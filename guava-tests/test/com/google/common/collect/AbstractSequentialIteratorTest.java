@@ -18,17 +18,22 @@ package com.google.common.collect;
 
 import static com.google.common.collect.testing.IteratorFeature.UNMODIFIABLE;
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.collect.TestExceptions.SomeUncheckedException;
 import com.google.common.collect.testing.IteratorTester;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Tests for {@link AbstractSequentialIterator}. */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class AbstractSequentialIteratorTest extends TestCase {
   @GwtIncompatible // Too slow
   public void testDoublerExhaustive() {
@@ -60,7 +65,7 @@ public class AbstractSequentialIteratorTest extends TestCase {
             Iterator<Integer> powersOfTwo =
                 new AbstractSequentialIterator<Integer>(1) {
                   @Override
-                  protected Integer computeNext(Integer previous) {
+                  protected @Nullable Integer computeNext(Integer previous) {
                     return (previous == 1 << 30) ? null : previous * 2;
                   }
                 };
@@ -103,63 +108,52 @@ public class AbstractSequentialIteratorTest extends TestCase {
         .inOrder();
   }
 
+  @SuppressWarnings("DoNotCall")
   public void testEmpty() {
-    Iterator<Object> empty = newEmpty();
+    Iterator<Object> empty = new EmptyAbstractSequentialIterator<>();
     assertFalse(empty.hasNext());
-    try {
-      empty.next();
-      fail();
-    } catch (NoSuchElementException expected) {
-    }
-    try {
-      empty.remove();
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(NoSuchElementException.class, empty::next);
+    assertThrows(UnsupportedOperationException.class, empty::remove);
   }
 
   public void testBroken() {
-    Iterator<Object> broken = newBroken();
+    Iterator<Object> broken = new BrokenAbstractSequentialIterator();
     assertTrue(broken.hasNext());
     // We can't retrieve even the known first element:
-    try {
-      broken.next();
-      fail();
-    } catch (MyException expected) {
-    }
-    try {
-      broken.next();
-      fail();
-    } catch (MyException expected) {
-    }
+    assertThrows(SomeUncheckedException.class, broken::next);
+    assertThrows(SomeUncheckedException.class, broken::next);
   }
 
-  private static Iterator<Integer> newDoubler(int first, final int last) {
+  private static Iterator<Integer> newDoubler(int first, int last) {
     return new AbstractSequentialIterator<Integer>(first) {
       @Override
-      protected Integer computeNext(Integer previous) {
+      protected @Nullable Integer computeNext(Integer previous) {
         return (previous == last) ? null : previous * 2;
       }
     };
   }
 
-  private static <T> Iterator<T> newEmpty() {
-    return new AbstractSequentialIterator<T>(null) {
-      @Override
-      protected T computeNext(T previous) {
-        throw new AssertionFailedError();
-      }
-    };
+  private static class EmptyAbstractSequentialIterator<T> extends AbstractSequentialIterator<T> {
+
+    EmptyAbstractSequentialIterator() {
+      super(null);
+    }
+
+    @Override
+    protected T computeNext(T previous) {
+      throw new AssertionFailedError();
+    }
   }
 
-  private static Iterator<Object> newBroken() {
-    return new AbstractSequentialIterator<Object>("UNUSED") {
-      @Override
-      protected Object computeNext(Object previous) {
-        throw new MyException();
-      }
-    };
-  }
+  private static class BrokenAbstractSequentialIterator extends AbstractSequentialIterator<Object> {
 
-  private static class MyException extends RuntimeException {}
+    BrokenAbstractSequentialIterator() {
+      super("UNUSED");
+    }
+
+    @Override
+    protected Object computeNext(Object previous) {
+      throw new SomeUncheckedException();
+    }
+  }
 }

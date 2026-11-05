@@ -11,28 +11,35 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
+
 package com.google.common.collect;
 
+import static com.google.common.collect.Maps.immutableEntry;
 import static com.google.common.truth.Truth.assertThat;
+import static java.lang.Math.max;
 
 import com.google.common.collect.testing.MapTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@code CompactLinkedHashMap}.
  *
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class CompactLinkedHashMapTest extends TestCase {
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -96,8 +103,8 @@ public class CompactLinkedHashMapTest extends TestCase {
     map.put(4, "b");
     map.put(3, "d");
     map.put(2, "c");
-    map.remove(3);
-    testHasMapEntriesInOrder(map, 1, "a", 4, "b", 2, "c");
+    map.remove(4);
+    testHasMapEntriesInOrder(map, 1, "a", 3, "d", 2, "c");
   }
 
   public void testInsertionOrderAfterRemoveLastEntry() {
@@ -125,17 +132,17 @@ public class CompactLinkedHashMapTest extends TestCase {
     testHasMapEntriesInOrder(map, 1, "a", 4, "b", 3, "d", 2, "c");
   }
 
-  private void testHasMapEntriesInOrder(Map<?, ?> map, Object... alternatingKeysAndValues) {
-    List<? extends Entry<?, ?>> entries = Lists.newArrayList(map.entrySet());
-    List<Object> keys = Lists.newArrayList(map.keySet());
-    List<Object> values = Lists.newArrayList(map.values());
-    assertEquals(2 * entries.size(), alternatingKeysAndValues.length);
-    assertEquals(2 * keys.size(), alternatingKeysAndValues.length);
-    assertEquals(2 * values.size(), alternatingKeysAndValues.length);
+  private static void testHasMapEntriesInOrder(Map<?, ?> map, Object... alternatingKeysAndValues) {
+    List<? extends Entry<?, ?>> entries = new ArrayList<>(map.entrySet());
+    List<Object> keys = new ArrayList<>(map.keySet());
+    List<Object> values = new ArrayList<>(map.values());
+    assertThat(alternatingKeysAndValues).hasLength(2 * entries.size());
+    assertThat(alternatingKeysAndValues).hasLength(2 * keys.size());
+    assertThat(alternatingKeysAndValues).hasLength(2 * values.size());
     for (int i = 0; i < map.size(); i++) {
       Object expectedKey = alternatingKeysAndValues[2 * i];
       Object expectedValue = alternatingKeysAndValues[2 * i + 1];
-      Entry<Object, Object> expectedEntry = Maps.immutableEntry(expectedKey, expectedValue);
+      Entry<Object, Object> expectedEntry = immutableEntry(expectedKey, expectedValue);
       assertEquals(expectedEntry, entries.get(i));
       assertEquals(expectedKey, keys.get(i));
       assertEquals(expectedValue, values.get(i));
@@ -152,14 +159,14 @@ public class CompactLinkedHashMapTest extends TestCase {
 
     map.put(1, Integer.toString(1));
     assertThat(map.needsAllocArrays()).isFalse();
-    assertThat(map.entries).hasLength(CompactLinkedHashMap.DEFAULT_SIZE);
-    assertThat(map.keys).hasLength(CompactLinkedHashMap.DEFAULT_SIZE);
-    assertThat(map.values).hasLength(CompactLinkedHashMap.DEFAULT_SIZE);
-    assertThat(map.links).hasLength(CompactLinkedHashMap.DEFAULT_SIZE);
+    assertThat(map.entries).hasLength(CompactHashing.DEFAULT_SIZE);
+    assertThat(map.keys).hasLength(CompactHashing.DEFAULT_SIZE);
+    assertThat(map.values).hasLength(CompactHashing.DEFAULT_SIZE);
+    assertThat(map.links).hasLength(CompactHashing.DEFAULT_SIZE);
   }
 
   public void testAllocArraysExpectedSize() {
-    for (int i = 0; i <= CompactLinkedHashMap.DEFAULT_SIZE; i++) {
+    for (int i = 0; i <= CompactHashing.DEFAULT_SIZE; i++) {
       CompactLinkedHashMap<Integer, String> map = CompactLinkedHashMap.createWithExpectedSize(i);
       assertThat(map.needsAllocArrays()).isTrue();
       assertThat(map.entries).isNull();
@@ -169,7 +176,7 @@ public class CompactLinkedHashMapTest extends TestCase {
 
       map.put(1, Integer.toString(1));
       assertThat(map.needsAllocArrays()).isFalse();
-      int expectedSize = Math.max(1, i);
+      int expectedSize = max(1, i);
       assertThat(map.entries).hasLength(expectedSize);
       assertThat(map.keys).hasLength(expectedSize);
       assertThat(map.values).hasLength(expectedSize);

@@ -15,8 +15,9 @@
 package com.google.common.eventbus;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
 
-import com.google.common.collect.Queues;
+import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -75,15 +76,17 @@ abstract class Dispatcher {
     // This dispatcher matches the original dispatch behavior of EventBus.
 
     /** Per-thread queue of events to dispatch. */
+    @SuppressWarnings("ThreadLocalUsage") // Each Dispatcher needs its own state.
     private final ThreadLocal<Queue<Event>> queue =
         new ThreadLocal<Queue<Event>>() {
           @Override
           protected Queue<Event> initialValue() {
-            return Queues.newArrayDeque();
+            return new ArrayDeque<>();
           }
         };
 
     /** Per-thread dispatch state, used to avoid reentrant event dispatching. */
+    @SuppressWarnings("ThreadLocalUsage") // Each Dispatcher needs its own state.
     private final ThreadLocal<Boolean> dispatching =
         new ThreadLocal<Boolean>() {
           @Override
@@ -96,7 +99,8 @@ abstract class Dispatcher {
     void dispatch(Object event, Iterator<Subscriber> subscribers) {
       checkNotNull(event);
       checkNotNull(subscribers);
-      Queue<Event> queueForThread = queue.get();
+      // requireNonNull accommodates Android's @RecentlyNullable annotation on ThreadLocal.get
+      Queue<Event> queueForThread = requireNonNull(queue.get());
       queueForThread.offer(new Event(event, subscribers));
 
       if (!dispatching.get()) {
@@ -132,7 +136,7 @@ abstract class Dispatcher {
     // This dispatcher matches the original dispatch behavior of AsyncEventBus.
     //
     // We can't really make any guarantees about the overall dispatch order for this dispatcher in
-    // a multithreaded environment for a couple reasons:
+    // a multithreaded environment for a couple of reasons:
     //
     // 1. Subscribers to events posted on different threads can be interleaved with each other
     //    freely. (A event on one thread, B event on another could yield any of
@@ -148,8 +152,7 @@ abstract class Dispatcher {
     // in some cases.
 
     /** Global event queue. */
-    private final ConcurrentLinkedQueue<EventWithSubscriber> queue =
-        Queues.newConcurrentLinkedQueue();
+    private final ConcurrentLinkedQueue<EventWithSubscriber> queue = new ConcurrentLinkedQueue<>();
 
     @Override
     void dispatch(Object event, Iterator<Subscriber> subscribers) {

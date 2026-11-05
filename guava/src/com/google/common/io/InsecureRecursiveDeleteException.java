@@ -16,12 +16,12 @@
 
 package com.google.common.io;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.j2objc.annotations.J2ObjCIncompatible;
 import java.nio.file.FileSystemException;
 import java.nio.file.SecureDirectoryStream;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Exception indicating that a recursive delete can't be performed because the file system does not
@@ -32,15 +32,18 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * <p>{@link RecursiveDeleteOption#ALLOW_INSECURE} can be used to force the recursive delete method
  * to proceed anyway.
  *
- * @since 21.0
+ * @since 21.0 (but only since 33.4.0 in the Android flavor)
  * @author Colin Decker
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 @J2ObjCIncompatible // java.nio.file
 public final class InsecureRecursiveDeleteException extends FileSystemException {
 
+  /** Constructs a new {@code InsecureRecursiveDeleteException} for the specified file. */
   public InsecureRecursiveDeleteException(@Nullable String file) {
     super(file, null, "unable to guarantee security of recursive delete");
   }
+
+  private static final long serialVersionUID = -826808058212488134L;
 }

@@ -42,7 +42,7 @@ public class ReserializingTestCollectionGenerator<E> implements TestCollectionGe
 
   public static <E> ReserializingTestCollectionGenerator<E> newInstance(
       TestCollectionGenerator<E> delegate) {
-    return new ReserializingTestCollectionGenerator<E>(delegate);
+    return new ReserializingTestCollectionGenerator<>(delegate);
   }
 
   @Override
@@ -59,9 +59,8 @@ public class ReserializingTestCollectionGenerator<E> implements TestCollectionGe
       ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()));
       return (T) in.readObject();
     } catch (IOException | ClassNotFoundException e) {
-      Helpers.fail(e, e.getMessage());
+      throw new AssertionError(e);
     }
-    throw new AssertionError("not reachable");
   }
 
   @Override

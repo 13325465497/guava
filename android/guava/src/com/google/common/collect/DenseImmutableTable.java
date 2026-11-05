@@ -14,12 +14,18 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.collect.Maps.indexMap;
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableMap.IteratorBasedImmutableMap;
 import com.google.errorprone.annotations.Immutable;
 import com.google.j2objc.annotations.WeakOuter;
 import java.util.Map;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /** A {@code RegularImmutableTable} optimized for dense data. */
 @GwtCompatible
@@ -37,7 +43,7 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
   private final int[] columnCounts;
 
   @SuppressWarnings("Immutable") // We don't modify this after construction.
-  private final V[][] values;
+  private final @Nullable V[][] values;
 
   // For each cell in iteration order, the index of that cell's row key in the row key list.
   @SuppressWarnings("Immutable") // We don't modify this after construction.
@@ -52,10 +58,10 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
       ImmutableSet<R> rowSpace,
       ImmutableSet<C> columnSpace) {
     @SuppressWarnings("unchecked")
-    V[][] array = (V[][]) new Object[rowSpace.size()][columnSpace.size()];
+    @Nullable V[][] array = (@Nullable V[][]) new Object[rowSpace.size()][columnSpace.size()];
     this.values = array;
-    this.rowKeyToIndex = Maps.indexMap(rowSpace);
-    this.columnKeyToIndex = Maps.indexMap(columnSpace);
+    this.rowKeyToIndex = indexMap(rowSpace);
+    this.columnKeyToIndex = indexMap(columnSpace);
     rowCounts = new int[rowKeyToIndex.size()];
     columnCounts = new int[columnKeyToIndex.size()];
     int[] cellRowIndices = new int[cellList.size()];
@@ -64,8 +70,9 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
       Cell<R, C, V> cell = cellList.get(i);
       R rowKey = cell.getRowKey();
       C columnKey = cell.getColumnKey();
-      int rowIndex = rowKeyToIndex.get(rowKey);
-      int columnIndex = columnKeyToIndex.get(columnKey);
+      // The requireNonNull calls are safe because we construct the indexes with indexMap.
+      int rowIndex = requireNonNull(rowKeyToIndex.get(rowKey));
+      int columnIndex = requireNonNull(columnKeyToIndex.get(columnKey));
       V existingValue = values[rowIndex][columnIndex];
       checkNoDuplicate(rowKey, columnKey, existingValue, cell.getValue());
       values[rowIndex][columnIndex] = cell.getValue();
@@ -95,12 +102,11 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
       return size == keyToIndex().size();
     }
 
-    K getKey(int index) {
+    final K getKey(int index) {
       return keyToIndex().keySet().asList().get(index);
     }
 
-    @NullableDecl
-    abstract V getValue(int keyIndex);
+    abstract @Nullable V getValue(int keyIndex);
 
     @Override
     ImmutableSet<K> createKeySet() {
@@ -108,12 +114,12 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     }
 
     @Override
-    public int size() {
+    public final int size() {
       return size;
     }
 
     @Override
-    public V get(@NullableDecl Object key) {
+    public final @Nullable V get(@Nullable Object key) {
       Integer keyIndex = keyToIndex().get(key);
       return (keyIndex == null) ? null : getValue(keyIndex);
     }
@@ -121,20 +127,29 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     @Override
     UnmodifiableIterator<Entry<K, V>> entryIterator() {
       return new AbstractIterator<Entry<K, V>>() {
-        private int index = -1;
-        private final int maxIndex = keyToIndex().size();
+        int index = -1;
+        final int maxIndex = keyToIndex().size();
 
         @Override
-        protected Entry<K, V> computeNext() {
+        protected @Nullable Entry<K, V> computeNext() {
           for (index++; index < maxIndex; index++) {
             V value = getValue(index);
             if (value != null) {
-              return Maps.immutableEntry(getKey(index), value);
+              return immutableEntry(getKey(index), value);
             }
           }
           return endOfData();
         }
       };
+    }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @J2ktIncompatible // serialization
+    @Override
+    @GwtIncompatible // serialization
+    Object writeReplace() {
+      return super.writeReplace();
     }
   }
 
@@ -152,13 +167,22 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     }
 
     @Override
-    V getValue(int keyIndex) {
+    @Nullable V getValue(int keyIndex) {
       return values[rowIndex][keyIndex];
     }
 
     @Override
     boolean isPartialView() {
       return true;
+    }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+    @GwtIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
     }
   }
 
@@ -176,13 +200,22 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     }
 
     @Override
-    V getValue(int keyIndex) {
+    @Nullable V getValue(int keyIndex) {
       return values[keyIndex][columnIndex];
     }
 
     @Override
     boolean isPartialView() {
       return true;
+    }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+    @GwtIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
     }
   }
 
@@ -206,6 +239,15 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     boolean isPartialView() {
       return false;
     }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+    @GwtIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
+    }
   }
 
   @WeakOuter
@@ -228,24 +270,31 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     boolean isPartialView() {
       return false;
     }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+    @GwtIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
+    }
   }
 
   @Override
   public ImmutableMap<C, Map<R, V>> columnMap() {
     // Casts without copying.
-    ImmutableMap<C, ImmutableMap<R, V>> columnMap = this.columnMap;
-    return ImmutableMap.<C, Map<R, V>>copyOf(columnMap);
+    return ImmutableMap.copyOf(columnMap);
   }
 
   @Override
   public ImmutableMap<R, Map<C, V>> rowMap() {
     // Casts without copying.
-    ImmutableMap<R, ImmutableMap<C, V>> rowMap = this.rowMap;
-    return ImmutableMap.<R, Map<C, V>>copyOf(rowMap);
+    return ImmutableMap.copyOf(rowMap);
   }
 
   @Override
-  public V get(@NullableDecl Object rowKey, @NullableDecl Object columnKey) {
+  public @Nullable V get(@Nullable Object rowKey, @Nullable Object columnKey) {
     Integer rowIndex = rowKeyToIndex.get(rowKey);
     Integer columnIndex = columnKeyToIndex.get(columnKey);
     return ((rowIndex == null) || (columnIndex == null)) ? null : values[rowIndex][columnIndex];
@@ -262,17 +311,21 @@ final class DenseImmutableTable<R, C, V> extends RegularImmutableTable<R, C, V> 
     int columnIndex = cellColumnIndices[index];
     R rowKey = rowKeySet().asList().get(rowIndex);
     C columnKey = columnKeySet().asList().get(columnIndex);
-    V value = values[rowIndex][columnIndex];
+    // requireNonNull is safe because we use indexes that were populated by the constructor.
+    V value = requireNonNull(values[rowIndex][columnIndex]);
     return cellOf(rowKey, columnKey, value);
   }
 
   @Override
   V getValue(int index) {
-    return values[cellRowIndices[index]][cellColumnIndices[index]];
+    // requireNonNull is safe because we use indexes that were populated by the constructor.
+    return requireNonNull(values[cellRowIndices[index]][cellColumnIndices[index]]);
   }
 
   @Override
-  SerializedForm createSerializedForm() {
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
     return SerializedForm.create(this, cellRowIndices, cellColumnIndices);
   }
 }

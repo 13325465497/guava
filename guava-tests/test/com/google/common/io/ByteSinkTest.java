@@ -21,17 +21,20 @@ import static com.google.common.io.TestOption.OPEN_THROWS;
 import static com.google.common.io.TestOption.READ_THROWS;
 import static com.google.common.io.TestOption.WRITE_THROWS;
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertThrows;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.EnumSet;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for the default implementations of {@code ByteSink} methods.
  *
  * @author Colin Decker
  */
+@NullUnmarked
 public class ByteSinkTest extends IoTestCase {
 
   private final byte[] bytes = newPreFilledByteArray(10000);
@@ -39,7 +42,7 @@ public class ByteSinkTest extends IoTestCase {
   private TestByteSink sink;
 
   @Override
-  protected void setUp() throws Exception {
+  protected void setUp() {
     sink = new TestByteSink();
   }
 
@@ -82,11 +85,7 @@ public class ByteSinkTest extends IoTestCase {
     for (TestOption option : EnumSet.of(OPEN_THROWS, READ_THROWS, CLOSE_THROWS)) {
       TestByteSource failSource = new TestByteSource(new byte[10], option);
       TestByteSink okSink = new TestByteSink();
-      try {
-        failSource.copyTo(okSink);
-        fail();
-      } catch (IOException expected) {
-      }
+      assertThrows(IOException.class, () -> failSource.copyTo(okSink));
       // ensure stream was closed IF it was opened (depends on implementation whether or not it's
       // opened at all if source.newInputStream() throws).
       assertTrue(
@@ -97,22 +96,14 @@ public class ByteSinkTest extends IoTestCase {
 
   public void testClosesOnErrors_whenWriteThrows() {
     TestByteSink failSink = new TestByteSink(WRITE_THROWS);
-    try {
-      new TestByteSource(new byte[10]).copyTo(failSink);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> new TestByteSource(new byte[10]).copyTo(failSink));
     assertTrue(failSink.wasStreamClosed());
   }
 
-  public void testClosesOnErrors_writingFromInputStreamThatThrows() {
+  public void testClosesOnErrors_writingFromInputStreamThatThrows() throws IOException {
     TestByteSink okSink = new TestByteSink();
-    try {
-      TestInputStream in = new TestInputStream(new ByteArrayInputStream(new byte[10]), READ_THROWS);
-      okSink.writeFrom(in);
-      fail();
-    } catch (IOException expected) {
-    }
+    TestInputStream in = new TestInputStream(new ByteArrayInputStream(new byte[10]), READ_THROWS);
+    assertThrows(IOException.class, () -> okSink.writeFrom(in));
     assertTrue(okSink.wasStreamClosed());
   }
 }

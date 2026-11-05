@@ -21,12 +21,14 @@ import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests the speed of iteration of different iteration methods for collections.
  *
  * @author David Richter
  */
+@NullUnmarked
 public class IteratorBenchmark {
   @Param({"0", "1", "16", "256", "4096", "65536"})
   int size;
@@ -40,7 +42,7 @@ public class IteratorBenchmark {
   void setUp() {
     array = new Object[size];
     arrayList = Lists.newArrayListWithCapacity(size);
-    linkedList = Lists.newLinkedList();
+    linkedList = new LinkedList<>();
 
     for (int i = 0; i < size; i++) {
       Object value = new Object();

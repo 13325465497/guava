@@ -16,7 +16,6 @@
 
 package com.google.common.io;
 
-import com.google.common.collect.Sets;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,10 +23,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base test case class for I/O tests.
@@ -35,6 +37,7 @@ import junit.framework.TestCase;
  * @author Chris Nokleberg
  * @author Colin Decker
  */
+@NullUnmarked
 public abstract class IoTestCase extends TestCase {
 
   private static final Logger logger = Logger.getLogger(IoTestCase.class.getName());
@@ -47,10 +50,10 @@ public abstract class IoTestCase extends TestCase {
       " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
           + "[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
-  private File testDir;
-  private File tempDir;
+  private @Nullable File testDir;
+  private @Nullable File tempDir;
 
-  private final Set<File> filesToDelete = Sets.newHashSet();
+  private final Set<File> filesToDelete = new HashSet<>();
 
   @Override
   protected void tearDown() {
@@ -92,7 +95,7 @@ public abstract class IoTestCase extends TestCase {
   }
 
   /** Returns the file with the given name under the testdata directory. */
-  protected final File getTestFile(String name) throws IOException {
+  final @Nullable File getTestFile(String name) throws IOException {
     File file = new File(getTestDir(), name);
     if (!file.exists()) {
       URL resourceUrl = IoTestCase.class.getResource("testdata/" + name);
@@ -109,7 +112,7 @@ public abstract class IoTestCase extends TestCase {
    * Creates a new temp dir for testing. The returned directory and all contents of it will be
    * deleted in the tear-down for this test.
    */
-  protected final File createTempDir() throws IOException {
+  final File createTempDir() throws IOException {
     File tempFile = File.createTempFile("IoTestCase", "");
     if (!tempFile.delete() || !tempFile.mkdir()) {
       throw new IOException("failed to create temp dir");
@@ -123,7 +126,7 @@ public abstract class IoTestCase extends TestCase {
    * the tear-down for this test. Subsequent invocations of this method will return the same
    * directory.
    */
-  protected final File getTempDir() throws IOException {
+  final File getTempDir() throws IOException {
     if (tempDir == null) {
       tempDir = createTempDir();
     }
@@ -135,7 +138,7 @@ public abstract class IoTestCase extends TestCase {
    * Creates a new temp file in the temp directory returned by {@link #getTempDir()}. The file will
    * be deleted in the tear-down for this test.
    */
-  protected final File createTempFile() throws IOException {
+  final File createTempFile() throws IOException {
     return File.createTempFile("test", null, getTempDir());
   }
 
@@ -171,7 +174,7 @@ public abstract class IoTestCase extends TestCase {
   }
 
   @CanIgnoreReturnValue
-  private boolean delete(File file) {
+  private static boolean delete(File file) {
     if (file.isDirectory()) {
       File[] files = file.listFiles();
       if (files != null) {

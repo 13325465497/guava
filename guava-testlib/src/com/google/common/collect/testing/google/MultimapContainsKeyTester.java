@@ -19,12 +19,12 @@ package com.google.common.collect.testing.google;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEY_QUERIES;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
-import org.junit.Ignore;
 
 /**
  * Tester for the {@code containsKey} methods of {@code Multimap} and its {@code asMap()} view.
@@ -32,7 +32,6 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MultimapContainsKeyTester<K, V> extends AbstractMultimapTester<K, V, Multimap<K, V>> {
   @CollectionSize.Require(absent = ZERO)
   public void testContainsKeyYes() {
@@ -81,11 +80,6 @@ public class MultimapContainsKeyTester<K, V> extends AbstractMultimapTester<K, V
 
   @MapFeature.Require(absent = ALLOWS_NULL_KEY_QUERIES)
   public void testContainsKeyNullDisallowed() {
-    try {
-      multimap().containsKey(null);
-      fail("Expected NullPointerException");
-    } catch (NullPointerException expected) {
-      // success
-    }
+    assertThrows(NullPointerException.class, () -> multimap().containsKey(null));
   }
 }

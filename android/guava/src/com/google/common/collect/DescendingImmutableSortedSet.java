@@ -17,7 +17,8 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtIncompatible;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Skeletal implementation of {@link ImmutableSortedSet#descendingSet()}.
@@ -34,7 +35,7 @@ final class DescendingImmutableSortedSet<E> extends ImmutableSortedSet<E> {
   }
 
   @Override
-  public boolean contains(@NullableDecl Object object) {
+  public boolean contains(@Nullable Object object) {
     return forward.contains(object);
   }
 
@@ -65,45 +66,42 @@ final class DescendingImmutableSortedSet<E> extends ImmutableSortedSet<E> {
   }
 
   @Override
-  @GwtIncompatible("NavigableSet")
   public ImmutableSortedSet<E> descendingSet() {
     return forward;
   }
 
   @Override
-  @GwtIncompatible("NavigableSet")
   public UnmodifiableIterator<E> descendingIterator() {
     return forward.iterator();
   }
 
   @Override
-  @GwtIncompatible("NavigableSet")
   ImmutableSortedSet<E> createDescendingSet() {
     throw new AssertionError("should never be called");
   }
 
   @Override
-  public E lower(E element) {
+  public @Nullable E lower(E element) {
     return forward.higher(element);
   }
 
   @Override
-  public E floor(E element) {
+  public @Nullable E floor(E element) {
     return forward.ceiling(element);
   }
 
   @Override
-  public E ceiling(E element) {
+  public @Nullable E ceiling(E element) {
     return forward.floor(element);
   }
 
   @Override
-  public E higher(E element) {
+  public @Nullable E higher(E element) {
     return forward.lower(element);
   }
 
   @Override
-  int indexOf(@NullableDecl Object target) {
+  int indexOf(@Nullable Object target) {
     int index = forward.indexOf(target);
     if (index == -1) {
       return index;
@@ -115,5 +113,13 @@ final class DescendingImmutableSortedSet<E> extends ImmutableSortedSet<E> {
   @Override
   boolean isPartialView() {
     return forward.isPartialView();
+  }
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible // serialization
+  Object writeReplace() {
+    return super.writeReplace();
   }
 }

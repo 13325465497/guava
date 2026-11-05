@@ -23,20 +23,21 @@ import static com.google.common.collect.testing.features.CollectionFeature.SUPPO
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_REMOVE;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Multiset.Entry;
 import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.List;
-import org.junit.Ignore;
 
 /**
  * Common superclass for {@link MultisetSetCountUnconditionallyTester} and {@link
@@ -46,15 +47,13 @@ import org.junit.Ignore;
  *
  * @author Chris Povirk
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultisetTester<E> {
   /*
-   * TODO: consider adding MultisetFeatures.SUPPORTS_SET_COUNT. Currently we
-   * assume that using setCount() to increase the count is permitted iff add()
-   * is permitted and similarly for decrease/remove(). We assume that a
-   * setCount() no-op is permitted if either add() or remove() is permitted,
-   * though we also allow it to "succeed" if neither is permitted.
+   * TODO: consider adding MultisetFeatures.SUPPORTS_SET_COUNT. Currently we assume that using
+   * setCount() to increase the count is permitted if and only if add() is permitted and similarly
+   * for decrease/remove(). We assume that a setCount() no-op is permitted if either add() or
+   * remove() is permitted, though we also allow it to "succeed" if neither is permitted.
    */
 
   private void assertSetCount(E element, int count) {
@@ -89,19 +88,13 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
   abstract void setCountNoCheckReturnValue(E element, int count);
 
   private void assertSetCountIncreasingFailure(E element, int count) {
-    try {
-      setCountNoCheckReturnValue(element, count);
-      fail("a call to multiset.setCount() to increase an element's count should throw");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class, () -> setCountNoCheckReturnValue(element, count));
   }
 
   private void assertSetCountDecreasingFailure(E element, int count) {
-    try {
-      setCountNoCheckReturnValue(element, count);
-      fail("a call to multiset.setCount() to decrease an element's count should throw");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class, () -> setCountNoCheckReturnValue(element, count));
   }
 
   // Unconditional setCount no-ops.
@@ -188,26 +181,16 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
 
   @CollectionFeature.Require({SUPPORTS_ADD, FAILS_FAST_ON_CONCURRENT_MODIFICATION})
   public void testSetCountZeroToOneConcurrentWithIteration() {
-    try {
-      Iterator<E> iterator = collection.iterator();
-      assertSetCount(e3(), 1);
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<E> iterator = collection.iterator();
+    assertSetCount(e3(), 1);
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @CollectionFeature.Require({SUPPORTS_ADD, FAILS_FAST_ON_CONCURRENT_MODIFICATION})
   public void testSetCountZeroToOneConcurrentWithEntrySetIteration() {
-    try {
-      Iterator<Entry<E>> iterator = getMultiset().entrySet().iterator();
-      assertSetCount(e3(), 1);
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<Entry<E>> iterator = getMultiset().entrySet().iterator();
+    assertSetCount(e3(), 1);
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @CollectionFeature.Require(SUPPORTS_ADD)
@@ -248,27 +231,17 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
   @CollectionFeature.Require({SUPPORTS_REMOVE, FAILS_FAST_ON_CONCURRENT_MODIFICATION})
   @CollectionSize.Require(absent = ZERO)
   public void testSetCountOneToZeroConcurrentWithIteration() {
-    try {
-      Iterator<E> iterator = collection.iterator();
-      assertSetCount(e0(), 0);
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<E> iterator = collection.iterator();
+    assertSetCount(e0(), 0);
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @CollectionFeature.Require({SUPPORTS_REMOVE, FAILS_FAST_ON_CONCURRENT_MODIFICATION})
   @CollectionSize.Require(absent = ZERO)
   public void testSetCountOneToZeroConcurrentWithEntrySetIteration() {
-    try {
-      Iterator<Entry<E>> iterator = getMultiset().entrySet().iterator();
-      assertSetCount(e0(), 0);
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<Entry<E>> iterator = getMultiset().entrySet().iterator();
+    assertSetCount(e0(), 0);
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @CollectionSize.Require(SEVERAL)
@@ -323,11 +296,7 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
 
   @CollectionFeature.Require(value = SUPPORTS_ADD, absent = ALLOWS_NULL_VALUES)
   public void testSetCount_addNull_nullUnsupported() {
-    try {
-      setCountNoCheckReturnValue(null, 1);
-      fail("adding null with setCount() should throw NullPointerException");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> setCountNoCheckReturnValue(null, 1));
   }
 
   @CollectionFeature.Require(ALLOWS_NULL_VALUES)
@@ -360,11 +329,7 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
 
   @CollectionFeature.Require(SUPPORTS_REMOVE)
   public void testSetCount_negative_removeSupported() {
-    try {
-      setCountNoCheckReturnValue(e3(), -1);
-      fail("calling setCount() with a negative count should throw IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> setCountNoCheckReturnValue(e3(), -1));
   }
 
   @CollectionFeature.Require(absent = SUPPORTS_REMOVE)
@@ -384,14 +349,16 @@ public abstract class AbstractMultisetSetCountTester<E> extends AbstractMultiset
    * Returns {@link Method} instances for the {@code setCount()} tests that assume multisets support
    * duplicates so that the test of {@code Multisets.forSet()} can suppress them.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static List<Method> getSetCountDuplicateInitializingMethods() {
-    return Arrays.asList(
+    return asList(
         getMethod("testSetCount_threeToThree_removeSupported"),
         getMethod("testSetCount_threeToZero_supported"),
         getMethod("testSetCount_threeToOne_supported"));
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   private static Method getMethod(String methodName) {
     return Helpers.getMethod(AbstractMultisetSetCountTester.class, methodName);

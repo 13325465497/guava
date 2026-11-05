@@ -14,11 +14,11 @@
 
 package com.google.common.collect;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.errorprone.annotations.DoNotMock;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A set comprising zero or more {@linkplain Range#isEmpty nonempty}, {@linkplain
@@ -27,14 +27,14 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * <p>Implementations that choose to support the {@link #add(Range)} operation are required to
  * ignore empty ranges and coalesce connected ranges. For example:
  *
- * <pre>{@code
+ * {@snippet :
  * RangeSet<Integer> rangeSet = TreeRangeSet.create();
  * rangeSet.add(Range.closed(1, 10)); // {[1, 10]}
  * rangeSet.add(Range.closedOpen(11, 15)); // disconnected range; {[1, 10], [11, 15)}
  * rangeSet.add(Range.closedOpen(15, 20)); // connected range; {[1, 10], [11, 20)}
  * rangeSet.add(Range.openClosed(0, 0)); // empty range; {[1, 10], [11, 20)}
  * rangeSet.remove(Range.open(5, 10)); // splits [1, 10]; {[1, 5], [10, 10], [11, 20)}
- * }</pre>
+ * }
  *
  * <p>Note that the behavior of {@link Range#isEmpty()} and {@link Range#isConnected(Range)} may not
  * be as expected on discrete ranges. See the Javadoc of those methods for details.
@@ -42,13 +42,14 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * <p>For a {@link Set} whose contents are specified by a {@link Range}, see {@link ContiguousSet}.
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#rangeset"> RangeSets</a>.
+ * "https://github.com/google/guava/wiki/NewCollectionTypesExplained#rangeset">RangeSets</a>.
  *
  * @author Kevin Bourrillion
  * @author Louis Wasserman
  * @since 14.0
  */
-@Beta
+@SuppressWarnings("rawtypes") // https://github.com/google/guava/issues/989
+@DoNotMock("Use ImmutableRangeSet or TreeRangeSet")
 @GwtIncompatible
 public interface RangeSet<C extends Comparable> {
   // TODO(lowasser): consider adding default implementations of some of these methods
@@ -62,7 +63,7 @@ public interface RangeSet<C extends Comparable> {
    * Returns the unique range from this range set that {@linkplain Range#contains contains} {@code
    * value}, or {@code null} if this range set does not contain {@code value}.
    */
-  Range<C> rangeContaining(C value);
+  @Nullable Range<C> rangeContaining(C value);
 
   /**
    * Returns {@code true} if there exists a non-empty range enclosed by both a member range in this

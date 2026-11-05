@@ -17,6 +17,7 @@ package com.google.common.io;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -45,6 +46,7 @@ import java.nio.charset.Charset;
  * @since 14.0
  * @author Colin Decker
  */
+@J2ktIncompatible
 @GwtIncompatible
 public abstract class ByteSink {
 
@@ -96,15 +98,8 @@ public abstract class ByteSink {
   public void write(byte[] bytes) throws IOException {
     checkNotNull(bytes);
 
-    Closer closer = Closer.create();
-    try {
-      OutputStream out = closer.register(openStream());
+    try (OutputStream out = openStream()) {
       out.write(bytes);
-      out.flush(); // https://code.google.com/p/guava-libraries/issues/detail?id=1330
-    } catch (Throwable e) {
-      throw closer.rethrow(e);
-    } finally {
-      closer.close();
     }
   }
 
@@ -119,16 +114,8 @@ public abstract class ByteSink {
   public long writeFrom(InputStream input) throws IOException {
     checkNotNull(input);
 
-    Closer closer = Closer.create();
-    try {
-      OutputStream out = closer.register(openStream());
-      long written = ByteStreams.copy(input, out);
-      out.flush(); // https://code.google.com/p/guava-libraries/issues/detail?id=1330
-      return written;
-    } catch (Throwable e) {
-      throw closer.rethrow(e);
-    } finally {
-      closer.close();
+    try (OutputStream out = openStream()) {
+      return ByteStreams.copy(input, out);
     }
   }
 
@@ -151,7 +138,7 @@ public abstract class ByteSink {
 
     @Override
     public String toString() {
-      return ByteSink.this.toString() + ".asCharSink(" + charset + ")";
+      return ByteSink.this + ".asCharSink(" + charset + ")";
     }
   }
 }

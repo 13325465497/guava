@@ -16,12 +16,12 @@
 
 package com.google.common.graph;
 
-import com.google.common.annotations.Beta;
-import com.google.common.base.Function;
-import com.google.common.collect.Maps;
+import static com.google.common.collect.Maps.asMap;
+import static java.util.Objects.requireNonNull;
+
 import java.util.Map;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * This class provides a skeletal implementation of {@link ValueGraph}. It is recommended to extend
@@ -35,9 +35,10 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @param <V> Value parameter type
  * @since 20.0
  */
-@Beta
 public abstract class AbstractValueGraph<N, V> extends AbstractBaseGraph<N>
     implements ValueGraph<N, V> {
+  /** Constructor for use by subclasses. */
+  protected AbstractValueGraph() {}
 
   @Override
   public Graph<N> asGraph() {
@@ -65,6 +66,11 @@ public abstract class AbstractValueGraph<N, V> extends AbstractBaseGraph<N>
       @Override
       public ElementOrder<N> nodeOrder() {
         return AbstractValueGraph.this.nodeOrder();
+      }
+
+      @Override
+      public ElementOrder<N> incidentEdgeOrder() {
+        return AbstractValueGraph.this.incidentEdgeOrder();
       }
 
       @Override
@@ -100,7 +106,7 @@ public abstract class AbstractValueGraph<N, V> extends AbstractBaseGraph<N>
   }
 
   @Override
-  public final boolean equals(@NullableDecl Object obj) {
+  public final boolean equals(@Nullable Object obj) {
     if (obj == this) {
       return true;
     }
@@ -132,14 +138,11 @@ public abstract class AbstractValueGraph<N, V> extends AbstractBaseGraph<N>
         + edgeValueMap(this);
   }
 
-  private static <N, V> Map<EndpointPair<N>, V> edgeValueMap(final ValueGraph<N, V> graph) {
-    Function<EndpointPair<N>, V> edgeToValueFn =
-        new Function<EndpointPair<N>, V>() {
-          @Override
-          public V apply(EndpointPair<N> edge) {
-            return graph.edgeValueOrDefault(edge.nodeU(), edge.nodeV(), null);
-          }
-        };
-    return Maps.asMap(graph.edges(), edgeToValueFn);
+  private static <N, V> Map<EndpointPair<N>, V> edgeValueMap(ValueGraph<N, V> graph) {
+    return asMap(
+        graph.edges(),
+        edge ->
+            // requireNonNull is safe because the endpoint pair comes from the graph.
+            requireNonNull(graph.edgeValueOrDefault(edge.nodeU(), edge.nodeV(), null)));
   }
 }

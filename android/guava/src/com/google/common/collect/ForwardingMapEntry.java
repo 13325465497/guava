@@ -16,12 +16,14 @@
 
 package com.google.common.collect;
 
-import com.google.common.annotations.Beta;
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.base.Objects;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A map entry which forwards all its method calls to another map entry. Subclasses should override
@@ -34,7 +36,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * should override {@code equals} as well, either providing your own implementation, or delegating
  * to the provided {@code standardEquals} method.
  *
- * <p>Each of the {@code standard} methods, where appropriate, use {@link Objects#equal} to test
+ * <p>Each of the {@code standard} methods, where appropriate, use {@link Objects#equals} to test
  * equality for both keys and values. This may not be the desired behavior for map implementations
  * that use non-standard notions of key equality, such as the entry of a {@code SortedMap} whose
  * comparator is not consistent with {@code equals}.
@@ -47,7 +49,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @since 2.0
  */
 @GwtCompatible
-public abstract class ForwardingMapEntry<K, V> extends ForwardingObject implements Map.Entry<K, V> {
+public abstract class ForwardingMapEntry<K extends @Nullable Object, V extends @Nullable Object>
+    extends ForwardingObject implements Map.Entry<K, V> {
   // TODO(lowasser): identify places where thread safety is actually lost
 
   /** Constructor for use by subclasses. */
@@ -57,22 +60,26 @@ public abstract class ForwardingMapEntry<K, V> extends ForwardingObject implemen
   protected abstract Entry<K, V> delegate();
 
   @Override
+  @ParametricNullness
   public K getKey() {
     return delegate().getKey();
   }
 
   @Override
+  @ParametricNullness
   public V getValue() {
     return delegate().getValue();
   }
 
   @Override
-  public V setValue(V value) {
+  @ParametricNullness
+  @CanIgnoreReturnValue
+  public V setValue(@ParametricNullness V value) {
     return delegate().setValue(value);
   }
 
   @Override
-  public boolean equals(@NullableDecl Object object) {
+  public boolean equals(@Nullable Object object) {
     return delegate().equals(object);
   }
 
@@ -88,11 +95,11 @@ public abstract class ForwardingMapEntry<K, V> extends ForwardingObject implemen
    *
    * @since 7.0
    */
-  protected boolean standardEquals(@NullableDecl Object object) {
+  protected boolean standardEquals(@Nullable Object object) {
     if (object instanceof Entry) {
       Entry<?, ?> that = (Entry<?, ?>) object;
-      return Objects.equal(this.getKey(), that.getKey())
-          && Objects.equal(this.getValue(), that.getValue());
+      return Objects.equals(this.getKey(), that.getKey())
+          && Objects.equals(this.getValue(), that.getValue());
     }
     return false;
   }
@@ -117,8 +124,30 @@ public abstract class ForwardingMapEntry<K, V> extends ForwardingObject implemen
    *
    * @since 7.0
    */
-  @Beta
   protected String standardToString() {
     return getKey() + "=" + getValue();
+  }
+
+  /**
+   * A simplified version of {@link ForwardingMapEntry} where subclasses can pass in an already
+   * constructed {@link Entry} as the delegate.
+   *
+   * <p>TODO(b/3417232): Consider making this public, but take into consideration whether it would
+   * then appear as a user-visible supertype for any classes.
+   */
+  abstract static class SimpleForwardingMapEntry<
+          K extends @Nullable Object, V extends @Nullable Object>
+      extends ForwardingMapEntry<K, V> {
+    private final Entry<K, V> delegate;
+
+    /** Constructor for use by subclasses. */
+    SimpleForwardingMapEntry(Entry<K, V> delegate) {
+      this.delegate = checkNotNull(delegate);
+    }
+
+    @Override
+    protected final Entry<K, V> delegate() {
+      return delegate;
+    }
   }
 }

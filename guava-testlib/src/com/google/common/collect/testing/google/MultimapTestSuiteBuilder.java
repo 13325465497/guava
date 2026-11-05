@@ -17,7 +17,10 @@
 package com.google.common.collect.testing.google;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.testing.Helpers.copyToSet;
 import static com.google.common.collect.testing.Helpers.mapEntry;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static java.util.Collections.singleton;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.ImmutableList;
@@ -28,7 +31,6 @@ import com.google.common.collect.testing.AbstractTester;
 import com.google.common.collect.testing.CollectionTestSuiteBuilder;
 import com.google.common.collect.testing.DerivedGenerator;
 import com.google.common.collect.testing.FeatureSpecificTestSuiteBuilder;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
 import com.google.common.collect.testing.OneSizeTestContainerGenerator;
 import com.google.common.collect.testing.PerCollectionSizeTestSuiteBuilder;
@@ -41,7 +43,6 @@ import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.Feature;
 import com.google.common.collect.testing.features.ListFeature;
 import com.google.common.collect.testing.features.MapFeature;
-import com.google.common.testing.SerializableTester;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -73,9 +74,10 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
   }
 
   // Class parameters must be raw.
+  @SuppressWarnings("rawtypes") // class literals
   @Override
   protected List<Class<? extends AbstractTester>> getTesters() {
-    return ImmutableList.<Class<? extends AbstractTester>>of(
+    return ImmutableList.of(
         MultimapAsMapGetTester.class,
         MultimapAsMapTester.class,
         MultimapSizeTester.class,
@@ -111,11 +113,12 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
 
     if (parentBuilder.getFeatures().contains(CollectionFeature.SERIALIZABLE)) {
       derivedSuites.add(
-          MultimapTestSuiteBuilder.using(
-                  new ReserializedMultimapGenerator<K, V, M>(parentBuilder.getSubjectGenerator()))
+          using(new ReserializedMultimapGenerator<K, V, M>(parentBuilder.getSubjectGenerator()))
               .withFeatures(computeReserializedMultimapFeatures(parentBuilder.getFeatures()))
               .named(parentBuilder.getName() + " reserialized")
               .suppressing(parentBuilder.getSuppressedTests())
+              .withSetUp(parentBuilder.getSetUp())
+              .withTearDown(parentBuilder.getTearDown())
               .createTestSuite());
     }
 
@@ -124,6 +127,8 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
             .withFeatures(computeAsMapFeatures(parentBuilder.getFeatures()))
             .named(parentBuilder.getName() + ".asMap")
             .suppressing(parentBuilder.getSuppressedTests())
+            .withSetUp(parentBuilder.getSetUp())
+            .withTearDown(parentBuilder.getTearDown())
             .createTestSuite());
 
     derivedSuites.add(computeEntriesTestSuite(parentBuilder));
@@ -135,7 +140,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     return derivedSuites;
   }
 
-  TestSuite computeValuesTestSuite(
+  final TestSuite computeValuesTestSuite(
       FeatureSpecificTestSuiteBuilder<?, ? extends OneSizeTestContainerGenerator<M, Entry<K, V>>>
           parentBuilder) {
     return CollectionTestSuiteBuilder.using(
@@ -154,6 +159,8 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
         .withFeatures(computeEntriesFeatures(parentBuilder.getFeatures()))
         .named(parentBuilder.getName() + ".entries")
         .suppressing(parentBuilder.getSuppressedTests())
+        .withSetUp(parentBuilder.getSetUp())
+        .withTearDown(parentBuilder.getTearDown())
         .createTestSuite();
   }
 
@@ -165,6 +172,8 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
         .withFeatures(computeMultimapGetFeatures(parentBuilder.getFeatures()))
         .named(parentBuilder.getName() + ".get[key]")
         .suppressing(parentBuilder.getSuppressedTests())
+        .withSetUp(parentBuilder.getSetUp())
+        .withTearDown(parentBuilder.getTearDown())
         .createTestSuite();
   }
 
@@ -180,11 +189,13 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
           .withFeatures(features)
           .named(parentBuilder.getName() + ".asMap[].get[key]")
           .suppressing(parentBuilder.getSuppressedTests())
+          .withSetUp(parentBuilder.getSetUp())
+          .withTearDown(parentBuilder.getTearDown())
           .createTestSuite();
     }
   }
 
-  TestSuite computeKeysTestSuite(
+  final TestSuite computeKeysTestSuite(
       FeatureSpecificTestSuiteBuilder<?, ? extends OneSizeTestContainerGenerator<M, Entry<K, V>>>
           parentBuilder) {
     return MultisetTestSuiteBuilder.using(
@@ -192,11 +203,13 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
         .withFeatures(computeKeysFeatures(parentBuilder.getFeatures()))
         .named(parentBuilder.getName() + ".keys")
         .suppressing(parentBuilder.getSuppressedTests())
+        .withSetUp(parentBuilder.getSetUp())
+        .withTearDown(parentBuilder.getTearDown())
         .createTestSuite();
   }
 
   static Set<Feature<?>> computeDerivedCollectionFeatures(Set<Feature<?>> multimapFeatures) {
-    Set<Feature<?>> derivedFeatures = Helpers.copyToSet(multimapFeatures);
+    Set<Feature<?>> derivedFeatures = copyToSet(multimapFeatures);
     if (!derivedFeatures.remove(CollectionFeature.SERIALIZABLE_INCLUDING_VIEWS)) {
       derivedFeatures.remove(CollectionFeature.SERIALIZABLE);
     }
@@ -238,14 +251,14 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
 
   private static Set<Feature<?>> computeReserializedMultimapFeatures(
       Set<Feature<?>> multimapFeatures) {
-    Set<Feature<?>> derivedFeatures = Helpers.copyToSet(multimapFeatures);
+    Set<Feature<?>> derivedFeatures = copyToSet(multimapFeatures);
     derivedFeatures.remove(CollectionFeature.SERIALIZABLE);
     derivedFeatures.remove(CollectionFeature.SERIALIZABLE_INCLUDING_VIEWS);
     return derivedFeatures;
   }
 
   private static Set<Feature<?>> computeAsMapFeatures(Set<Feature<?>> multimapFeatures) {
-    Set<Feature<?>> derivedFeatures = Helpers.copyToSet(multimapFeatures);
+    Set<Feature<?>> derivedFeatures = copyToSet(multimapFeatures);
     derivedFeatures.remove(MapFeature.GENERAL_PURPOSE);
     derivedFeatures.remove(MapFeature.SUPPORTS_PUT);
     derivedFeatures.remove(MapFeature.ALLOWS_NULL_VALUES);
@@ -272,7 +285,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
           .build();
 
   Set<Feature<?>> computeMultimapGetFeatures(Set<Feature<?>> multimapFeatures) {
-    Set<Feature<?>> derivedFeatures = Helpers.copyToSet(multimapFeatures);
+    Set<Feature<?>> derivedFeatures = copyToSet(multimapFeatures);
     for (Entry<Feature<?>, Feature<?>> entry : GET_FEATURE_MAP.entries()) {
       if (derivedFeatures.contains(entry.getKey())) {
         derivedFeatures.add(entry.getValue());
@@ -288,9 +301,8 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     return derivedFeatures;
   }
 
-  Set<Feature<?>> computeMultimapAsMapGetFeatures(Set<Feature<?>> multimapFeatures) {
-    Set<Feature<?>> derivedFeatures =
-        Helpers.copyToSet(computeMultimapGetFeatures(multimapFeatures));
+  final Set<Feature<?>> computeMultimapAsMapGetFeatures(Set<Feature<?>> multimapFeatures) {
+    Set<Feature<?>> derivedFeatures = copyToSet(computeMultimapGetFeatures(multimapFeatures));
     if (derivedFeatures.remove(CollectionSize.ANY)) {
       derivedFeatures.addAll(CollectionSize.ANY.getImpliedFeatures());
     }
@@ -298,11 +310,11 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     return derivedFeatures;
   }
 
-  private static class AsMapGenerator<K, V, M extends Multimap<K, V>>
+  private static final class AsMapGenerator<K, V, M extends Multimap<K, V>>
       implements TestMapGenerator<K, Collection<V>>, DerivedGenerator {
     private final OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator;
 
-    public AsMapGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
+    AsMapGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
       this.multimapGenerator = multimapGenerator;
     }
 
@@ -313,7 +325,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
 
     private Collection<V> createCollection(V v) {
       return ((TestMultimapGenerator<K, V, M>) multimapGenerator.getInnerGenerator())
-          .createCollection(Collections.singleton(v));
+          .createCollection(singleton(v));
     }
 
     @Override
@@ -335,10 +347,16 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
       Set<K> keySet = new HashSet<>();
       List<Entry<K, V>> builder = new ArrayList<>();
       for (Object o : elements) {
-        Entry<K, Collection<V>> entry = (Entry<K, Collection<V>>) o;
-        keySet.add(entry.getKey());
-        for (V v : entry.getValue()) {
-          builder.add(mapEntry(entry.getKey(), v));
+        Entry<?, ?> entry = (Entry<?, ?>) o;
+        // These come from Entry<K, Collection<V>>> objects somewhere.
+        @SuppressWarnings("unchecked")
+        K key = (K) entry.getKey();
+        keySet.add(key);
+        for (Object v : (Collection<?>) entry.getValue()) {
+          // These come from Entry<K, Collection<V>>> objects somewhere.
+          @SuppressWarnings("unchecked")
+          V value = (V) v;
+          builder.add(mapEntry(key, value));
         }
       }
       checkArgument(keySet.size() == elements.length, "Duplicate keys");
@@ -348,7 +366,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     @SuppressWarnings("unchecked")
     @Override
     public Entry<K, Collection<V>>[] createArray(int length) {
-      return new Entry[length];
+      return (Entry<K, Collection<V>>[]) new Entry<?, ?>[length];
     }
 
     @Override
@@ -378,7 +396,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     @SuppressWarnings("unchecked")
     @Override
     public Collection<V>[] createValueArray(int length) {
-      return new Collection[length];
+      return (Collection<V>[]) new Collection<?>[length];
     }
   }
 
@@ -408,7 +426,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     @SuppressWarnings("unchecked")
     @Override
     public Entry<K, V>[] createArray(int length) {
-      return new Entry[length];
+      return (Entry<K, V>[]) new Entry<?, ?>[length];
     }
 
     @Override
@@ -417,11 +435,11 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     }
   }
 
-  static class ValuesGenerator<K, V, M extends Multimap<K, V>>
+  private static final class ValuesGenerator<K, V, M extends Multimap<K, V>>
       implements TestCollectionGenerator<V> {
     private final OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator;
 
-    public ValuesGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
+    ValuesGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
       this.multimapGenerator = multimapGenerator;
     }
 
@@ -437,14 +455,15 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
           ((TestMultimapGenerator<K, V, M>) multimapGenerator.getInnerGenerator())
               .sampleKeys()
               .e0();
-      Entry<K, V>[] entries = new Entry[elements.length];
+      Object[] entries = new Object[elements.length];
       for (int i = 0; i < elements.length; i++) {
-        entries[i] = mapEntry(k, (V) elements[i]);
+        @SuppressWarnings("unchecked") // These come from Entry<K, V> objects somewhere.
+        V value = (V) elements[i];
+        entries[i] = mapEntry(k, value);
       }
-      return multimapGenerator.create((Object[]) entries).values();
+      return multimapGenerator.create(entries).values();
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public V[] createArray(int length) {
       return ((TestMultimapGenerator<K, V, M>) multimapGenerator.getInnerGenerator())
@@ -470,11 +489,11 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     }
   }
 
-  static class KeysGenerator<K, V, M extends Multimap<K, V>>
+  private static final class KeysGenerator<K, V, M extends Multimap<K, V>>
       implements TestMultisetGenerator<K>, DerivedGenerator {
     private final OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator;
 
-    public KeysGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
+    KeysGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
       this.multimapGenerator = multimapGenerator;
     }
 
@@ -494,17 +513,18 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
        * This is nasty and complicated, but it's the only way to make sure keys get mapped to enough
        * distinct values.
        */
-      Entry[] entries = new Entry[elements.length];
+      Entry<?, ?>[] entries = new Entry<?, ?>[elements.length];
       Map<K, Iterator<V>> valueIterators = new HashMap<>();
       for (int i = 0; i < elements.length; i++) {
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked") // These come from Entry<K, V> objects somewhere.
         K key = (K) elements[i];
 
         Iterator<V> valueItr = valueIterators.get(key);
         if (valueItr == null) {
-          valueIterators.put(key, valueItr = sampleValuesIterator());
+          valueItr = sampleValuesIterator();
+          valueIterators.put(key, valueItr);
         }
-        entries[i] = mapEntry((K) elements[i], valueItr.next());
+        entries[i] = mapEntry(key, valueItr.next());
       }
       return multimapGenerator.create((Object[]) entries).keys();
     }
@@ -515,7 +535,6 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
           .iterator();
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public K[] createArray(int length) {
       return ((TestMultimapGenerator<K, V, M>) multimapGenerator.getInnerGenerator())
@@ -584,7 +603,9 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
               .sampleKeys()
               .e0();
       for (int i = 0; i < elements.length; i++) {
-        array[i] = mapEntry(k, (V) elements[i]);
+        @SuppressWarnings("unchecked") // These come from Entry<K, V> objects somewhere.
+        V value = (V) elements[i];
+        array[i] = mapEntry(k, value);
       }
       return multimapGenerator.create((Object[]) array).get(k);
     }
@@ -606,18 +627,19 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
               .sampleKeys()
               .e0();
       for (int i = 0; i < elements.length; i++) {
-        array[i] = mapEntry(k, (V) elements[i]);
+        @SuppressWarnings("unchecked") // These come from Entry<K, V> objects somewhere.
+        V value = (V) elements[i];
+        array[i] = mapEntry(k, value);
       }
       return multimapGenerator.create((Object[]) array).asMap().get(k);
     }
   }
 
-  private static class ReserializedMultimapGenerator<K, V, M extends Multimap<K, V>>
+  private static final class ReserializedMultimapGenerator<K, V, M extends Multimap<K, V>>
       implements TestMultimapGenerator<K, V, M> {
     private final OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator;
 
-    public ReserializedMultimapGenerator(
-        OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
+    ReserializedMultimapGenerator(OneSizeTestContainerGenerator<M, Entry<K, V>> multimapGenerator) {
       this.multimapGenerator = multimapGenerator;
     }
 
@@ -638,9 +660,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
 
     @Override
     public M create(Object... elements) {
-      return SerializableTester.reserialize(
-          ((TestMultimapGenerator<K, V, M>) multimapGenerator.getInnerGenerator())
-              .create(elements));
+      return reserialize(multimapGenerator.getInnerGenerator().create(elements));
     }
 
     @Override

@@ -17,6 +17,7 @@
 package com.google.common.collect.testing;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Comparator;
@@ -24,6 +25,7 @@ import java.util.Iterator;
 import java.util.NavigableSet;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A wrapper around {@code TreeSet} that aggressively checks to see if elements are mutually
@@ -35,12 +37,7 @@ import java.util.TreeSet;
 public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
   @SuppressWarnings("unchecked")
   private static final Comparator<Object> NATURAL_ORDER =
-      new Comparator<Object>() {
-        @Override
-        public int compare(Object o1, Object o2) {
-          return ((Comparable<Object>) o1).compareTo(o2);
-        }
-      };
+      (o1, o2) -> ((Comparable<Object>) o1).compareTo(o2);
 
   private final NavigableSet<E> delegate;
 
@@ -81,7 +78,7 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
   }
 
   @Override
-  public E ceiling(E e) {
+  public @Nullable E ceiling(E e) {
     return delegate.ceiling(checkValid(e));
   }
 
@@ -90,14 +87,13 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
     delegate.clear();
   }
 
-  @SuppressWarnings("unchecked")
   @Override
   public Comparator<? super E> comparator() {
     Comparator<? super E> comparator = delegate.comparator();
-    if (comparator == null) {
-      comparator = (Comparator<? super E>) NATURAL_ORDER;
+    if (comparator != null) {
+      return comparator;
     }
-    return comparator;
+    return NATURAL_ORDER;
   }
 
   @Override
@@ -117,7 +113,7 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
 
   @Override
   public NavigableSet<E> descendingSet() {
-    return new SafeTreeSet<E>(delegate.descendingSet());
+    return new SafeTreeSet<>(delegate.descendingSet());
   }
 
   @Override
@@ -126,7 +122,7 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
   }
 
   @Override
-  public E floor(E e) {
+  public @Nullable E floor(E e) {
     return delegate.floor(checkValid(e));
   }
 
@@ -137,11 +133,11 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
 
   @Override
   public NavigableSet<E> headSet(E toElement, boolean inclusive) {
-    return new SafeTreeSet<E>(delegate.headSet(checkValid(toElement), inclusive));
+    return new SafeTreeSet<>(delegate.headSet(checkValid(toElement), inclusive));
   }
 
   @Override
-  public E higher(E e) {
+  public @Nullable E higher(E e) {
     return delegate.higher(checkValid(e));
   }
 
@@ -161,17 +157,17 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
   }
 
   @Override
-  public E lower(E e) {
+  public @Nullable E lower(E e) {
     return delegate.lower(checkValid(e));
   }
 
   @Override
-  public E pollFirst() {
+  public @Nullable E pollFirst() {
     return delegate.pollFirst();
   }
 
   @Override
-  public E pollLast() {
+  public @Nullable E pollLast() {
     return delegate.pollLast();
   }
 
@@ -198,7 +194,7 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
   @Override
   public NavigableSet<E> subSet(
       E fromElement, boolean fromInclusive, E toElement, boolean toInclusive) {
-    return new SafeTreeSet<E>(
+    return new SafeTreeSet<>(
         delegate.subSet(
             checkValid(fromElement), fromInclusive, checkValid(toElement), toInclusive));
   }
@@ -215,7 +211,7 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
 
   @Override
   public NavigableSet<E> tailSet(E fromElement, boolean inclusive) {
-    return new SafeTreeSet<E>(delegate.tailSet(checkValid(fromElement), inclusive));
+    return new SafeTreeSet<>(delegate.tailSet(checkValid(fromElement), inclusive));
   }
 
   @Override
@@ -228,16 +224,17 @@ public final class SafeTreeSet<E> implements Serializable, NavigableSet<E> {
     return delegate.toArray(a);
   }
 
+  @CanIgnoreReturnValue
   private <T> T checkValid(T t) {
     // a ClassCastException is what's supposed to happen!
     @SuppressWarnings("unchecked")
     E e = (E) t;
-    comparator().compare(e, e);
+    int unused = comparator().compare(e, e);
     return t;
   }
 
   @Override
-  public boolean equals(Object obj) {
+  public boolean equals(@Nullable Object obj) {
     return delegate.equals(obj);
   }
 

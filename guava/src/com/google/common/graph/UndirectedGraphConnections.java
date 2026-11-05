@@ -17,14 +17,18 @@
 package com.google.common.graph;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Iterators.transform;
 import static com.google.common.graph.GraphConstants.INNER_CAPACITY;
 import static com.google.common.graph.GraphConstants.INNER_LOAD_FACTOR;
+import static java.util.Collections.unmodifiableSet;
 
 import com.google.common.collect.ImmutableMap;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An implementation of {@link GraphConnections} for undirected graphs.
@@ -40,8 +44,17 @@ final class UndirectedGraphConnections<N, V> implements GraphConnections<N, V> {
     this.adjacentNodeValues = checkNotNull(adjacentNodeValues);
   }
 
-  static <N, V> UndirectedGraphConnections<N, V> of() {
-    return new UndirectedGraphConnections<>(new HashMap<N, V>(INNER_CAPACITY, INNER_LOAD_FACTOR));
+  static <N, V> UndirectedGraphConnections<N, V> of(ElementOrder<N> incidentEdgeOrder) {
+    switch (incidentEdgeOrder.type()) {
+      case UNORDERED:
+        return new UndirectedGraphConnections<>(
+            new HashMap<N, V>(INNER_CAPACITY, INNER_LOAD_FACTOR));
+      case STABLE:
+        return new UndirectedGraphConnections<>(
+            new LinkedHashMap<N, V>(INNER_CAPACITY, INNER_LOAD_FACTOR));
+      default:
+        throw new AssertionError(incidentEdgeOrder.type());
+    }
   }
 
   static <N, V> UndirectedGraphConnections<N, V> ofImmutable(Map<N, V> adjacentNodeValues) {
@@ -50,7 +63,7 @@ final class UndirectedGraphConnections<N, V> implements GraphConnections<N, V> {
 
   @Override
   public Set<N> adjacentNodes() {
-    return Collections.unmodifiableSet(adjacentNodeValues.keySet());
+    return unmodifiableSet(adjacentNodeValues.keySet());
   }
 
   @Override
@@ -64,29 +77,44 @@ final class UndirectedGraphConnections<N, V> implements GraphConnections<N, V> {
   }
 
   @Override
-  public V value(N node) {
+  public Iterator<EndpointPair<N>> incidentEdgeIterator(N thisNode) {
+    checkNotNull(thisNode);
+    return transform(
+        adjacentNodeValues.keySet().iterator(),
+        incidentNode -> EndpointPair.unordered(thisNode, incidentNode));
+  }
+
+  @Override
+  public @Nullable V value(N node) {
+    checkNotNull(node);
     return adjacentNodeValues.get(node);
   }
 
   @Override
   public void removePredecessor(N node) {
+    checkNotNull(node);
     @SuppressWarnings("unused")
     V unused = removeSuccessor(node);
   }
 
   @Override
-  public V removeSuccessor(N node) {
+  public @Nullable V removeSuccessor(N node) {
+    checkNotNull(node);
     return adjacentNodeValues.remove(node);
   }
 
   @Override
   public void addPredecessor(N node, V value) {
+    checkNotNull(node);
+    checkNotNull(value);
     @SuppressWarnings("unused")
     V unused = addSuccessor(node, value);
   }
 
   @Override
-  public V addSuccessor(N node, V value) {
+  public @Nullable V addSuccessor(N node, V value) {
+    checkNotNull(node);
+    checkNotNull(value);
     return adjacentNodeValues.put(node, value);
   }
 }

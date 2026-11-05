@@ -15,9 +15,11 @@
 package com.google.common.html;
 
 import static com.google.common.html.HtmlEscapers.htmlEscaper;
+import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.annotations.GwtCompatible;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for the {@link HtmlEscapers} class.
@@ -25,39 +27,40 @@ import junit.framework.TestCase;
  * @author David Beaumont
  */
 @GwtCompatible
+@NullUnmarked
 public class HtmlEscapersTest extends TestCase {
 
-  public void testHtmlEscaper() throws Exception {
-    assertEquals("xxx", htmlEscaper().escape("xxx"));
-    assertEquals("&quot;test&quot;", htmlEscaper().escape("\"test\""));
-    assertEquals("&#39;test&#39;", htmlEscaper().escape("\'test'"));
-    assertEquals("test &amp; test &amp; test", htmlEscaper().escape("test & test & test"));
-    assertEquals("test &lt;&lt; 1", htmlEscaper().escape("test << 1"));
-    assertEquals("test &gt;&gt; 1", htmlEscaper().escape("test >> 1"));
-    assertEquals("&lt;tab&gt;", htmlEscaper().escape("<tab>"));
+  public void testHtmlEscaper() {
+    assertThat(htmlEscaper().escape("xxx")).isEqualTo("xxx");
+    assertThat(htmlEscaper().escape("\"test\"")).isEqualTo("&quot;test&quot;");
+    assertThat(htmlEscaper().escape("'test'")).isEqualTo("&#39;test&#39;");
+    assertThat(htmlEscaper().escape("test & test & test")).isEqualTo("test &amp; test &amp; test");
+    assertThat(htmlEscaper().escape("test << 1")).isEqualTo("test &lt;&lt; 1");
+    assertThat(htmlEscaper().escape("test >> 1")).isEqualTo("test &gt;&gt; 1");
+    assertThat(htmlEscaper().escape("<tab>")).isEqualTo("&lt;tab&gt;");
 
     // Test simple escape of '&'.
-    assertEquals("foo&amp;bar", htmlEscaper().escape("foo&bar"));
+    assertThat(htmlEscaper().escape("foo&bar")).isEqualTo("foo&amp;bar");
 
     // If the string contains no escapes, it should return the arg.
     // Note: assert<b>Same</b> for this implementation.
     String s = "blah blah farhvergnugen";
-    assertSame(s, htmlEscaper().escape(s));
+    assertThat(htmlEscaper().escape(s)).isSameInstanceAs(s);
 
     // Tests escapes at begin and end of string.
-    assertEquals("&lt;p&gt;", htmlEscaper().escape("<p>"));
+    assertThat(htmlEscaper().escape("<p>")).isEqualTo("&lt;p&gt;");
 
     // Test all escapes.
-    assertEquals("a&quot;b&lt;c&gt;d&amp;", htmlEscaper().escape("a\"b<c>d&"));
+    assertThat(htmlEscaper().escape("a\"b<c>d&")).isEqualTo("a&quot;b&lt;c&gt;d&amp;");
 
     // Test two escapes in a row.
-    assertEquals("foo&amp;&amp;bar", htmlEscaper().escape("foo&&bar"));
+    assertThat(htmlEscaper().escape("foo&&bar")).isEqualTo("foo&amp;&amp;bar");
 
     // Test many non-escaped characters.
     s =
         "!@#$%^*()_+=-/?\\|]}[{,.;:"
             + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
             + "1234567890";
-    assertSame(s, htmlEscaper().escape(s));
+    assertThat(htmlEscaper().escape(s)).isSameInstanceAs(s);
   }
 }

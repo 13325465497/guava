@@ -11,6 +11,8 @@
 
 package com.google.common.hash;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -39,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author Doug Lea
  */
 final class LongAdder extends Striped64 implements Serializable, LongAddable {
-  private static final long serialVersionUID = 7249069246863182397L;
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 7249069246863182397L;
 
   /** Version of plus for use in retryUpdate */
   @Override
@@ -55,6 +57,7 @@ final class LongAdder extends Striped64 implements Serializable, LongAddable {
    *
    * @param x the value to add
    */
+  @SuppressWarnings("AssignmentExpression") // rather than introduce non-trivial diffs vs. upstream
   @Override
   public void add(long x) {
     Cell[] as;

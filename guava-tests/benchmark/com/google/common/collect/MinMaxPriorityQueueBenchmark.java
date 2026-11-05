@@ -25,12 +25,15 @@ import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Benchmarks to compare performance of MinMaxPriorityQueue and PriorityQueue.
  *
  * @author Sverre Sundsdal
  */
+@NullUnmarked
 public class MinMaxPriorityQueueBenchmark {
   @Param private ComparatorType comparator;
 
@@ -90,7 +93,7 @@ public class MinMaxPriorityQueueBenchmark {
     }
 
     @Override
-    public T poll() {
+    public @Nullable T poll() {
       return mmHeap.pollLast();
     }
   }

@@ -19,7 +19,7 @@ package com.google.common.collect;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.List;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A list multimap which forwards all its method calls to another list multimap. Subclasses should
@@ -34,8 +34,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @since 3.0
  */
 @GwtCompatible
-public abstract class ForwardingListMultimap<K, V> extends ForwardingMultimap<K, V>
-    implements ListMultimap<K, V> {
+public abstract class ForwardingListMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends ForwardingMultimap<K, V> implements ListMultimap<K, V> {
 
   /** Constructor for use by subclasses. */
   protected ForwardingListMultimap() {}
@@ -44,7 +44,7 @@ public abstract class ForwardingListMultimap<K, V> extends ForwardingMultimap<K,
   protected abstract ListMultimap<K, V> delegate();
 
   @Override
-  public List<V> get(@Nullable K key) {
+  public List<V> get(@ParametricNullness K key) {
     return delegate().get(key);
   }
 
@@ -56,7 +56,7 @@ public abstract class ForwardingListMultimap<K, V> extends ForwardingMultimap<K,
 
   @CanIgnoreReturnValue
   @Override
-  public List<V> replaceValues(K key, Iterable<? extends V> values) {
+  public List<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values) {
     return delegate().replaceValues(key, values);
   }
 }

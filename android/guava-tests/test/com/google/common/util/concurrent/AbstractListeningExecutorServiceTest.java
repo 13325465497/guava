@@ -18,17 +18,21 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link AbstractListeningExecutorService}.
  *
  * @author Colin Decker
  */
+@NullUnmarked
+@GwtIncompatible
 public class AbstractListeningExecutorServiceTest extends TestCase {
 
   public void testSubmit() throws Exception {
@@ -48,7 +52,7 @@ public class AbstractListeningExecutorServiceTest extends TestCase {
     ListenableFuture<String> callableFuture = e.submit(new TestCallable());
     assertThat(callableFuture).isInstanceOf(TrustedListenableFutureTask.class);
     assertTrue(callableFuture.isDone());
-    assertEquals("foo", callableFuture.get());
+    assertThat(callableFuture.get()).isEqualTo("foo");
 
     TestRunnable runnable2 = new TestRunnable();
     ListenableFuture<Integer> runnableFuture2 = e.submit(runnable2, 3);

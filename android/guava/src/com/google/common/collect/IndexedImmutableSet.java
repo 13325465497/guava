@@ -18,8 +18,10 @@ package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.Nullable;
 
-@GwtCompatible(emulated = true)
+@GwtCompatible
 abstract class IndexedImmutableSet<E> extends ImmutableSet<E> {
   abstract E get(int index);
 
@@ -30,12 +32,13 @@ abstract class IndexedImmutableSet<E> extends ImmutableSet<E> {
 
   @Override
   @GwtIncompatible
-  int copyIntoArray(Object[] dst, int offset) {
+  int copyIntoArray(@Nullable Object[] dst, int offset) {
     return asList().copyIntoArray(dst, offset);
   }
 
   @Override
   ImmutableList<E> createAsList() {
+    // TODO(cpovirk): Use ImmutableAsList, as in the mainline?
     return new ImmutableList<E>() {
       @Override
       public E get(int index) {
@@ -51,6 +54,24 @@ abstract class IndexedImmutableSet<E> extends ImmutableSet<E> {
       public int size() {
         return IndexedImmutableSet.this.size();
       }
+
+      // redeclare to help optimizers with b/310253115
+      @SuppressWarnings("RedundantOverride")
+      @Override
+      @J2ktIncompatible
+      @GwtIncompatible
+            Object writeReplace() {
+        return super.writeReplace();
+      }
     };
+  }
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
+    return super.writeReplace();
   }
 }

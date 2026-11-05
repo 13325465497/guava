@@ -16,8 +16,9 @@
 
 package com.google.common.testing;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import com.google.errorprone.annotations.DoNotMock;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Any object which can accept registrations of {@link TearDown} instances.
@@ -25,8 +26,9 @@ import com.google.common.annotations.GwtCompatible;
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@Beta
+@DoNotMock("Implement with a lambda")
 @GwtCompatible
+@NullMarked
 public interface TearDownAccepter {
   /**
    * Registers a TearDown implementor which will be run after the test proper.

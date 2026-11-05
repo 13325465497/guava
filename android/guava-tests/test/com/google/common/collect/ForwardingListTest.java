@@ -16,7 +16,10 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Lists.newArrayList;
+
 import com.google.common.base.Function;
+import com.google.common.collect.ForwardingList.SimpleForwardingList;
 import com.google.common.collect.testing.ListTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringListGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
@@ -31,6 +34,8 @@ import java.util.ListIterator;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@code ForwardingList}.
@@ -38,17 +43,11 @@ import junit.framework.TestSuite;
  * @author Robert Konigsberg
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class ForwardingListTest extends TestCase {
-  static final class StandardImplForwardingList<T> extends ForwardingList<T> {
-    private final List<T> backingList;
-
+  static final class StandardImplForwardingList<T> extends SimpleForwardingList<T> {
     StandardImplForwardingList(List<T> backingList) {
-      this.backingList = backingList;
-    }
-
-    @Override
-    protected List<T> delegate() {
-      return backingList;
+      super(backingList);
     }
 
     @Override
@@ -112,7 +111,7 @@ public class ForwardingListTest extends TestCase {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return standardEquals(object);
     }
 
@@ -152,6 +151,7 @@ public class ForwardingListTest extends TestCase {
     }
   }
 
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
 
@@ -162,7 +162,7 @@ public class ForwardingListTest extends TestCase {
 
                   @Override
                   protected List<String> create(String[] elements) {
-                    return new StandardImplForwardingList<>(Lists.newArrayList(elements));
+                    return new StandardImplForwardingList<>(newArrayList(elements));
                   }
                 })
             .named("ForwardingList[ArrayList] with standard implementations")
@@ -209,7 +209,7 @@ public class ForwardingListTest extends TestCase {
         .testEquals();
   }
 
-  private static <T> List<T> wrap(final List<T> delegate) {
+  private static <T> List<T> wrap(List<T> delegate) {
     return new ForwardingList<T>() {
       @Override
       protected List<T> delegate() {

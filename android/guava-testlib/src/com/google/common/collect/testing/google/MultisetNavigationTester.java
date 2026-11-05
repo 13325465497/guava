@@ -16,28 +16,30 @@ package com.google.common.collect.testing.google;
 
 import static com.google.common.collect.BoundType.CLOSED;
 import static com.google.common.collect.BoundType.OPEN;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.testing.Helpers.copyToList;
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_ADD;
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_REMOVE;
 import static com.google.common.collect.testing.features.CollectionSize.ONE;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static java.util.Arrays.asList;
+import static java.util.Collections.nCopies;
+import static java.util.Collections.singletonList;
+import static java.util.Collections.sort;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.BoundType;
-import com.google.common.collect.Iterators;
-import com.google.common.collect.Multiset;
 import com.google.common.collect.Multiset.Entry;
 import com.google.common.collect.Multisets;
 import com.google.common.collect.SortedMultiset;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
-import org.junit.Ignore;
 
 /**
  * Tester for navigation of SortedMultisets.
@@ -45,7 +47,6 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
   private SortedMultiset<E> sortedMultiset;
   private List<E> entries;
@@ -53,20 +54,15 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
   private Entry<E> b;
   private Entry<E> c;
 
-  /** Used to avoid http://bugs.sun.com/view_bug.do?bug_id=6558557 */
-  static <T> SortedMultiset<T> cast(Multiset<T> iterable) {
-    return (SortedMultiset<T>) iterable;
-  }
-
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    sortedMultiset = cast(getMultiset());
+    sortedMultiset = (SortedMultiset<E>) getMultiset();
     entries =
         copyToList(
             getSubjectGenerator()
                 .getSampleElements(getSubjectGenerator().getCollectionSize().getNumElements()));
-    Collections.sort(entries, sortedMultiset.comparator());
+    sort(entries, sortedMultiset.comparator());
 
     // some tests assume SEVERAL == 3
     if (entries.size() >= 1) {
@@ -79,12 +75,11 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
   }
 
   /** Resets the contents of sortedMultiset to have entries a, c, for the navigation tests. */
-  @SuppressWarnings("unchecked")
   // Needed to stop Eclipse whining
   private void resetWithHole() {
-    List<E> container = new ArrayList<E>();
-    container.addAll(Collections.nCopies(a.getCount(), a.getElement()));
-    container.addAll(Collections.nCopies(c.getCount(), c.getElement()));
+    List<E> container = new ArrayList<>();
+    container.addAll(nCopies(a.getCount(), a.getElement()));
+    container.addAll(nCopies(c.getCount(), c.getElement()));
     super.resetContainer(getSubjectGenerator().create(container.toArray()));
     sortedMultiset = (SortedMultiset<E>) getMultiset();
   }
@@ -92,11 +87,7 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
   @CollectionSize.Require(ZERO)
   public void testEmptyMultisetFirst() {
     assertNull(sortedMultiset.firstEntry());
-    try {
-      sortedMultiset.elementSet().first();
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    assertThrows(NoSuchElementException.class, () -> sortedMultiset.elementSet().first());
   }
 
   @CollectionFeature.Require(SUPPORTS_REMOVE)
@@ -116,11 +107,8 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
   @CollectionSize.Require(ZERO)
   public void testEmptyMultisetLast() {
     assertNull(sortedMultiset.lastEntry());
-    try {
-      assertNull(sortedMultiset.elementSet().last());
-      fail();
-    } catch (NoSuchElementException e) {
-    }
+    assertThrows(
+        NoSuchElementException.class, () -> assertNull(sortedMultiset.elementSet().last()));
   }
 
   @CollectionFeature.Require(SUPPORTS_REMOVE)
@@ -167,21 +155,16 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
     assertEquals(a, sortedMultiset.firstEntry());
   }
 
-  @SuppressWarnings("unchecked")
   @CollectionFeature.Require(SUPPORTS_REMOVE)
   @CollectionSize.Require(SEVERAL)
   public void testPollFirst() {
     assertEquals(a, sortedMultiset.pollFirstEntry());
-    assertEquals(Arrays.asList(b, c), copyToList(sortedMultiset.entrySet()));
+    assertEquals(asList(b, c), copyToList(sortedMultiset.entrySet()));
   }
 
   @CollectionFeature.Require(absent = SUPPORTS_REMOVE)
   public void testPollFirstUnsupported() {
-    try {
-      sortedMultiset.pollFirstEntry();
-      fail();
-    } catch (UnsupportedOperationException e) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> sortedMultiset.pollFirstEntry());
   }
 
   @CollectionSize.Require(SEVERAL)
@@ -222,70 +205,52 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
     assertEquals(c, sortedMultiset.lastEntry());
   }
 
-  @SuppressWarnings("unchecked")
   @CollectionFeature.Require(SUPPORTS_REMOVE)
   @CollectionSize.Require(SEVERAL)
   public void testPollLast() {
     assertEquals(c, sortedMultiset.pollLastEntry());
-    assertEquals(Arrays.asList(a, b), copyToList(sortedMultiset.entrySet()));
+    assertEquals(asList(a, b), copyToList(sortedMultiset.entrySet()));
   }
 
   @CollectionFeature.Require(absent = SUPPORTS_REMOVE)
   @CollectionSize.Require(SEVERAL)
   public void testPollLastUnsupported() {
-    try {
-      sortedMultiset.pollLastEntry();
-      fail();
-    } catch (UnsupportedOperationException e) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> sortedMultiset.pollLastEntry());
   }
 
   @CollectionSize.Require(SEVERAL)
   public void testDescendingNavigation() {
-    List<Entry<E>> ascending = new ArrayList<>();
-    Iterators.addAll(ascending, sortedMultiset.entrySet().iterator());
-    List<Entry<E>> descending = new ArrayList<>();
-    Iterators.addAll(descending, sortedMultiset.descendingMultiset().entrySet().iterator());
+    List<Entry<E>> ascending = newArrayList(sortedMultiset.entrySet().iterator());
+    List<Entry<E>> descending =
+        newArrayList(sortedMultiset.descendingMultiset().entrySet().iterator());
     Collections.reverse(descending);
     assertEquals(ascending, descending);
   }
 
-  void expectAddFailure(SortedMultiset<E> multiset, Entry<E> entry) {
-    try {
-      multiset.add(entry.getElement(), entry.getCount());
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+  final void expectAddFailure(SortedMultiset<E> multiset, Entry<E> entry) {
+    assertThrows(
+        IllegalArgumentException.class, () -> multiset.add(entry.getElement(), entry.getCount()));
 
-    try {
-      multiset.add(entry.getElement());
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> multiset.add(entry.getElement()));
 
-    try {
-      multiset.addAll(Collections.singletonList(entry.getElement()));
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> multiset.addAll(singletonList(entry.getElement())));
   }
 
-  void expectRemoveZero(SortedMultiset<E> multiset, Entry<E> entry) {
+  final void expectRemoveZero(SortedMultiset<E> multiset, Entry<E> entry) {
     assertEquals(0, multiset.remove(entry.getElement(), entry.getCount()));
     assertFalse(multiset.remove(entry.getElement()));
     assertFalse(multiset.elementSet().remove(entry.getElement()));
   }
 
-  void expectSetCountFailure(SortedMultiset<E> multiset, Entry<E> entry) {
+  final void expectSetCountFailure(SortedMultiset<E> multiset, Entry<E> entry) {
     try {
       multiset.setCount(entry.getElement(), multiset.count(entry.getElement()));
     } catch (IllegalArgumentException acceptable) {
     }
-    try {
-      multiset.setCount(entry.getElement(), multiset.count(entry.getElement()) + 1);
-      fail("Expected IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> multiset.setCount(entry.getElement(), multiset.count(entry.getElement()) + 1));
   }
 
   @CollectionSize.Require(ONE)
@@ -453,9 +418,8 @@ public class MultisetNavigationTester<E> extends AbstractMultisetTester<E> {
     assertFalse(multiset.entrySet().iterator().hasNext());
   }
 
-  @SuppressWarnings("unchecked")
   public void testEmptyRangeSubMultisetSupportingAdd(SortedMultiset<E> multiset) {
-    for (Entry<E> entry : Arrays.asList(a, b, c)) {
+    for (Entry<E> entry : asList(a, b, c)) {
       expectAddFailure(multiset, entry);
     }
   }

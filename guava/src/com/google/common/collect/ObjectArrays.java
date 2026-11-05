@@ -17,6 +17,7 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkPositionIndexes;
+import static java.lang.System.arraycopy;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
@@ -24,7 +25,8 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.Collection;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to object arrays.
@@ -32,7 +34,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Kevin Bourrillion
  * @since 2.0
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@SuppressWarnings("AvoidObjectArrays")
 public final class ObjectArrays {
 
   private ObjectArrays() {}
@@ -45,7 +48,7 @@ public final class ObjectArrays {
    */
   @GwtIncompatible // Array.newInstance(Class, int)
   @SuppressWarnings("unchecked")
-  public static <T> T[] newArray(Class<T> type, int length) {
+  public static <T extends @Nullable Object> T[] newArray(Class<@NonNull T> type, int length) {
     return (T[]) Array.newInstance(type, length);
   }
 
@@ -55,8 +58,14 @@ public final class ObjectArrays {
    * @param reference any array of the desired type
    * @param length the length of the new array
    */
-  public static <T> T[] newArray(T[] reference, int length) {
-    return Platform.newArray(reference, length);
+  /*
+   * The new array contains nulls, even if the old array did not. If we wanted to be accurate, we
+   * would declare a return type of `@Nullable T[]`. However, we've decided not to think too hard
+   * about arrays for now, as they're a mess.
+   */
+  public static <T extends @Nullable Object> T[] newArray(T[] reference, int length) {
+    T[] empty = reference.length == 0 ? reference : Arrays.copyOf(reference, 0);
+    return Arrays.copyOf(empty, length);
   }
 
   /**
@@ -67,10 +76,11 @@ public final class ObjectArrays {
    * @param type the component type of the returned array
    */
   @GwtIncompatible // Array.newInstance(Class, int)
-  public static <T> T[] concat(T[] first, T[] second, Class<T> type) {
+  public static <T extends @Nullable Object> T[] concat(
+      T[] first, T[] second, Class<@NonNull T> type) {
     T[] result = newArray(type, first.length + second.length);
-    System.arraycopy(first, 0, result, 0, first.length);
-    System.arraycopy(second, 0, result, first.length, second.length);
+    arraycopy(first, 0, result, 0, first.length);
+    arraycopy(second, 0, result, first.length, second.length);
     return result;
   }
 
@@ -82,10 +92,10 @@ public final class ObjectArrays {
    * @return an array whose size is one larger than {@code array}, with {@code element} occupying
    *     the first position, and the elements of {@code array} occupying the remaining elements.
    */
-  public static <T> T[] concat(@Nullable T element, T[] array) {
+  public static <T extends @Nullable Object> T[] concat(@ParametricNullness T element, T[] array) {
     T[] result = newArray(array, array.length + 1);
     result[0] = element;
-    System.arraycopy(array, 0, result, 1, array.length);
+    arraycopy(array, 0, result, 1, array.length);
     return result;
   }
 
@@ -97,7 +107,7 @@ public final class ObjectArrays {
    * @return an array whose size is one larger than {@code array}, with the same contents as {@code
    *     array}, plus {@code element} occupying the last position.
    */
-  public static <T> T[] concat(T[] array, @Nullable T element) {
+  public static <T extends @Nullable Object> T[] concat(T[] array, @ParametricNullness T element) {
     T[] result = Arrays.copyOf(array, array.length + 1);
     result[array.length] = element;
     return result;
@@ -124,14 +134,15 @@ public final class ObjectArrays {
    * @throws ArrayStoreException if the runtime type of the specified array is not a supertype of
    *     the runtime type of every element in the specified collection
    */
-  static <T> T[] toArrayImpl(Collection<?> c, T[] array) {
+  static <T extends @Nullable Object> T[] toArrayImpl(Collection<?> c, T[] array) {
     int size = c.size();
     if (array.length < size) {
       array = newArray(array, size);
     }
     fillArray(c, array);
     if (array.length > size) {
-      array[size] = null;
+      @Nullable Object[] unsoundlyCovariantArray = array;
+      unsoundlyCovariantArray[size] = null;
     }
     return array;
   }
@@ -147,14 +158,16 @@ public final class ObjectArrays {
    * collection is set to {@code null}. This is useful in determining the length of the collection
    * <i>only</i> if the caller knows that the collection does not contain any null elements.
    */
-  static <T> T[] toArrayImpl(Object[] src, int offset, int len, T[] dst) {
+  static <T extends @Nullable Object> T[] toArrayImpl(
+      @Nullable Object[] src, int offset, int len, T[] dst) {
     checkPositionIndexes(offset, offset + len, src.length);
     if (dst.length < len) {
       dst = newArray(dst, len);
     } else if (dst.length > len) {
-      dst[len] = null;
+      @Nullable Object[] unsoundlyCovariantArray = dst;
+      unsoundlyCovariantArray[len] = null;
     }
-    System.arraycopy(src, offset, dst, 0, len);
+    arraycopy(src, offset, dst, 0, len);
     return dst;
   }
 
@@ -170,7 +183,7 @@ public final class ObjectArrays {
    *
    * @param c the collection for which to return an array of elements
    */
-  static Object[] toArrayImpl(Collection<?> c) {
+  static @Nullable Object[] toArrayImpl(Collection<?> c) {
     return fillArray(c, new Object[c.size()]);
   }
 
@@ -178,18 +191,18 @@ public final class ObjectArrays {
    * Returns a copy of the specified subrange of the specified array that is literally an Object[],
    * and not e.g. a {@code String[]}.
    */
-  static Object[] copyAsObjectArray(Object[] elements, int offset, int length) {
+  static @Nullable Object[] copyAsObjectArray(@Nullable Object[] elements, int offset, int length) {
     checkPositionIndexes(offset, offset + length, elements.length);
     if (length == 0) {
       return new Object[0];
     }
-    Object[] result = new Object[length];
-    System.arraycopy(elements, offset, result, 0, length);
+    @Nullable Object[] result = new Object[length];
+    arraycopy(elements, offset, result, 0, length);
     return result;
   }
 
   @CanIgnoreReturnValue
-  private static Object[] fillArray(Iterable<?> elements, Object[] array) {
+  private static @Nullable Object[] fillArray(Iterable<?> elements, @Nullable Object[] array) {
     int i = 0;
     for (Object element : elements) {
       array[i++] = element;
@@ -206,21 +219,21 @@ public final class ObjectArrays {
 
   @CanIgnoreReturnValue
   static Object[] checkElementsNotNull(Object... array) {
-    return checkElementsNotNull(array, array.length);
+    checkElementsNotNull(array, array.length);
+    return array;
   }
 
   @CanIgnoreReturnValue
-  static Object[] checkElementsNotNull(Object[] array, int length) {
+  static @Nullable Object[] checkElementsNotNull(@Nullable Object[] array, int length) {
     for (int i = 0; i < length; i++) {
       checkElementNotNull(array[i], i);
     }
     return array;
   }
 
-  // We do this instead of Preconditions.checkNotNull to save boxing and array
-  // creation cost.
+  // We do this instead of Preconditions.checkNotNull to save boxing and array-creation cost.
   @CanIgnoreReturnValue
-  static Object checkElementNotNull(Object element, int index) {
+  static Object checkElementNotNull(@Nullable Object element, int index) {
     if (element == null) {
       throw new NullPointerException("at index " + index);
     }

@@ -16,11 +16,13 @@
 
 package com.google.common.collect;
 
+import static java.util.Collections.singleton;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.MapInterfaceTest;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Test {@code TreeMultimap.asMap().subMap()} with {@link MapInterfaceTest}.
@@ -28,13 +30,14 @@ import java.util.Map;
  * @author Jared Levy
  */
 @GwtCompatible
+@NullMarked
 public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapImplementsMapTest {
 
   public SubMapMultimapAsMapImplementsMapTest() {
     super(true, true, true);
   }
 
-  private TreeMultimap<String, Integer> createMultimap() {
+  private static TreeMultimap<String, Integer> createMultimap() {
     TreeMultimap<String, Integer> multimap =
         TreeMultimap.create(
             Ordering.<String>natural().nullsFirst(), Ordering.<Integer>natural().nullsFirst());
@@ -66,7 +69,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
 
   @Override
   protected Collection<Integer> getValueNotInPopulatedMap() {
-    return Collections.singleton(-2);
+    return singleton(-2);
   }
 
   @Override
@@ -74,7 +77,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testEntrySetRemoveAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.entrySet().removeAll(null) doesn't throws NPE.
+      // GWT's TreeMap.entrySet().removeAll(null) doesn't throw NPE.
     }
   }
 
@@ -83,7 +86,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testEntrySetRetainAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.entrySet().retainAll(null) doesn't throws NPE.
+      // GWT's TreeMap.entrySet().retainAll(null) doesn't throw NPE.
     }
   }
 
@@ -92,7 +95,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testKeySetRemoveAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.keySet().removeAll(null) doesn't throws NPE.
+      // GWT's TreeMap.keySet().removeAll(null) doesn't throw NPE.
     }
   }
 
@@ -101,7 +104,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testKeySetRetainAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.keySet().retainAll(null) doesn't throws NPE.
+      // GWT's TreeMap.keySet().retainAll(null) doesn't throw NPE.
     }
   }
 
@@ -110,7 +113,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testValuesRemoveAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.values().removeAll(null) doesn't throws NPE.
+      // GWT's TreeMap.values().removeAll(null) doesn't throw NPE.
     }
   }
 
@@ -119,7 +122,7 @@ public class SubMapMultimapAsMapImplementsMapTest extends AbstractMultimapAsMapI
     try {
       super.testValuesRemoveAllNullFromEmpty();
     } catch (RuntimeException tolerated) {
-      // GWT's TreeMap.values().retainAll(null) doesn't throws NPE.
+      // GWT's TreeMap.values().retainAll(null) doesn't throw NPE.
     }
   }
 }

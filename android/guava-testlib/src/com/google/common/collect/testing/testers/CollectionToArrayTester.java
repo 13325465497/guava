@@ -16,13 +16,17 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.assertEqualIgnoringOrder;
+import static com.google.common.collect.testing.Helpers.getMethod;
 import static com.google.common.collect.testing.features.CollectionFeature.KNOWN_ORDER;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.AbstractCollectionTester;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.WrongType;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
@@ -30,7 +34,6 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import org.junit.Ignore;
 
 /**
  * A generic JUnit test which tests {@code toArray()} operations on a collection. Can't be invoked
@@ -39,8 +42,7 @@ import org.junit.Ignore;
  * @author Kevin Bourrillion
  * @author Chris Povirk
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public class CollectionToArrayTester<E> extends AbstractCollectionTester<E> {
   public void testToArray_noArgs() {
     Object[] array = collection.toArray();
@@ -48,8 +50,8 @@ public class CollectionToArrayTester<E> extends AbstractCollectionTester<E> {
   }
 
   /**
-   * {@link Collection#toArray(Object[])} says: "Note that <tt>toArray(new Object[0])</tt> is
-   * identical in function to <tt>toArray()</tt>."
+   * {@link Collection#toArray(Object[])} says: "Note that {@code toArray(new Object[0])} is
+   * identical in function to {@code toArray()}."
    *
    * <p>For maximum effect, the collection under test should be created from an element array of a
    * type other than {@code Object[]}.
@@ -130,7 +132,7 @@ public class CollectionToArrayTester<E> extends AbstractCollectionTester<E> {
     assertSame(
         "toArray(overSizedE[]) should return the given array", array, collection.toArray(array));
 
-    List<E> subArray = Arrays.asList(array).subList(0, getNumElements());
+    List<E> subArray = asList(array).subList(0, getNumElements());
     E[] expectedSubArray = createSamplesArray();
     for (int i = 0; i < getNumElements(); i++) {
       assertTrue(
@@ -163,12 +165,8 @@ public class CollectionToArrayTester<E> extends AbstractCollectionTester<E> {
 
   @CollectionSize.Require(absent = ZERO)
   public void testToArray_emptyArrayOfWrongTypeForNonEmptyCollection() {
-    try {
-      WrongType[] array = new WrongType[0];
-      collection.toArray(array);
-      fail("toArray(notAssignableTo[]) should throw");
-    } catch (ArrayStoreException expected) {
-    }
+    WrongType[] array = new WrongType[0];
+    assertThrows(ArrayStoreException.class, () -> collection.toArray(array));
   }
 
   @CollectionSize.Require(ZERO)
@@ -180,22 +178,23 @@ public class CollectionToArrayTester<E> extends AbstractCollectionTester<E> {
         collection.toArray(array));
   }
 
-  private void expectArrayContentsAnyOrder(Object[] expected, Object[] actual) {
-    Helpers.assertEqualIgnoringOrder(Arrays.asList(expected), Arrays.asList(actual));
+  private static void expectArrayContentsAnyOrder(Object[] expected, Object[] actual) {
+    assertEqualIgnoringOrder(asList(expected), asList(actual));
   }
 
   private void expectArrayContentsInOrder(List<E> expected, Object[] actual) {
-    assertEquals("toArray() ordered contents: ", expected, Arrays.asList(actual));
+    assertEquals("toArray() ordered contents: ", expected, asList(actual));
   }
 
   /**
    * Returns the {@link Method} instance for {@link #testToArray_isPlainObjectArray()} so that tests
    * of {@link Arrays#asList(Object[])} can suppress it with {@code
    * FeatureSpecificTestSuiteBuilder.suppressing()} until <a
-   * href="http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6260652">Sun bug 6260652</a> is fixed.
+   * href="https://bugs.openjdk.org/browse/JDK-6260652">JDK-6260652</a> is fixed.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getToArrayIsPlainObjectArrayMethod() {
-    return Helpers.getMethod(CollectionToArrayTester.class, "testToArray_isPlainObjectArray");
+    return getMethod(CollectionToArrayTester.class, "testToArray_isPlainObjectArray");
   }
 }

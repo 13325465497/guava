@@ -16,14 +16,16 @@
 
 package com.google.common.testing;
 
-import com.google.common.annotations.Beta;
+import static java.util.Collections.unmodifiableList;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests may use this to intercept messages that are logged by the code under test. Example:
@@ -52,16 +54,23 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@Beta
 @GwtCompatible
+@NullMarked
 public class TestLogHandler extends Handler {
+  private final Object lock = new Object();
+
   /** We will keep a private list of all logged records */
+  @GuardedBy("lock")
   private final List<LogRecord> list = new ArrayList<>();
 
   /** Adds the most recently logged record to our list. */
   @Override
-  public synchronized void publish(@Nullable LogRecord record) {
-    list.add(record);
+  public void publish(@Nullable LogRecord record) {
+    synchronized (lock) {
+      if (record != null) {
+        list.add(record);
+      }
+    }
   }
 
   @Override
@@ -70,8 +79,11 @@ public class TestLogHandler extends Handler {
   @Override
   public void close() {}
 
-  public synchronized void clear() {
-    list.clear();
+  /** Clears all stored log records. */
+  public void clear() {
+    synchronized (lock) {
+      list.clear();
+    }
   }
 
   /** Returns a snapshot of the logged records. */
@@ -82,8 +94,10 @@ public class TestLogHandler extends Handler {
    * TODO(cpovirk): consider renaming this method to reflect that it takes a snapshot (and/or return
    * an ImmutableList)
    */
-  public synchronized List<LogRecord> getStoredLogRecords() {
-    List<LogRecord> result = new ArrayList<>(list);
-    return Collections.unmodifiableList(result);
+  public List<LogRecord> getStoredLogRecords() {
+    synchronized (lock) {
+      List<LogRecord> result = new ArrayList<>(list);
+      return unmodifiableList(result);
+    }
   }
 }

@@ -1,0 +1,34 @@
+# TODO(user): Resolve cycles
+
+NAMESPACE com.google.common.collect.testing
+NAMESPACE com.google.common.collect.testing.google
+NAMESPACE com.google.common.escape
+NAMESPACE com.google.common.escape.testing
+NAMESPACE com.google.common.io
+NAMESPACE com.google.common.net
+NAMESPACE com.google.common.testing
+
+# Allow our dependencies for now.
+NAMESPACE junit.framework
+NAMESPACE org.junit
+
+# ***** REAL CYCLES *****
+# Cycle exists until future completes
+FIELD com.google.common.util.concurrent.AbstractFuture.Listener.executor com.google.common.util.concurrent.ExecutionSequencer.TaskNonReentrantExecutor
+
+# ***** FALSE POSITIVES *****
+
+# The Runnable type is so generic that it produces too many false positives.
+TYPE java.lang.Runnable
+
+FIELD com.google.common.collect.ImmutableRangeMap.ranges
+FIELD com.google.common.collect.ImmutableRangeSet.ranges
+FIELD com.google.common.collect.JdkBackedImmutableBiMap.inverse
+FIELD com.google.common.util.concurrent.AbstractFuture.Listener.executor com.google.common.util.concurrent.MoreExecutors.rejectionPropagatingExecutor.$
+
+# NonReentrantExecutor is not exposed to this field
+FIELD com.google.common.util.concurrent.ExecutionSequencer.ThreadConfinedTaskQueue.nextExecutor com.google.common.util.concurrent.ExecutionSequencer.TaskNonReentrantExecutor
+
+# There is no way for a CombinedFutureInterruptibleTask to receive a TaskNonReentrantExecutor as its listenerExecutor:
+# A TaskNonReentrantExecutor instance is used as an Executor only in a direct call to addListener.
+FIELD com.google.common.util.concurrent.CombinedFuture.CombinedFutureInterruptibleTask.listenerExecutor com.google.common.util.concurrent.ExecutionSequencer.TaskNonReentrantExecutor

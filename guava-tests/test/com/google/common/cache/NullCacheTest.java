@@ -20,17 +20,24 @@ import static com.google.common.cache.TestingCacheLoaders.exceptionLoader;
 import static com.google.common.cache.TestingRemovalListeners.queuingRemovalListener;
 import static com.google.common.truth.Truth.assertThat;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 import com.google.common.cache.TestingRemovalListeners.QueuingRemovalListener;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * {@link LoadingCache} tests for caches with a maximum size of zero.
  *
  * @author mike nonemacher
  */
+@GwtIncompatible
+@J2ktIncompatible
+@NullUnmarked
 public class NullCacheTest extends TestCase {
   QueuingRemovalListener<Object, Object> listener;
 
@@ -48,12 +55,12 @@ public class NullCacheTest extends TestCase {
             .build(constantLoader(computed));
 
     Object key = new Object();
-    assertSame(computed, cache.getUnchecked(key));
+    assertThat(cache.getUnchecked(key)).isSameInstanceAs(computed);
     RemovalNotification<Object, Object> notification = listener.remove();
-    assertSame(key, notification.getKey());
-    assertSame(computed, notification.getValue());
-    assertSame(RemovalCause.SIZE, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification.getKey()).isSameInstanceAs(key);
+    assertThat(notification.getValue()).isSameInstanceAs(computed);
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.SIZE);
+    assertThat(listener.isEmpty()).isTrue();
     checkEmpty(cache);
   }
 
@@ -66,12 +73,12 @@ public class NullCacheTest extends TestCase {
             .build(constantLoader(computed));
 
     Object key = new Object();
-    assertSame(computed, cache.getUnchecked(key));
+    assertThat(cache.getUnchecked(key)).isSameInstanceAs(computed);
     RemovalNotification<Object, Object> notification = listener.remove();
-    assertSame(key, notification.getKey());
-    assertSame(computed, notification.getValue());
-    assertSame(RemovalCause.SIZE, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification.getKey()).isSameInstanceAs(key);
+    assertThat(notification.getValue()).isSameInstanceAs(computed);
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.SIZE);
+    assertThat(listener.isEmpty()).isTrue();
     checkEmpty(cache);
   }
 
@@ -84,12 +91,12 @@ public class NullCacheTest extends TestCase {
             .build(constantLoader(computed));
 
     Object key = new Object();
-    assertSame(computed, cache.getUnchecked(key));
+    assertThat(cache.getUnchecked(key)).isSameInstanceAs(computed);
     RemovalNotification<Object, Object> notification = listener.remove();
-    assertSame(key, notification.getKey());
-    assertSame(computed, notification.getValue());
-    assertSame(RemovalCause.SIZE, notification.getCause());
-    assertTrue(listener.isEmpty());
+    assertThat(notification.getKey()).isSameInstanceAs(key);
+    assertThat(notification.getValue()).isSameInstanceAs(computed);
+    assertThat(notification.getCause()).isEqualTo(RemovalCause.SIZE);
+    assertThat(listener.isEmpty()).isTrue();
     checkEmpty(cache);
   }
 
@@ -100,32 +107,24 @@ public class NullCacheTest extends TestCase {
             .removalListener(listener)
             .build(constantLoader(null));
 
-    try {
-      cache.getUnchecked(new Object());
-      fail();
-    } catch (InvalidCacheLoadException e) {
-      /* expected */
-    }
+    assertThrows(InvalidCacheLoadException.class, () -> cache.getUnchecked(new Object()));
 
-    assertTrue(listener.isEmpty());
+    assertThat(listener.isEmpty()).isTrue();
     checkEmpty(cache);
   }
 
   public void testGet_runtimeException() {
-    final RuntimeException e = new RuntimeException();
+    RuntimeException e = new RuntimeException();
     LoadingCache<Object, Object> map =
         CacheBuilder.newBuilder()
             .maximumSize(0)
             .removalListener(listener)
             .build(exceptionLoader(e));
 
-    try {
-      map.getUnchecked(new Object());
-      fail();
-    } catch (UncheckedExecutionException uee) {
-      assertThat(uee).hasCauseThat().isSameInstanceAs(e);
-    }
-    assertTrue(listener.isEmpty());
+    UncheckedExecutionException uee =
+        assertThrows(UncheckedExecutionException.class, () -> map.getUnchecked(new Object()));
+    assertThat(uee).hasCauseThat().isEqualTo(e);
+    assertThat(listener.isEmpty()).isTrue();
     checkEmpty(map);
   }
 }

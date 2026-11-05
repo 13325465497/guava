@@ -17,6 +17,9 @@
 package com.google.common.collect.testing;
 
 import static com.google.common.collect.testing.DerivedCollectionGenerators.keySetGenerator;
+import static com.google.common.collect.testing.Helpers.copyToSet;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static java.util.Arrays.asList;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.DerivedCollectionGenerators.MapEntrySetGenerator;
@@ -40,8 +43,6 @@ import com.google.common.collect.testing.testers.MapRemoveTester;
 import com.google.common.collect.testing.testers.MapSerializationTester;
 import com.google.common.collect.testing.testers.MapSizeTester;
 import com.google.common.collect.testing.testers.MapToStringTester;
-import com.google.common.testing.SerializableTester;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -62,10 +63,10 @@ public class MapTestSuiteBuilder<K, V>
     return new MapTestSuiteBuilder<K, V>().usingGenerator(generator);
   }
 
-  @SuppressWarnings("unchecked") // Class parameters must be raw.
+  @SuppressWarnings("rawtypes") // class literals
   @Override
   protected List<Class<? extends AbstractTester>> getTesters() {
-    return Arrays.<Class<? extends AbstractTester>>asList(
+    return asList(
         MapClearTester.class,
         MapContainsKeyTester.class,
         MapContainsValueTester.class,
@@ -96,11 +97,12 @@ public class MapTestSuiteBuilder<K, V>
 
     if (parentBuilder.getFeatures().contains(CollectionFeature.SERIALIZABLE)) {
       derivedSuites.add(
-          MapTestSuiteBuilder.using(
-                  new ReserializedMapGenerator<K, V>(parentBuilder.getSubjectGenerator()))
+          using(new ReserializedMapGenerator<K, V>(parentBuilder.getSubjectGenerator()))
               .withFeatures(computeReserializedMapFeatures(parentBuilder.getFeatures()))
               .named(parentBuilder.getName() + " reserialized")
               .suppressing(parentBuilder.getSuppressedTests())
+              .withSetUp(parentBuilder.getSetUp())
+              .withTearDown(parentBuilder.getTearDown())
               .createTestSuite());
     }
 
@@ -110,6 +112,8 @@ public class MapTestSuiteBuilder<K, V>
             .withFeatures(computeEntrySetFeatures(parentBuilder.getFeatures()))
             .named(parentBuilder.getName() + " entrySet")
             .suppressing(parentBuilder.getSuppressedTests())
+            .withSetUp(parentBuilder.getSetUp())
+            .withTearDown(parentBuilder.getTearDown())
             .createTestSuite());
 
     derivedSuites.add(
@@ -117,6 +121,8 @@ public class MapTestSuiteBuilder<K, V>
             .withFeatures(computeKeySetFeatures(parentBuilder.getFeatures()))
             .named(parentBuilder.getName() + " keys")
             .suppressing(parentBuilder.getSuppressedTests())
+            .withSetUp(parentBuilder.getSetUp())
+            .withTearDown(parentBuilder.getTearDown())
             .createTestSuite());
 
     derivedSuites.add(
@@ -125,6 +131,8 @@ public class MapTestSuiteBuilder<K, V>
             .named(parentBuilder.getName() + " values")
             .withFeatures(computeValuesCollectionFeatures(parentBuilder.getFeatures()))
             .suppressing(parentBuilder.getSuppressedTests())
+            .withSetUp(parentBuilder.getSetUp())
+            .withTearDown(parentBuilder.getTearDown())
             .createTestSuite());
 
     return derivedSuites;
@@ -145,7 +153,7 @@ public class MapTestSuiteBuilder<K, V>
   }
 
   private static Set<Feature<?>> computeReserializedMapFeatures(Set<Feature<?>> mapFeatures) {
-    Set<Feature<?>> derivedFeatures = Helpers.copyToSet(mapFeatures);
+    Set<Feature<?>> derivedFeatures = copyToSet(mapFeatures);
     derivedFeatures.remove(CollectionFeature.SERIALIZABLE);
     derivedFeatures.remove(CollectionFeature.SERIALIZABLE_INCLUDING_VIEWS);
     return derivedFeatures;
@@ -218,11 +226,10 @@ public class MapTestSuiteBuilder<K, V>
     return derivedFeatures;
   }
 
-  private static class ReserializedMapGenerator<K, V> implements TestMapGenerator<K, V> {
+  private static final class ReserializedMapGenerator<K, V> implements TestMapGenerator<K, V> {
     private final OneSizeTestContainerGenerator<Map<K, V>, Entry<K, V>> mapGenerator;
 
-    public ReserializedMapGenerator(
-        OneSizeTestContainerGenerator<Map<K, V>, Entry<K, V>> mapGenerator) {
+    ReserializedMapGenerator(OneSizeTestContainerGenerator<Map<K, V>, Entry<K, V>> mapGenerator) {
       this.mapGenerator = mapGenerator;
     }
 
@@ -243,7 +250,7 @@ public class MapTestSuiteBuilder<K, V>
 
     @Override
     public Map<K, V> create(Object... elements) {
-      return SerializableTester.reserialize(mapGenerator.create(elements));
+      return reserialize(mapGenerator.create(elements));
     }
 
     @Override

@@ -16,12 +16,18 @@
 
 package com.google.common.collect;
 
+import static com.google.common.base.Predicates.in;
+import static com.google.common.base.Predicates.not;
+import static com.google.common.collect.Multisets.difference;
+import static com.google.common.collect.Multisets.intersection;
+import static com.google.common.collect.Multisets.sum;
+import static com.google.common.collect.Multisets.union;
+import static com.google.common.collect.Multisets.unmodifiableMultiset;
 import static java.util.Arrays.asList;
+import static java.util.Collections.sort;
 
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Objects;
 import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.google.MultisetTestSuiteBuilder;
@@ -30,9 +36,11 @@ import com.google.common.collect.testing.google.TestStringMultisetGenerator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Collection tests on wrappers from {@link Multisets}.
@@ -40,6 +48,8 @@ import junit.framework.TestSuite;
  * @author Jared Levy
  */
 @GwtIncompatible // suite // TODO(cpovirk): set up collect/gwt/suites version
+@NullUnmarked
+@AndroidIncompatible // test-suite builders
 public class MultisetsCollectionTest extends TestCase {
   public static Test suite() {
     TestSuite suite = new TestSuite();
@@ -50,7 +60,7 @@ public class MultisetsCollectionTest extends TestCase {
                 CollectionSize.ANY,
                 CollectionFeature.KNOWN_ORDER,
                 CollectionFeature.SERIALIZABLE,
-                CollectionFeature.ALLOWS_NULL_QUERIES)
+                CollectionFeature.ALLOWS_NULL_VALUES)
             .named("Multisets.unmodifiableMultiset[LinkedHashMultiset]")
             .createTestSuite());
 
@@ -111,7 +121,7 @@ public class MultisetsCollectionTest extends TestCase {
     return new TestStringMultisetGenerator() {
       @Override
       protected Multiset<String> create(String[] elements) {
-        return Multisets.unmodifiableMultiset(LinkedHashMultiset.create(asList(elements)));
+        return unmodifiableMultiset(LinkedHashMultiset.create(asList(elements)));
       }
 
       @Override
@@ -139,7 +149,7 @@ public class MultisetsCollectionTest extends TestCase {
 
       @Override
       public List<String> order(List<String> insertionOrder) {
-        Collections.sort(insertionOrder);
+        sort(insertionOrder);
         return insertionOrder;
       }
     };
@@ -163,7 +173,7 @@ public class MultisetsCollectionTest extends TestCase {
             multiset2.add(elements[i]);
           }
         }
-        return Multisets.union(multiset1, multiset2);
+        return union(multiset1, multiset2);
       }
     };
   }
@@ -189,11 +199,11 @@ public class MultisetsCollectionTest extends TestCase {
            * "add an extra item 0 to A and an extra item 1 to B" really means
            * "add an extra item 0 to A and B," which isn't what we want.
            */
-          if (!Objects.equal(elements[0], elements[1])) {
+          if (!Objects.equals(elements[0], elements[1])) {
             multiset2.add(elements[1], 2);
           }
         }
-        return Multisets.intersection(multiset1, multiset2);
+        return intersection(multiset1, multiset2);
       }
     };
   }
@@ -212,7 +222,7 @@ public class MultisetsCollectionTest extends TestCase {
             multiset2.add(elements[i]);
           }
         }
-        return Multisets.sum(multiset1, multiset2);
+        return sum(multiset1, multiset2);
       }
     };
   }
@@ -233,7 +243,7 @@ public class MultisetsCollectionTest extends TestCase {
           multiset1.add(elements[i], i + 2);
           multiset2.add(elements[i], i + 1);
         }
-        return Multisets.difference(multiset1, multiset2);
+        return difference(multiset1, multiset2);
       }
     };
   }
@@ -241,8 +251,7 @@ public class MultisetsCollectionTest extends TestCase {
   private static final ImmutableMultiset<String> ELEMENTS_TO_FILTER_OUT =
       ImmutableMultiset.of("foobar", "bazfoo", "foobar", "foobar");
 
-  private static final Predicate<String> PREDICATE =
-      Predicates.not(Predicates.in(ELEMENTS_TO_FILTER_OUT));
+  private static final Predicate<String> PREDICATE = not(in(ELEMENTS_TO_FILTER_OUT));
 
   private static TestStringMultisetGenerator filteredGenerator() {
     return new TestStringMultisetGenerator() {
@@ -256,7 +265,7 @@ public class MultisetsCollectionTest extends TestCase {
 
       @Override
       public List<String> order(List<String> insertionOrder) {
-        return Lists.newArrayList(LinkedHashMultiset.create(insertionOrder));
+        return new ArrayList<>(LinkedHashMultiset.create(insertionOrder));
       }
     };
   }

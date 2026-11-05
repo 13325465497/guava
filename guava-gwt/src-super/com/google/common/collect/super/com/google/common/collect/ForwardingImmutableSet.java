@@ -19,7 +19,7 @@ package com.google.common.collect;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * GWT implementation of {@link ImmutableSet} that forwards to another {@code Set} implementation.
@@ -66,7 +66,7 @@ public abstract class ForwardingImmutableSet<E> extends ImmutableSet<E> {
   }
 
   @Override
-  public <T> T[] toArray(T[] other) {
+  public <T extends @Nullable Object> T[] toArray(T[] other) {
     return delegate.toArray(other);
   }
 

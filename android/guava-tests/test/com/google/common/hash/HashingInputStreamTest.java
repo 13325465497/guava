@@ -14,27 +14,34 @@
 
 package com.google.common.hash;
 
+import static com.google.common.hash.Hashing.sha512;
+import static java.lang.System.arraycopy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import java.io.ByteArrayInputStream;
 import java.util.Arrays;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link HashingInputStream}.
  *
  * @author Qian Huang
  */
+@NullUnmarked
+@J2ktIncompatible
 public class HashingInputStreamTest extends TestCase {
   private Hasher hasher;
   private HashFunction hashFunction;
   private static final byte[] testBytes = new byte[] {'y', 'a', 'm', 's'};
   private ByteArrayInputStream buffer;
 
+  @SuppressWarnings("DoNotMock")
   @Override
   protected void setUp() throws Exception {
     super.setUp();
@@ -89,7 +96,7 @@ public class HashingInputStreamTest extends TestCase {
   public void testRead_putByteArrayOutOfBound() throws Exception {
     byte[] buf = new byte[100];
     byte[] expectedBytes = buf.clone();
-    System.arraycopy(testBytes, 0, expectedBytes, 0, testBytes.length);
+    arraycopy(testBytes, 0, expectedBytes, 0, testBytes.length);
 
     HashingInputStream in = new HashingInputStream(hashFunction, buffer);
 
@@ -105,8 +112,8 @@ public class HashingInputStreamTest extends TestCase {
   }
 
   public void testHash_hashesCorrectly() throws Exception {
-    HashCode expectedHash = Hashing.md5().hashBytes(testBytes);
-    HashingInputStream in = new HashingInputStream(Hashing.md5(), buffer);
+    HashCode expectedHash = sha512().hashBytes(testBytes);
+    HashingInputStream in = new HashingInputStream(sha512(), buffer);
 
     byte[] buf = new byte[4];
     int numOfByteRead = in.read(buf, 0, buf.length);
@@ -116,8 +123,8 @@ public class HashingInputStreamTest extends TestCase {
   }
 
   public void testHash_hashesCorrectlyReadOutOfBound() throws Exception {
-    HashCode expectedHash = Hashing.md5().hashBytes(testBytes);
-    HashingInputStream in = new HashingInputStream(Hashing.md5(), buffer);
+    HashCode expectedHash = sha512().hashBytes(testBytes);
+    HashingInputStream in = new HashingInputStream(sha512(), buffer);
 
     byte[] buf = new byte[100];
     int numOfByteRead = in.read(buf, 0, buf.length);
@@ -128,8 +135,8 @@ public class HashingInputStreamTest extends TestCase {
   }
 
   public void testHash_hashesCorrectlyForSkipping() throws Exception {
-    HashCode expectedHash = Hashing.md5().hashBytes(new byte[] {'m', 's'});
-    HashingInputStream in = new HashingInputStream(Hashing.md5(), buffer);
+    HashCode expectedHash = sha512().hashBytes(new byte[] {'m', 's'});
+    HashingInputStream in = new HashingInputStream(sha512(), buffer);
 
     long numOfByteSkipped = in.skip(2);
     assertEquals(2, numOfByteSkipped);
@@ -141,10 +148,10 @@ public class HashingInputStreamTest extends TestCase {
     assertEquals(expectedHash, in.hash());
   }
 
-  public void testChecksForNull() throws Exception {
+  public void testChecksForNull() {
     NullPointerTester tester = new NullPointerTester();
 
-    tester.testAllPublicInstanceMethods(new HashingInputStream(Hashing.md5(), buffer));
+    tester.testAllPublicInstanceMethods(new HashingInputStream(sha512(), buffer));
     tester.testAllPublicStaticMethods(HashingInputStream.class);
     tester.testAllPublicConstructors(HashingInputStream.class);
   }

@@ -16,12 +16,16 @@
 
 package com.google.common.collect.testing;
 
+import static java.util.Arrays.asList;
+
 import com.google.common.annotations.GwtCompatible;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A simplistic set which implements the bare minimum so that it can be used in tests without
@@ -31,30 +35,32 @@ import java.util.Set;
  * @author Regina O'Dell
  */
 @GwtCompatible
-public class MinimalSet<E> extends MinimalCollection<E> implements Set<E> {
+@NullMarked
+public final class MinimalSet<E extends @Nullable Object> extends MinimalCollection<E>
+    implements Set<E> {
 
   @SuppressWarnings("unchecked") // empty Object[] as E[]
-  public static <E> MinimalSet<E> of(E... contents) {
-    return ofClassAndContents(Object.class, (E[]) new Object[0], Arrays.asList(contents));
+  public static <E extends @Nullable Object> MinimalSet<E> of(E... contents) {
+    return ofClassAndContents(Object.class, (E[]) new Object[0], asList(contents));
   }
 
   @SuppressWarnings("unchecked") // empty Object[] as E[]
-  public static <E> MinimalSet<E> from(Collection<? extends E> contents) {
+  public static <E extends @Nullable Object> MinimalSet<E> from(Collection<? extends E> contents) {
     return ofClassAndContents(Object.class, (E[]) new Object[0], contents);
   }
 
-  public static <E> MinimalSet<E> ofClassAndContents(
-      Class<? super E> type, E[] emptyArrayForContents, Iterable<? extends E> contents) {
-    List<E> setContents = new ArrayList<E>();
+  public static <E extends @Nullable Object> MinimalSet<E> ofClassAndContents(
+      Class<? super @NonNull E> type, E[] emptyArrayForContents, Iterable<? extends E> contents) {
+    List<E> setContents = new ArrayList<>();
     for (E e : contents) {
       if (!setContents.contains(e)) {
         setContents.add(e);
       }
     }
-    return new MinimalSet<E>(type, setContents.toArray(emptyArrayForContents));
+    return new MinimalSet<>(type, setContents.toArray(emptyArrayForContents));
   }
 
-  private MinimalSet(Class<? super E> type, E... contents) {
+  private MinimalSet(Class<? super @NonNull E> type, E... contents) {
     super(type, true, contents);
   }
 
@@ -63,7 +69,7 @@ public class MinimalSet<E> extends MinimalCollection<E> implements Set<E> {
    */
 
   @Override
-  public boolean equals(Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object instanceof Set) {
       Set<?> that = (Set<?>) object;
       return (this.size() == that.size()) && this.containsAll(that);

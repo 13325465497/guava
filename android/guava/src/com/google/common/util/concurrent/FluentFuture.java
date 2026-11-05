@@ -15,77 +15,92 @@
 package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Function;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotMock;
+import com.google.errorprone.annotations.InlineMe;
+import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link ListenableFuture} that supports fluent chains of operations. For example:
  *
- * <pre>{@code
+ * {@snippet :
  * ListenableFuture<Boolean> adminIsLoggedIn =
  *     FluentFuture.from(usersDatabase.getAdminUser())
  *         .transform(User::getId, directExecutor())
  *         .transform(ActivityService::isLoggedIn, threadPool)
  *         .catching(RpcException.class, e -> false, directExecutor());
- * }</pre>
+ * }
  *
- * <h3>Alternatives</h3>
+ * <h2>Alternatives</h2>
  *
- * <h4>Frameworks</h4>
+ * <h3>Frameworks</h3>
  *
  * <p>When chaining together a graph of asynchronous operations, you will often find it easier to
  * use a framework. Frameworks automate the process, often adding features like monitoring,
  * debugging, and cancellation. Examples of frameworks include:
  *
  * <ul>
- *   <li><a href="http://dagger.dev/producers.html">Dagger Producers</a>
+ *   <li><a href="https://dagger.dev/producers.html">Dagger Producers</a>
  * </ul>
  *
- * <h4>{@link java.util.concurrent.CompletableFuture} / {@link java.util.concurrent.CompletionStage}
- * </h4>
+ * <h3>{@link java.util.CompletableFuture} / {@link java.util.concurrent.CompletionStage} </h3>
  *
  * <p>Users of {@code CompletableFuture} will likely want to continue using {@code
- * CompletableFuture}. {@code FluentFuture} is targeted at people who use {@code ListenableFuture},
- * who can't use Java 8, or who want an API more focused than {@code CompletableFuture}. (If you
- * need to adapt between {@code CompletableFuture} and {@code ListenableFuture}, consider <a
- * href="https://github.com/lukas-krecan/future-converter">Future Converter</a>.)
+ * CompletableFuture}. {@link FluentFuture} is targeted at people who use {@link ListenableFuture},
+ * who can't use Java 8, or who want an API more focused than {@code CompletableFuture}. If you need
+ * to adapt between {@code CompletableFuture} and {@link ListenableFuture}, consider <a
+ * href="https://github.com/lukas-krecan/future-converter">Future Converter</a>.
  *
- * <h3>Extension</h3>
+ * <h3>{@link ClosingFuture}</h3>
  *
- * If you want a class like {@code FluentFuture} but with extra methods, we recommend declaring your
+ * <p>If the steps of your pipeline create objects that must be closed when the computation is done,
+ * such as database connections or file handles, use {@link ClosingFuture}. It supports the same
+ * kinds of derived steps as {@link FluentFuture} but closes those objects once the pipeline
+ * completes, fails, or is cancelled.
+ *
+ * <h2>Extension</h2>
+ *
+ * If you want a class like {@link FluentFuture} but with extra methods, we recommend declaring your
  * own subclass of {@link ListenableFuture}, complete with a method like {@link #from} to adapt an
- * existing {@code ListenableFuture}, implemented atop a {@link ForwardingListenableFuture} that
+ * existing {@link ListenableFuture}, implemented atop a {@link ForwardingListenableFuture} that
  * forwards to that future and adds the desired methods.
  *
  * @since 23.0
  */
-@Beta
-@GwtCompatible(emulated = true)
-public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecialization<V> {
+@DoNotMock("Use FluentFuture.from(Futures.immediate*Future) or SettableFuture")
+@GwtCompatible
+public abstract class FluentFuture<V extends @Nullable Object>
+    extends GwtFluentFutureCatchingSpecialization<V> {
 
   /**
    * A less abstract subclass of AbstractFuture. This can be used to optimize setFuture by ensuring
    * that {@link #get} calls exactly the implementation of {@link AbstractFuture#get}.
    */
-  abstract static class TrustedFuture<V> extends FluentFuture<V>
-      implements AbstractFuture.Trusted<V> {
+  abstract static class TrustedFuture<V extends @Nullable Object> extends FluentFuture<V>
+      implements Trusted<V> {
     @CanIgnoreReturnValue
     @Override
+    @ParametricNullness
     public final V get() throws InterruptedException, ExecutionException {
       return super.get();
     }
 
     @CanIgnoreReturnValue
     @Override
+    @ParametricNullness
     public final V get(long timeout, TimeUnit unit)
         throws InterruptedException, ExecutionException, TimeoutException {
       return super.get(timeout, unit);
@@ -122,7 +137,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    * directly. If not, it is wrapped in a {@code FluentFuture} that delegates all calls to the
    * original {@code ListenableFuture}.
    */
-  public static <V> FluentFuture<V> from(ListenableFuture<V> future) {
+  public static <V extends @Nullable Object> FluentFuture<V> from(ListenableFuture<V> future) {
     return future instanceof FluentFuture
         ? (FluentFuture<V>) future
         : new ForwardingFluentFuture<V>(future);
@@ -134,8 +149,11 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    * @deprecated no need to use this
    * @since 28.0
    */
+  @InlineMe(
+      replacement = "checkNotNull(future)",
+      staticImports = "com.google.common.base.Preconditions.checkNotNull")
   @Deprecated
-  public static <V> FluentFuture<V> from(FluentFuture<V> future) {
+  public static <V extends @Nullable Object> FluentFuture<V> from(FluentFuture<V> future) {
     return checkNotNull(future);
   }
 
@@ -148,12 +166,12 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *
    * <p>Usage example:
    *
-   * <pre>{@code
+   * {@snippet :
    * // Falling back to a zero counter in case an exception happens when processing the RPC to fetch
    * // counters.
    * ListenableFuture<Integer> faultTolerantFuture =
    *     fetchCounters().catching(FetchException.class, x -> 0, directExecutor());
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
    * the discussion in the {@link #addListener} documentation. All its warnings about heavyweight
@@ -176,6 +194,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *     {@code get()} throws a different kind of exception, that exception itself.
    * @param executor the executor that runs {@code fallback} if the input fails
    */
+  @J2ktIncompatible
   @Partially.GwtIncompatible("AVAILABLE but requires exceptionType to be Throwable.class")
   public final <X extends Throwable> FluentFuture<V> catching(
       Class<X> exceptionType, Function<? super X, ? extends V> fallback, Executor executor) {
@@ -191,17 +210,17 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *
    * <p>Usage examples:
    *
-   * <pre>{@code
+   * {@snippet :
    * // Falling back to a zero counter in case an exception happens when processing the RPC to fetch
    * // counters.
    * ListenableFuture<Integer> faultTolerantFuture =
    *     fetchCounters().catchingAsync(
    *         FetchException.class, x -> immediateFuture(0), directExecutor());
-   * }</pre>
+   * }
    *
    * <p>The fallback can also choose to propagate the original exception when desired:
    *
-   * <pre>{@code
+   * {@snippet :
    * // Falling back to a zero counter only in case the exception was a
    * // TimeoutException.
    * ListenableFuture<Integer> faultTolerantFuture =
@@ -214,7 +233,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *           throw e;
    *         },
    *         directExecutor());
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
    * the discussion in the {@link #addListener} documentation. All its warnings about heavyweight
@@ -240,6 +259,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *     {@code get()} throws a different kind of exception, that exception itself.
    * @param executor the executor that runs {@code fallback} if the input fails
    */
+  @J2ktIncompatible
   @Partially.GwtIncompatible("AVAILABLE but requires exceptionType to be Throwable.class")
   public final <X extends Throwable> FluentFuture<V> catchingAsync(
       Class<X> exceptionType, AsyncFunction<? super X, ? extends V> fallback, Executor executor) {
@@ -253,9 +273,28 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    * ({@code this}) will be cancelled and interrupted.
    *
    * @param timeout when to time out the future
+   * @param scheduledExecutor The executor service to enforce the timeout.
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @J2ktIncompatible
+  @GwtIncompatible // ScheduledExecutorService
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  public final FluentFuture<V> withTimeout(
+      Duration timeout, ScheduledExecutorService scheduledExecutor) {
+    return withTimeout(toNanosSaturated(timeout), NANOSECONDS, scheduledExecutor);
+  }
+
+  /**
+   * Returns a future that delegates to this future but will finish early (via a {@link
+   * TimeoutException} wrapped in an {@link ExecutionException}) if the specified timeout expires.
+   * If the timeout expires, not only will the output future finish, but also the input future
+   * ({@code this}) will be cancelled and interrupted.
+   *
+   * @param timeout when to time out the future
    * @param unit the time unit of the time parameter
    * @param scheduledExecutor The executor service to enforce the timeout.
    */
+  @J2ktIncompatible
   @GwtIncompatible // ScheduledExecutorService
   @SuppressWarnings("GoodTime") // should accept a java.time.Duration
   public final FluentFuture<V> withTimeout(
@@ -266,17 +305,18 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
   /**
    * Returns a new {@code Future} whose result is asynchronously derived from the result of this
    * {@code Future}. If the input {@code Future} fails, the returned {@code Future} fails with the
-   * same exception (and the function is not invoked).
+   * same exception (and the function is not invoked). If the function throws an exception, the
+   * returned {@code Future} fails with that exception.
    *
    * <p>More precisely, the returned {@code Future} takes its result from a {@code Future} produced
    * by applying the given {@code AsyncFunction} to the result of the original {@code Future}.
    * Example usage:
    *
-   * <pre>{@code
+   * {@snippet :
    * FluentFuture<RowKey> rowKeyFuture = FluentFuture.from(indexService.lookUp(query));
    * ListenableFuture<QueryResult> queryFuture =
    *     rowKeyFuture.transformAsync(dataService::readFuture, executor);
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
    * the discussion in the {@link #addListener} documentation. All its warnings about heavyweight
@@ -302,7 +342,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    * @return A future that holds result of the function (if the input succeeded) or the original
    *     input's failure (if not)
    */
-  public final <T> FluentFuture<T> transformAsync(
+  public final <T extends @Nullable Object> FluentFuture<T> transformAsync(
       AsyncFunction<? super V, T> function, Executor executor) {
     return (FluentFuture<T>) Futures.transformAsync(this, function, executor);
   }
@@ -310,12 +350,12 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
   /**
    * Returns a new {@code Future} whose result is derived from the result of this {@code Future}. If
    * this input {@code Future} fails, the returned {@code Future} fails with the same exception (and
-   * the function is not invoked). Example usage:
+   * the function is not invoked). If the function throws an exception, the returned {@code Future}
+   * fails with that exception. Example usage:
    *
-   * <pre>{@code
-   * ListenableFuture<List<Row>> rowsFuture =
-   *     queryFuture.transform(QueryResult::getRows, executor);
-   * }</pre>
+   * {@snippet :
+   * ListenableFuture<List<Row>> rowsFuture = queryFuture.transform(QueryResult::getRows, executor);
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
    * the discussion in the {@link #addListener} documentation. All its warnings about heavyweight
@@ -339,7 +379,8 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    * @param executor Executor to run the function in.
    * @return A future that holds result of the transformation.
    */
-  public final <T> FluentFuture<T> transform(Function<? super V, T> function, Executor executor) {
+  public final <T extends @Nullable Object> FluentFuture<T> transform(
+      Function<? super V, T> function, Executor executor) {
     return (FluentFuture<T>) Futures.transform(this, function, executor);
   }
 
@@ -354,7 +395,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *
    * <p>Example:
    *
-   * <pre>{@code
+   * {@snippet :
    * future.addCallback(
    *     new FutureCallback<QueryResult>() {
    *       public void onSuccess(QueryResult result) {
@@ -364,7 +405,7 @@ public abstract class FluentFuture<V> extends GwtFluentFutureCatchingSpecializat
    *         reportError(t);
    *       }
    *     }, executor);
-   * }</pre>
+   * }
    *
    * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
    * the discussion in the {@link #addListener} documentation. All its warnings about heavyweight

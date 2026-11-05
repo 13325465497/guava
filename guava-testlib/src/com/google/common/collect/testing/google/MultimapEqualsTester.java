@@ -14,20 +14,21 @@
 
 package com.google.common.collect.testing.google;
 
+import static com.google.common.collect.testing.Helpers.mapEntry;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.Multimap;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import com.google.common.testing.EqualsTester;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tester for {@code Multimap.equals}.
@@ -35,8 +36,9 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public class MultimapEqualsTester<K, V> extends AbstractMultimapTester<K, V, Multimap<K, V>> {
+@NullMarked
+public class MultimapEqualsTester<K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractMultimapTester<K, V, Multimap<K, V>> {
   public void testEqualsTrue() {
     new EqualsTester()
         .addEqualityGroup(multimap(), getSubjectGenerator().create(getSampleElements().toArray()))
@@ -45,7 +47,7 @@ public class MultimapEqualsTester<K, V> extends AbstractMultimapTester<K, V, Mul
 
   public void testEqualsFalse() {
     List<Entry<K, V>> targetEntries = new ArrayList<>(getSampleElements());
-    targetEntries.add(Helpers.mapEntry(k0(), v3()));
+    targetEntries.add(mapEntry(k0(), v3()));
     new EqualsTester()
         .addEqualityGroup(multimap())
         .addEqualityGroup(getSubjectGenerator().create(targetEntries.toArray()))

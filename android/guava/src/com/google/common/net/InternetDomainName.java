@@ -18,19 +18,18 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Ascii;
 import com.google.common.base.CharMatcher;
-import com.google.common.base.Joiner;
-import com.google.common.base.Optional;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
+import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.thirdparty.publicsuffix.PublicSuffixPatterns;
 import com.google.thirdparty.publicsuffix.PublicSuffixType;
 import java.util.List;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable well-formed internet domain name, such as {@code com} or {@code foo.co.uk}. Only
@@ -71,20 +70,24 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Catherine Berry
  * @since 5.0
  */
-@Beta
 @GwtCompatible
 @Immutable
 public final class InternetDomainName {
 
   private static final CharMatcher DOTS_MATCHER = CharMatcher.anyOf(".\u3002\uFF0E\uFF61");
   private static final Splitter DOT_SPLITTER = Splitter.on('.');
-  private static final Joiner DOT_JOINER = Joiner.on('.');
 
   /**
-   * Value of {@link #publicSuffixIndex} or {@link #registrySuffixIndex} which indicates that no
+   * Value of {@link #publicSuffixIndex()} or {@link #registrySuffixIndex()} which indicates that no
    * relevant suffix was found.
    */
   private static final int NO_SUFFIX_FOUND = -1;
+
+  /**
+   * Value of {@link #publicSuffixIndexCache} or {@link #registrySuffixIndexCache} which indicates
+   * that they were not initialized yet.
+   */
+  private static final int SUFFIX_NOT_INITIALIZED = -2;
 
   /**
    * Maximum parts (labels) in a domain name. This value arises from the 255-octet limit described
@@ -113,20 +116,26 @@ public final class InternetDomainName {
   private final ImmutableList<String> parts;
 
   /**
-   * The index in the {@link #parts()} list at which the public suffix begins. For example, for the
-   * domain name {@code myblog.blogspot.co.uk}, the value would be 1 (the index of the {@code
-   * blogspot} part). The value is negative (specifically, {@link #NO_SUFFIX_FOUND}) if no public
-   * suffix was found.
+   * Cached value of #publicSuffixIndex(). Do not use directly.
+   *
+   * <p>Since this field isn't {@code volatile}, if an instance of this class is shared across
+   * threads before it is initialized, then each thread is likely to compute their own copy of the
+   * value.
    */
-  private final int publicSuffixIndex;
+  @SuppressWarnings("Immutable")
+  @LazyInit
+  private int publicSuffixIndexCache = SUFFIX_NOT_INITIALIZED;
 
   /**
-   * The index in the {@link #parts()} list at which the registry suffix begins. For example, for
-   * the domain name {@code myblog.blogspot.co.uk}, the value would be 2 (the index of the {@code
-   * co} part). The value is negative (specifically, {@link #NO_SUFFIX_FOUND}) if no registry suffix
-   * was found.
+   * Cached value of #registrySuffixIndex(). Do not use directly.
+   *
+   * <p>Since this field isn't {@code volatile}, if an instance of this class is shared across
+   * threads before it is initialized, then each thread is likely to compute their own copy of the
+   * value.
    */
-  private final int registrySuffixIndex;
+  @SuppressWarnings("Immutable")
+  @LazyInit
+  private int registrySuffixIndexCache = SUFFIX_NOT_INITIALIZED;
 
   /** Constructor used to implement {@link #from(String)}, and from subclasses. */
   InternetDomainName(String name) {
@@ -147,44 +156,47 @@ public final class InternetDomainName {
     this.parts = ImmutableList.copyOf(DOT_SPLITTER.split(name));
     checkArgument(parts.size() <= MAX_PARTS, "Domain has too many parts: '%s'", name);
     checkArgument(validateSyntax(parts), "Not a valid domain name: '%s'", name);
-
-    this.publicSuffixIndex = findSuffixOfType(Optional.<PublicSuffixType>absent());
-    this.registrySuffixIndex = findSuffixOfType(Optional.of(PublicSuffixType.REGISTRY));
   }
 
   /**
-   * Returns the index of the leftmost part of the suffix, or -1 if not found. Note that the value
-   * defined as a suffix may not produce {@code true} results from {@link #isPublicSuffix()} or
-   * {@link #isRegistrySuffix()} if the domain ends with an excluded domain pattern such as {@code
-   * "nhs.uk"}.
-   *
-   * <p>If a {@code desiredType} is specified, this method only finds suffixes of the given type.
-   * Otherwise, it finds the first suffix of any type.
+   * Internal constructor that skips validations when creating an instance from parts of an
+   * already-validated InternetDomainName, as in {@link ancestor}.
    */
-  private int findSuffixOfType(Optional<PublicSuffixType> desiredType) {
-    final int partsSize = parts.size();
+  private InternetDomainName(String name, ImmutableList<String> parts) {
+    checkArgument(!parts.isEmpty(), "Cannot create an InternetDomainName with zero parts.");
+    this.name = name;
+    this.parts = parts;
+  }
 
-    for (int i = 0; i < partsSize; i++) {
-      String ancestorName = DOT_JOINER.join(parts.subList(i, partsSize));
-
-      if (matchesType(
-          desiredType, Optional.fromNullable(PublicSuffixPatterns.EXACT.get(ancestorName)))) {
-        return i;
-      }
-
-      // Excluded domains (e.g. !nhs.uk) use the next highest
-      // domain as the effective public suffix (e.g. uk).
-
-      if (PublicSuffixPatterns.EXCLUDED.containsKey(ancestorName)) {
-        return i + 1;
-      }
-
-      if (matchesWildcardSuffixType(desiredType, ancestorName)) {
-        return i;
-      }
+  /**
+   * The index in the {@link #parts()} list at which the public suffix begins. For example, for the
+   * domain name {@code myblog.blogspot.co.uk}, the value would be 1 (the index of the {@code
+   * blogspot} part). The value is negative (specifically, {@link #NO_SUFFIX_FOUND}) if no public
+   * suffix was found.
+   */
+  private int publicSuffixIndex() {
+    int publicSuffixIndexLocal = publicSuffixIndexCache;
+    if (publicSuffixIndexLocal == SUFFIX_NOT_INITIALIZED) {
+      publicSuffixIndexCache =
+          publicSuffixIndexLocal = PublicSuffixPatterns.TRIE.findSuffixIndex(parts);
     }
+    return publicSuffixIndexLocal;
+  }
 
-    return NO_SUFFIX_FOUND;
+  /**
+   * The index in the {@link #parts()} list at which the registry suffix begins. For example, for
+   * the domain name {@code myblog.blogspot.co.uk}, the value would be 2 (the index of the {@code
+   * co} part). The value is negative (specifically, {@link #NO_SUFFIX_FOUND}) if no registry suffix
+   * was found.
+   */
+  private int registrySuffixIndex() {
+    int registrySuffixIndexLocal = registrySuffixIndexCache;
+    if (registrySuffixIndexLocal == SUFFIX_NOT_INITIALIZED) {
+      registrySuffixIndexCache =
+          registrySuffixIndexLocal =
+              PublicSuffixPatterns.TRIE.findSuffixIndex(parts, PublicSuffixType.REGISTRY);
+    }
+    return registrySuffixIndexLocal;
   }
 
   /**
@@ -200,12 +212,12 @@ public final class InternetDomainName {
    *       href="https://tools.ietf.org/html/rfc1123#section-2">RFC 1123</a>.
    * </ul>
    *
-   *
    * @param domain A domain name (not IP address)
    * @throws IllegalArgumentException if {@code domain} is not syntactically valid according to
    *     {@link #isValid}
    * @since 10.0 (previously named {@code fromLenient})
    */
+  @CanIgnoreReturnValue // TODO(b/219820829): consider removing
   public static InternetDomainName from(String domain) {
     return new InternetDomainName(checkNotNull(domain));
   }
@@ -217,7 +229,7 @@ public final class InternetDomainName {
    * @return Is the domain name syntactically valid?
    */
   private static boolean validateSyntax(List<String> parts) {
-    final int lastIndex = parts.size() - 1;
+    int lastIndex = parts.size() - 1;
 
     // Validate the last part specially, as it has different syntax rules.
 
@@ -237,8 +249,13 @@ public final class InternetDomainName {
 
   private static final CharMatcher DASH_MATCHER = CharMatcher.anyOf("-_");
 
+  private static final CharMatcher DIGIT_MATCHER = CharMatcher.inRange('0', '9');
+
+  private static final CharMatcher LETTER_MATCHER =
+      CharMatcher.inRange('a', 'z').or(CharMatcher.inRange('A', 'Z'));
+
   private static final CharMatcher PART_CHAR_MATCHER =
-      CharMatcher.javaLetterOrDigit().or(DASH_MATCHER);
+      DIGIT_MATCHER.or(LETTER_MATCHER).or(DASH_MATCHER);
 
   /**
    * Helper method for {@link #validateSyntax(List)}. Validates that one part of a domain name is
@@ -253,7 +270,7 @@ public final class InternetDomainName {
     // These tests could be collapsed into one big boolean expression, but
     // they have been left as independent tests for clarity.
 
-    if (part.length() < 1 || part.length() > MAX_DOMAIN_PART_LENGTH) {
+    if (part.isEmpty() || part.length() > MAX_DOMAIN_PART_LENGTH) {
       return false;
     }
 
@@ -284,10 +301,13 @@ public final class InternetDomainName {
      * Note that we allow (in contravention of a strict interpretation of the relevant RFCs) domain
      * parts other than the last may begin with a digit (for example, "3com.com"). It's important to
      * disallow an initial digit in the last part; it's the only thing that stops an IPv4 numeric
-     * address like 127.0.0.1 from looking like a valid domain name.
+     * address like 127.0.0.1 from looking like a valid domain name. Non-ASCII digits count, too,
+     * since InetAddresses and Inet4Address both accept, for example, a full-width "127.0.0.1".
+     * Supplementary code points are _not_ handled, which also matches the behavior of Inet4Address
+     * and InetAddresses (but not IDNA).
      */
 
-    if (isFinalPart && CharMatcher.digit().matches(part.charAt(0))) {
+    if (isFinalPart && Character.isDigit(part.charAt(0))) {
       return false;
     }
 
@@ -324,7 +344,7 @@ public final class InternetDomainName {
    * @since 6.0
    */
   public boolean isPublicSuffix() {
-    return publicSuffixIndex == 0;
+    return publicSuffixIndex() == 0;
   }
 
   /**
@@ -340,7 +360,7 @@ public final class InternetDomainName {
    * @since 6.0
    */
   public boolean hasPublicSuffix() {
-    return publicSuffixIndex != NO_SUFFIX_FOUND;
+    return publicSuffixIndex() != NO_SUFFIX_FOUND;
   }
 
   /**
@@ -349,8 +369,8 @@ public final class InternetDomainName {
    *
    * @since 6.0
    */
-  public InternetDomainName publicSuffix() {
-    return hasPublicSuffix() ? ancestor(publicSuffixIndex) : null;
+  public @Nullable InternetDomainName publicSuffix() {
+    return hasPublicSuffix() ? ancestor(publicSuffixIndex()) : null;
   }
 
   /**
@@ -366,7 +386,7 @@ public final class InternetDomainName {
    * @since 6.0
    */
   public boolean isUnderPublicSuffix() {
-    return publicSuffixIndex > 0;
+    return publicSuffixIndex() > 0;
   }
 
   /**
@@ -382,7 +402,7 @@ public final class InternetDomainName {
    * @since 6.0
    */
   public boolean isTopPrivateDomain() {
-    return publicSuffixIndex == 1;
+    return publicSuffixIndex() == 1;
   }
 
   /**
@@ -406,7 +426,7 @@ public final class InternetDomainName {
       return this;
     }
     checkState(isUnderPublicSuffix(), "Not under a public suffix: %s", name);
-    return ancestor(publicSuffixIndex - 1);
+    return ancestor(publicSuffixIndex() - 1);
   }
 
   /**
@@ -433,7 +453,7 @@ public final class InternetDomainName {
    * @since 23.3
    */
   public boolean isRegistrySuffix() {
-    return registrySuffixIndex == 0;
+    return registrySuffixIndex() == 0;
   }
 
   /**
@@ -448,7 +468,7 @@ public final class InternetDomainName {
    * @since 23.3
    */
   public boolean hasRegistrySuffix() {
-    return registrySuffixIndex != NO_SUFFIX_FOUND;
+    return registrySuffixIndex() != NO_SUFFIX_FOUND;
   }
 
   /**
@@ -457,8 +477,8 @@ public final class InternetDomainName {
    *
    * @since 23.3
    */
-  public InternetDomainName registrySuffix() {
-    return hasRegistrySuffix() ? ancestor(registrySuffixIndex) : null;
+  public @Nullable InternetDomainName registrySuffix() {
+    return hasRegistrySuffix() ? ancestor(registrySuffixIndex()) : null;
   }
 
   /**
@@ -470,7 +490,7 @@ public final class InternetDomainName {
    * @since 23.3
    */
   public boolean isUnderRegistrySuffix() {
-    return registrySuffixIndex > 0;
+    return registrySuffixIndex() > 0;
   }
 
   /**
@@ -485,7 +505,7 @@ public final class InternetDomainName {
    * @since 23.3
    */
   public boolean isTopDomainUnderRegistrySuffix() {
-    return registrySuffixIndex == 1;
+    return registrySuffixIndex() == 1;
   }
 
   /**
@@ -508,7 +528,7 @@ public final class InternetDomainName {
       return this;
     }
     checkState(isUnderRegistrySuffix(), "Not under a registry suffix: %s", name);
-    return ancestor(registrySuffixIndex - 1);
+    return ancestor(registrySuffixIndex() - 1);
   }
 
   /** Indicates whether this domain is composed of two or more parts. */
@@ -536,7 +556,17 @@ public final class InternetDomainName {
    * <p>TODO: Reasonable candidate for addition to public API.
    */
   private InternetDomainName ancestor(int levels) {
-    return from(DOT_JOINER.join(parts.subList(levels, parts.size())));
+    ImmutableList<String> ancestorParts = parts.subList(levels, parts.size());
+
+    // levels equals the number of dots that are getting clipped away, then add the length of each
+    // clipped part to get the length of the leading substring that is being removed.
+    int substringFrom = levels;
+    for (int i = 0; i < levels; i++) {
+      substringFrom += parts.get(i).length();
+    }
+    String ancestorName = name.substring(substringFrom);
+
+    return new InternetDomainName(ancestorName, ancestorParts);
   }
 
   /**
@@ -559,50 +589,29 @@ public final class InternetDomainName {
    *
    * <p>The following two code snippets are equivalent:
    *
-   * <pre>{@code
+   * {@snippet :
    * domainName = InternetDomainName.isValid(name)
    *     ? InternetDomainName.from(name)
    *     : DEFAULT_DOMAIN;
-   * }</pre>
+   * }
    *
-   * <pre>{@code
+   * {@snippet :
    * try {
    *   domainName = InternetDomainName.from(name);
    * } catch (IllegalArgumentException e) {
    *   domainName = DEFAULT_DOMAIN;
    * }
-   * }</pre>
+   * }
    *
    * @since 8.0 (previously named {@code isValidLenient})
    */
   public static boolean isValid(String name) {
     try {
-      from(name);
+      InternetDomainName unused = from(name);
       return true;
     } catch (IllegalArgumentException e) {
       return false;
     }
-  }
-
-  /**
-   * Does the domain name match one of the "wildcard" patterns (e.g. {@code "*.ar"})? If a {@code
-   * desiredType} is specified, the wildcard pattern must also match that type.
-   */
-  private static boolean matchesWildcardSuffixType(
-      Optional<PublicSuffixType> desiredType, String domain) {
-    List<String> pieces = DOT_SPLITTER.limit(2).splitToList(domain);
-    return pieces.size() == 2
-        && matchesType(
-            desiredType, Optional.fromNullable(PublicSuffixPatterns.UNDER.get(pieces.get(1))));
-  }
-
-  /**
-   * If a {@code desiredType} is specified, returns true only if the {@code actualType} is
-   * identical. Otherwise, returns true as long as {@code actualType} is present.
-   */
-  private static boolean matchesType(
-      Optional<PublicSuffixType> desiredType, Optional<PublicSuffixType> actualType) {
-    return desiredType.isPresent() ? desiredType.equals(actualType) : actualType.isPresent();
   }
 
   /** Returns the domain name, normalized to all lower case. */
@@ -617,7 +626,7 @@ public final class InternetDomainName {
    * version of the same domain name would not be considered equal.
    */
   @Override
-  public boolean equals(@NullableDecl Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object == this) {
       return true;
     }

@@ -16,29 +16,36 @@
 
 package com.google.common.math;
 
+import static com.google.common.collect.Sets.difference;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests that the different algorithms benchmarked in {@link QuantilesBenchmark} are actually all
  * returning more-or-less the same answers.
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class QuantilesAlgorithmTest extends TestCase {
 
-  private static final Random RNG = new Random(82674067L);
+  private static final Random rng = new Random(82674067L);
   private static final int DATASET_SIZE = 1000;
   private static final double ALLOWED_ERROR = 1.0e-10;
   private static final QuantilesAlgorithm REFERENCE_ALGORITHM = QuantilesAlgorithm.SORTING;
-  private static final Set<QuantilesAlgorithm> NON_REFERENCE_ALGORITHMS =
-      Sets.difference(
-          ImmutableSet.copyOf(QuantilesAlgorithm.values()), ImmutableSet.of(REFERENCE_ALGORITHM));
+  private static final ImmutableSet<QuantilesAlgorithm> NON_REFERENCE_ALGORITHMS =
+      difference(
+              ImmutableSet.copyOf(QuantilesAlgorithm.values()),
+              ImmutableSet.of(REFERENCE_ALGORITHM))
+          .immutableCopy();
 
   private double[] dataset;
 
@@ -46,7 +53,7 @@ public class QuantilesAlgorithmTest extends TestCase {
   protected void setUp() {
     dataset = new double[DATASET_SIZE];
     for (int i = 0; i < DATASET_SIZE; i++) {
-      dataset[i] = RNG.nextDouble();
+      dataset[i] = rng.nextDouble();
     }
   }
 
@@ -77,7 +84,9 @@ public class QuantilesAlgorithmTest extends TestCase {
     assertThat(referenceQuantiles.keySet()).isEqualTo(indexes);
     for (QuantilesAlgorithm algorithm : NON_REFERENCE_ALGORITHMS) {
       Map<Integer, Double> quantiles = algorithm.multipleQuantiles(indexes, 100, dataset.clone());
-      assertWithMessage("Wrong keys from " + algorithm).that(quantiles.keySet()).isEqualTo(indexes);
+      assertWithMessage("Wrong keys from %s", algorithm)
+          .that(quantiles.keySet())
+          .isEqualTo(indexes);
       for (int i : indexes) {
         assertWithMessage("Mismatch between %s and %s at %s", algorithm, REFERENCE_ALGORITHM, i)
             .that(quantiles.get(i))

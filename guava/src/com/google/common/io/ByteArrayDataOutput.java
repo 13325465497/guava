@@ -15,6 +15,7 @@
 package com.google.common.io;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.DataOutput;
 import java.io.IOException;
 
@@ -22,19 +23,23 @@ import java.io.IOException;
  * An extension of {@code DataOutput} for writing to in-memory byte arrays; its methods offer
  * identical functionality but do not throw {@link IOException}.
  *
+ * <p>To create an instance, use {@link ByteStreams#newDataOutput()} or the other overload of that
+ * method.
+ *
  * @author Jayaprabhakar Kadarkarai
  * @since 1.0
  */
+@J2ktIncompatible
 @GwtIncompatible
 public interface ByteArrayDataOutput extends DataOutput {
   @Override
   void write(int b);
 
   @Override
-  void write(byte b[]);
+  void write(byte[] b);
 
   @Override
-  void write(byte b[], int off, int len);
+  void write(byte[] b, int off, int len);
 
   @Override
   void writeBoolean(boolean v);

@@ -16,8 +16,8 @@ package com.google.common.base;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -25,7 +25,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Utility methods for working with {@link Enum} instances.
@@ -33,7 +33,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Steve McKay
  * @since 9.0
  */
-@GwtCompatible(emulated = true)
+@GwtIncompatible
+@J2ktIncompatible
 public final class Enums {
 
   private Enums() {}
@@ -45,7 +46,6 @@ public final class Enums {
    *
    * @since 12.0
    */
-  @GwtIncompatible // reflection
   public static Field getField(Enum<?> enumValue) {
     Class<?> clazz = enumValue.getDeclaringClass();
     try {
@@ -69,11 +69,9 @@ public final class Enums {
     return Platform.getEnumIfPresent(enumClass, value);
   }
 
-  @GwtIncompatible // java.lang.ref.WeakReference
   private static final Map<Class<? extends Enum<?>>, Map<String, WeakReference<? extends Enum<?>>>>
       enumConstantCache = new WeakHashMap<>();
 
-  @GwtIncompatible // java.lang.ref.WeakReference
   private static <T extends Enum<T>> Map<String, WeakReference<? extends Enum<?>>> populateCache(
       Class<T> enumClass) {
     Map<String, WeakReference<? extends Enum<?>>> result = new HashMap<>();
@@ -84,7 +82,6 @@ public final class Enums {
     return result;
   }
 
-  @GwtIncompatible // java.lang.ref.WeakReference
   static <T extends Enum<T>> Map<String, WeakReference<? extends Enum<?>>> getEnumConstants(
       Class<T> enumClass) {
     synchronized (enumConstantCache) {
@@ -97,15 +94,15 @@ public final class Enums {
   }
 
   /**
-   * Returns a converter that converts between strings and {@code enum} values of type {@code
-   * enumClass} using {@link Enum#valueOf(Class, String)} and {@link Enum#name()}. The converter
-   * will throw an {@code IllegalArgumentException} if the argument is not the name of any enum
-   * constant in the specified enum.
+   * Returns a serializable converter that converts between strings and {@code enum} values of type
+   * {@code enumClass} using {@link Enum#valueOf(Class, String)} and {@link Enum#name()}. The
+   * converter will throw an {@code IllegalArgumentException} if the argument is not the name of any
+   * enum constant in the specified enum.
    *
    * @since 16.0
    */
-  public static <T extends Enum<T>> Converter<String, T> stringConverter(final Class<T> enumClass) {
-    return new StringConverter<T>(enumClass);
+  public static <T extends Enum<T>> Converter<String, T> stringConverter(Class<T> enumClass) {
+    return new StringConverter<>(enumClass);
   }
 
   private static final class StringConverter<T extends Enum<T>> extends Converter<String, T>
@@ -128,9 +125,9 @@ public final class Enums {
     }
 
     @Override
-    public boolean equals(@NullableDecl Object object) {
-      if (object instanceof StringConverter) {
-        StringConverter<?> that = (StringConverter<?>) object;
+    public boolean equals(@Nullable Object obj) {
+      if (obj instanceof StringConverter) {
+        StringConverter<?> that = (StringConverter<?>) obj;
         return this.enumClass.equals(that.enumClass);
       }
       return false;

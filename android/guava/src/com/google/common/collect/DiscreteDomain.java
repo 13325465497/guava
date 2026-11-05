@@ -20,11 +20,14 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.CollectPreconditions.checkNonnegative;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.NoSuchElementException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A descriptor for a <i>discrete</i> {@code Comparable} domain such as all {@link Integer}
@@ -36,17 +39,21 @@ import java.util.NoSuchElementException;
  * represent partial domains such as "prime integers" or "strings of length 5."
  *
  * <p>See the Guava User Guide section on <a href=
- * "https://github.com/google/guava/wiki/RangesExplained#discrete-domains"> {@code
+ * "https://github.com/google/guava/wiki/RangesExplained#discrete-domains">{@code
  * DiscreteDomain}</a>.
  *
  * @author Kevin Bourrillion
  * @since 10.0
  */
+@SuppressWarnings("rawtypes") // https://github.com/google/guava/issues/989
 @GwtCompatible
 public abstract class DiscreteDomain<C extends Comparable> {
 
   /**
    * Returns the discrete domain for values of type {@code Integer}.
+   *
+   * <p>This method always returns the same object. That object is serializable; deserializing it
+   * results in the same object too.
    *
    * @since 14.0 (since 10.0 as {@code DiscreteDomains.integers()})
    */
@@ -62,13 +69,13 @@ public abstract class DiscreteDomain<C extends Comparable> {
     }
 
     @Override
-    public Integer next(Integer value) {
+    public @Nullable Integer next(Integer value) {
       int i = value;
       return (i == Integer.MAX_VALUE) ? null : i + 1;
     }
 
     @Override
-    public Integer previous(Integer value) {
+    public @Nullable Integer previous(Integer value) {
       int i = value;
       return (i == Integer.MIN_VALUE) ? null : i - 1;
     }
@@ -103,11 +110,14 @@ public abstract class DiscreteDomain<C extends Comparable> {
       return "DiscreteDomain.integers()";
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
    * Returns the discrete domain for values of type {@code Long}.
+   *
+   * <p>This method always returns the same object. That object is serializable; deserializing it
+   * results in the same object too.
    *
    * @since 14.0 (since 10.0 as {@code DiscreteDomains.longs()})
    */
@@ -123,13 +133,13 @@ public abstract class DiscreteDomain<C extends Comparable> {
     }
 
     @Override
-    public Long next(Long value) {
+    public @Nullable Long next(Long value) {
       long l = value;
       return (l == Long.MAX_VALUE) ? null : l + 1;
     }
 
     @Override
-    public Long previous(Long value) {
+    public @Nullable Long previous(Long value) {
       long l = value;
       return (l == Long.MIN_VALUE) ? null : l - 1;
     }
@@ -175,11 +185,14 @@ public abstract class DiscreteDomain<C extends Comparable> {
       return "DiscreteDomain.longs()";
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
    * Returns the discrete domain for values of type {@code BigInteger}.
+   *
+   * <p>This method always returns the same object. That object is serializable; deserializing it
+   * results in the same object too.
    *
    * @since 15.0
    */
@@ -228,7 +241,7 @@ public abstract class DiscreteDomain<C extends Comparable> {
       return "DiscreteDomain.bigIntegers()";
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   final boolean supportsFastOffset;
@@ -248,11 +261,16 @@ public abstract class DiscreteDomain<C extends Comparable> {
    * #next} on {@code origin} {@code distance} times.
    */
   C offset(C origin, long distance) {
+    C current = origin;
     checkNonnegative(distance, "distance");
     for (long i = 0; i < distance; i++) {
-      origin = next(origin);
+      current = next(current);
+      if (current == null) {
+        throw new IllegalArgumentException(
+            "overflowed computing offset(" + origin + ", " + distance + ")");
+      }
     }
-    return origin;
+    return current;
   }
 
   /**
@@ -263,7 +281,7 @@ public abstract class DiscreteDomain<C extends Comparable> {
    * @return the least value greater than {@code value}, or {@code null} if {@code value} is {@code
    *     maxValue()}
    */
-  public abstract C next(C value);
+  public abstract @Nullable C next(C value);
 
   /**
    * Returns the unique greatest value of type {@code C} that is less than {@code value}, or {@code
@@ -273,7 +291,7 @@ public abstract class DiscreteDomain<C extends Comparable> {
    * @return the greatest value less than {@code value}, or {@code null} if {@code value} is {@code
    *     minValue()}
    */
-  public abstract C previous(C value);
+  public abstract @Nullable C previous(C value);
 
   /**
    * Returns a signed value indicating how many nested invocations of {@link #next} (if positive) or

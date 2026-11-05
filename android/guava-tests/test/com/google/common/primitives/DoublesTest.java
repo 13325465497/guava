@@ -16,35 +16,45 @@
 
 package com.google.common.primitives;
 
+import static com.google.common.collect.testing.Helpers.misleadingSizeCollection;
+import static com.google.common.collect.testing.Helpers.testComparator;
+import static com.google.common.primitives.Doubles.max;
+import static com.google.common.primitives.Doubles.min;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static java.lang.Double.NaN;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Converter;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.testing.NullPointerTester;
-import com.google.common.testing.SerializableTester;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link Doubles}.
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
-@SuppressWarnings("cast") // redundant casts are intentional and harmless
+@NullMarked
+@GwtCompatible
 public class DoublesTest extends TestCase {
   private static final double[] EMPTY = {};
-  private static final double[] ARRAY1 = {(double) 1};
-  private static final double[] ARRAY234 = {(double) 2, (double) 3, (double) 4};
+  private static final double[] ARRAY1 = {1.0};
+  private static final double[] ARRAY234 = {2.0, 3.0, 4.0};
 
   private static final double LEAST = Double.NEGATIVE_INFINITY;
   private static final double GREATEST = Double.POSITIVE_INFINITY;
@@ -65,8 +75,8 @@ public class DoublesTest extends TestCase {
         GREATEST,
         Double.MIN_NORMAL,
         -Double.MIN_NORMAL,
-        Double.MIN_VALUE,
-        -Double.MIN_VALUE,
+        Doubles.MIN_POSITIVE_VALUE,
+        -Doubles.MIN_POSITIVE_VALUE,
         Integer.MIN_VALUE,
         Integer.MAX_VALUE,
         Long.MIN_VALUE,
@@ -75,259 +85,250 @@ public class DoublesTest extends TestCase {
 
   private static final double[] VALUES = Doubles.concat(NUMBERS, new double[] {NaN});
 
+  @GwtIncompatible
+  // We want to test that we've defined the constant with the correct value.
+  @SuppressWarnings("TruthConstantAsserts")
+  public void testMinPositive() {
+    assertThat(Doubles.MIN_POSITIVE_VALUE).isEqualTo(Math.nextUp(0.0));
+  }
+
+  // We need to test that our method behaves like the JDK method.
+  @SuppressWarnings("InlineMeInliner")
   public void testHashCode() {
     for (double value : VALUES) {
-      assertEquals(((Double) value).hashCode(), Doubles.hashCode(value));
+      assertThat(Doubles.hashCode(value)).isEqualTo(Double.hashCode(value));
     }
   }
 
+  @SuppressWarnings("InlineMeInliner") // We need to test our method.
   public void testIsFinite() {
     for (double value : NUMBERS) {
-      assertEquals(!(Double.isNaN(value) || Double.isInfinite(value)), Doubles.isFinite(value));
+      assertThat(Doubles.isFinite(value)).isEqualTo(Double.isFinite(value));
     }
   }
 
+  // We need to test that our method behaves like the JDK method.
+  @SuppressWarnings("InlineMeInliner")
   public void testCompare() {
     for (double x : VALUES) {
       for (double y : VALUES) {
         // note: spec requires only that the sign is the same
-        assertEquals(x + ", " + y, Double.valueOf(x).compareTo(y), Doubles.compare(x, y));
+        assertWithMessage("%s, %s", x, y)
+            .that(Doubles.compare(x, y))
+            .isEqualTo(Double.compare(x, y));
       }
     }
   }
 
   public void testContains() {
-    assertFalse(Doubles.contains(EMPTY, (double) 1));
-    assertFalse(Doubles.contains(ARRAY1, (double) 2));
-    assertFalse(Doubles.contains(ARRAY234, (double) 1));
-    assertTrue(Doubles.contains(new double[] {(double) -1}, (double) -1));
-    assertTrue(Doubles.contains(ARRAY234, (double) 2));
-    assertTrue(Doubles.contains(ARRAY234, (double) 3));
-    assertTrue(Doubles.contains(ARRAY234, (double) 4));
+    assertThat(Doubles.contains(EMPTY, 1.0)).isFalse();
+    assertThat(Doubles.contains(ARRAY1, 2.0)).isFalse();
+    assertThat(Doubles.contains(ARRAY234, 1.0)).isFalse();
+    assertThat(Doubles.contains(new double[] {-1.0}, -1.0)).isTrue();
+    assertThat(Doubles.contains(ARRAY234, 2.0)).isTrue();
+    assertThat(Doubles.contains(ARRAY234, 3.0)).isTrue();
+    assertThat(Doubles.contains(ARRAY234, 4.0)).isTrue();
 
     for (double value : NUMBERS) {
-      assertTrue("" + value, Doubles.contains(new double[] {5.0, value}, value));
+      assertWithMessage("%s", value)
+          .that(Doubles.contains(new double[] {5.0, value}, value))
+          .isTrue();
     }
-    assertFalse(Doubles.contains(new double[] {5.0, NaN}, NaN));
+    assertThat(Doubles.contains(new double[] {5.0, NaN}, NaN)).isFalse();
   }
 
   public void testIndexOf() {
-    assertEquals(-1, Doubles.indexOf(EMPTY, (double) 1));
-    assertEquals(-1, Doubles.indexOf(ARRAY1, (double) 2));
-    assertEquals(-1, Doubles.indexOf(ARRAY234, (double) 1));
-    assertEquals(0, Doubles.indexOf(new double[] {(double) -1}, (double) -1));
-    assertEquals(0, Doubles.indexOf(ARRAY234, (double) 2));
-    assertEquals(1, Doubles.indexOf(ARRAY234, (double) 3));
-    assertEquals(2, Doubles.indexOf(ARRAY234, (double) 4));
-    assertEquals(
-        1,
-        Doubles.indexOf(new double[] {(double) 2, (double) 3, (double) 2, (double) 3}, (double) 3));
+    assertThat(Doubles.indexOf(EMPTY, 1.0)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(ARRAY1, 2.0)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(ARRAY234, 1.0)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(new double[] {-1.0}, -1.0)).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, 2.0)).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, 3.0)).isEqualTo(1);
+    assertThat(Doubles.indexOf(ARRAY234, 4.0)).isEqualTo(2);
+    assertThat(Doubles.indexOf(new double[] {2.0, 3.0, 2.0, 3.0}, 3.0)).isEqualTo(1);
 
     for (double value : NUMBERS) {
-      assertEquals("" + value, 1, Doubles.indexOf(new double[] {5.0, value}, value));
+      assertWithMessage("%s", value)
+          .that(Doubles.indexOf(new double[] {5.0, value}, value))
+          .isEqualTo(1);
     }
-    assertEquals(-1, Doubles.indexOf(new double[] {5.0, NaN}, NaN));
+    assertThat(Doubles.indexOf(new double[] {5.0, NaN}, NaN)).isEqualTo(-1);
   }
 
   public void testIndexOf_arrayTarget() {
-    assertEquals(0, Doubles.indexOf(EMPTY, EMPTY));
-    assertEquals(0, Doubles.indexOf(ARRAY234, EMPTY));
-    assertEquals(-1, Doubles.indexOf(EMPTY, ARRAY234));
-    assertEquals(-1, Doubles.indexOf(ARRAY234, ARRAY1));
-    assertEquals(-1, Doubles.indexOf(ARRAY1, ARRAY234));
-    assertEquals(0, Doubles.indexOf(ARRAY1, ARRAY1));
-    assertEquals(0, Doubles.indexOf(ARRAY234, ARRAY234));
-    assertEquals(0, Doubles.indexOf(ARRAY234, new double[] {(double) 2, (double) 3}));
-    assertEquals(1, Doubles.indexOf(ARRAY234, new double[] {(double) 3, (double) 4}));
-    assertEquals(1, Doubles.indexOf(ARRAY234, new double[] {(double) 3}));
-    assertEquals(2, Doubles.indexOf(ARRAY234, new double[] {(double) 4}));
-    assertEquals(
-        1,
-        Doubles.indexOf(
-            new double[] {(double) 2, (double) 3, (double) 3, (double) 3, (double) 3},
-            new double[] {(double) 3}));
-    assertEquals(
-        2,
-        Doubles.indexOf(
-            new double[] {
-              (double) 2, (double) 3, (double) 2, (double) 3, (double) 4, (double) 2, (double) 3
-            },
-            new double[] {(double) 2, (double) 3, (double) 4}));
-    assertEquals(
-        1,
-        Doubles.indexOf(
-            new double[] {
-              (double) 2, (double) 2, (double) 3, (double) 4, (double) 2, (double) 3, (double) 4
-            },
-            new double[] {(double) 2, (double) 3, (double) 4}));
-    assertEquals(
-        -1,
-        Doubles.indexOf(
-            new double[] {(double) 4, (double) 3, (double) 2},
-            new double[] {(double) 2, (double) 3, (double) 4}));
+    assertThat(Doubles.indexOf(EMPTY, EMPTY)).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, EMPTY)).isEqualTo(0);
+    assertThat(Doubles.indexOf(EMPTY, ARRAY234)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(ARRAY234, ARRAY1)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(ARRAY1, ARRAY234)).isEqualTo(-1);
+    assertThat(Doubles.indexOf(ARRAY1, ARRAY1)).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, ARRAY234)).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, new double[] {2.0, 3.0})).isEqualTo(0);
+    assertThat(Doubles.indexOf(ARRAY234, new double[] {3.0, 4.0})).isEqualTo(1);
+    assertThat(Doubles.indexOf(ARRAY234, new double[] {3.0})).isEqualTo(1);
+    assertThat(Doubles.indexOf(ARRAY234, new double[] {4.0})).isEqualTo(2);
+    assertThat(Doubles.indexOf(new double[] {2.0, 3.0, 3.0, 3.0, 3.0}, new double[] {3.0}))
+        .isEqualTo(1);
+    assertThat(
+            Doubles.indexOf(
+                new double[] {2.0, 3.0, 2.0, 3.0, 4.0, 2.0, 3.0}, new double[] {2.0, 3.0, 4.0}))
+        .isEqualTo(2);
+    assertThat(
+            Doubles.indexOf(
+                new double[] {2.0, 2.0, 3.0, 4.0, 2.0, 3.0, 4.0}, new double[] {2.0, 3.0, 4.0}))
+        .isEqualTo(1);
+    assertThat(Doubles.indexOf(new double[] {4.0, 3.0, 2.0}, new double[] {2.0, 3.0, 4.0}))
+        .isEqualTo(-1);
 
     for (double value : NUMBERS) {
-      assertEquals(
-          "" + value,
-          1,
-          Doubles.indexOf(new double[] {5.0, value, value, 5.0}, new double[] {value, value}));
+      assertWithMessage("%s", value)
+          .that(Doubles.indexOf(new double[] {5.0, value, value, 5.0}, new double[] {value, value}))
+          .isEqualTo(1);
     }
-    assertEquals(-1, Doubles.indexOf(new double[] {5.0, NaN, NaN, 5.0}, new double[] {NaN, NaN}));
+    assertThat(Doubles.indexOf(new double[] {5.0, NaN, NaN, 5.0}, new double[] {NaN, NaN}))
+        .isEqualTo(-1);
   }
 
   public void testLastIndexOf() {
-    assertEquals(-1, Doubles.lastIndexOf(EMPTY, (double) 1));
-    assertEquals(-1, Doubles.lastIndexOf(ARRAY1, (double) 2));
-    assertEquals(-1, Doubles.lastIndexOf(ARRAY234, (double) 1));
-    assertEquals(0, Doubles.lastIndexOf(new double[] {(double) -1}, (double) -1));
-    assertEquals(0, Doubles.lastIndexOf(ARRAY234, (double) 2));
-    assertEquals(1, Doubles.lastIndexOf(ARRAY234, (double) 3));
-    assertEquals(2, Doubles.lastIndexOf(ARRAY234, (double) 4));
-    assertEquals(
-        3,
-        Doubles.lastIndexOf(
-            new double[] {(double) 2, (double) 3, (double) 2, (double) 3}, (double) 3));
+    assertThat(Doubles.lastIndexOf(EMPTY, 1.0)).isEqualTo(-1);
+    assertThat(Doubles.lastIndexOf(ARRAY1, 2.0)).isEqualTo(-1);
+    assertThat(Doubles.lastIndexOf(ARRAY234, 1.0)).isEqualTo(-1);
+    assertThat(Doubles.lastIndexOf(new double[] {-1.0}, -1.0)).isEqualTo(0);
+    assertThat(Doubles.lastIndexOf(ARRAY234, 2.0)).isEqualTo(0);
+    assertThat(Doubles.lastIndexOf(ARRAY234, 3.0)).isEqualTo(1);
+    assertThat(Doubles.lastIndexOf(ARRAY234, 4.0)).isEqualTo(2);
+    assertThat(Doubles.lastIndexOf(new double[] {2.0, 3.0, 2.0, 3.0}, 3.0)).isEqualTo(3);
 
     for (double value : NUMBERS) {
-      assertEquals("" + value, 0, Doubles.lastIndexOf(new double[] {value, 5.0}, value));
+      assertWithMessage("%s", value)
+          .that(Doubles.lastIndexOf(new double[] {value, 5.0}, value))
+          .isEqualTo(0);
     }
-    assertEquals(-1, Doubles.lastIndexOf(new double[] {NaN, 5.0}, NaN));
+    assertThat(Doubles.lastIndexOf(new double[] {NaN, 5.0}, NaN)).isEqualTo(-1);
   }
 
+  @GwtIncompatible
   public void testMax_noArgs() {
-    try {
-      Doubles.max();
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> max());
   }
 
   public void testMax() {
-    assertEquals(LEAST, Doubles.max(LEAST));
-    assertEquals(GREATEST, Doubles.max(GREATEST));
-    assertEquals(
-        (double) 9,
-        Doubles.max(
-            (double) 8, (double) 6, (double) 7, (double) 5, (double) 3, (double) 0, (double) 9));
+    assertThat(max(LEAST)).isEqualTo(LEAST);
+    assertThat(max(GREATEST)).isEqualTo(GREATEST);
+    assertThat(max(8.0, 6.0, 7.0, 5.0, 3.0, 0.0, 9.0)).isEqualTo(9.0);
 
-    assertEquals(0.0, Doubles.max(-0.0, 0.0));
-    assertEquals(0.0, Doubles.max(0.0, -0.0));
-    assertEquals(GREATEST, Doubles.max(NUMBERS));
-    assertTrue(Double.isNaN(Doubles.max(VALUES)));
+    assertThat(max(-0.0, 0.0)).isEqualTo(0.0);
+    assertThat(max(0.0, -0.0)).isEqualTo(0.0);
+    assertThat(max(NUMBERS)).isEqualTo(GREATEST);
+    assertThat(Double.isNaN(max(VALUES))).isTrue();
   }
 
+  @GwtIncompatible
   public void testMin_noArgs() {
-    try {
-      Doubles.min();
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> min());
   }
 
   public void testMin() {
-    assertEquals(LEAST, Doubles.min(LEAST));
-    assertEquals(GREATEST, Doubles.min(GREATEST));
-    assertEquals(
-        (double) 0,
-        Doubles.min(
-            (double) 8, (double) 6, (double) 7, (double) 5, (double) 3, (double) 0, (double) 9));
+    assertThat(min(LEAST)).isEqualTo(LEAST);
+    assertThat(min(GREATEST)).isEqualTo(GREATEST);
+    assertThat(min(8.0, 6.0, 7.0, 5.0, 3.0, 0.0, 9.0)).isEqualTo(0.0);
 
-    assertEquals(-0.0, Doubles.min(-0.0, 0.0));
-    assertEquals(-0.0, Doubles.min(0.0, -0.0));
-    assertEquals(LEAST, Doubles.min(NUMBERS));
-    assertTrue(Double.isNaN(Doubles.min(VALUES)));
+    assertThat(min(-0.0, 0.0)).isEqualTo(-0.0);
+    assertThat(min(0.0, -0.0)).isEqualTo(-0.0);
+    assertThat(min(NUMBERS)).isEqualTo(LEAST);
+    assertThat(Double.isNaN(min(VALUES))).isTrue();
   }
 
   public void testConstrainToRange() {
-    double tolerance = 1e-10;
-    assertEquals(
-        (double) 1, Doubles.constrainToRange((double) 1, (double) 0, (double) 5), tolerance);
-    assertEquals(
-        (double) 1, Doubles.constrainToRange((double) 1, (double) 1, (double) 5), tolerance);
-    assertEquals(
-        (double) 3, Doubles.constrainToRange((double) 1, (double) 3, (double) 5), tolerance);
-    assertEquals(
-        (double) -1, Doubles.constrainToRange((double) 0, (double) -5, (double) -1), tolerance);
-    assertEquals(
-        (double) 2, Doubles.constrainToRange((double) 5, (double) 2, (double) 2), tolerance);
-    try {
-      Doubles.constrainToRange((double) 1, (double) 3, (double) 2);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThat(Doubles.constrainToRange(1.0, 0.0, 5.0)).isEqualTo(1.0);
+    assertThat(Doubles.constrainToRange(1.0, 1.0, 5.0)).isEqualTo(1.0);
+    assertThat(Doubles.constrainToRange(1.0, 3.0, 5.0)).isEqualTo(3.0);
+    assertThat(Doubles.constrainToRange(0.0, -5.0, -1.0)).isEqualTo(-1.0);
+    assertThat(Doubles.constrainToRange(5.0, 2.0, 2.0)).isEqualTo(2.0);
+    assertThrows(IllegalArgumentException.class, () -> Doubles.constrainToRange(1.0, 3.0, 2.0));
   }
 
   public void testConcat() {
-    assertTrue(Arrays.equals(EMPTY, Doubles.concat()));
-    assertTrue(Arrays.equals(EMPTY, Doubles.concat(EMPTY)));
-    assertTrue(Arrays.equals(EMPTY, Doubles.concat(EMPTY, EMPTY, EMPTY)));
-    assertTrue(Arrays.equals(ARRAY1, Doubles.concat(ARRAY1)));
-    assertNotSame(ARRAY1, Doubles.concat(ARRAY1));
-    assertTrue(Arrays.equals(ARRAY1, Doubles.concat(EMPTY, ARRAY1, EMPTY)));
-    assertTrue(
-        Arrays.equals(
-            new double[] {(double) 1, (double) 1, (double) 1},
-            Doubles.concat(ARRAY1, ARRAY1, ARRAY1)));
-    assertTrue(
-        Arrays.equals(
-            new double[] {(double) 1, (double) 2, (double) 3, (double) 4},
-            Doubles.concat(ARRAY1, ARRAY234)));
+    assertThat(Doubles.concat()).isEqualTo(EMPTY);
+    assertThat(Doubles.concat(EMPTY)).isEqualTo(EMPTY);
+    assertThat(Doubles.concat(EMPTY, EMPTY, EMPTY)).isEqualTo(EMPTY);
+    assertThat(Doubles.concat(ARRAY1)).isEqualTo(ARRAY1);
+    assertThat(Doubles.concat(ARRAY1)).isNotSameInstanceAs(ARRAY1);
+    assertThat(Doubles.concat(EMPTY, ARRAY1, EMPTY)).isEqualTo(ARRAY1);
+    assertThat(Doubles.concat(ARRAY1, ARRAY1, ARRAY1)).isEqualTo(new double[] {1.0, 1.0, 1.0});
+    assertThat(Doubles.concat(ARRAY1, ARRAY234)).isEqualTo(new double[] {1.0, 2.0, 3.0, 4.0});
+  }
+
+  @GwtIncompatible // different overflow behavior; could probably be made to work by using ~~
+  public void testConcat_overflow_negative() {
+    int dim1 = 1 << 16;
+    int dim2 = 1 << 15;
+    assertThat(dim1 * dim2).isLessThan(0);
+    testConcatOverflow(dim1, dim2);
+  }
+
+  @GwtIncompatible // different overflow behavior; could probably be made to work by using ~~
+  public void testConcat_overflow_nonNegative() {
+    int dim1 = 1 << 16;
+    int dim2 = 1 << 16;
+    assertThat(dim1 * dim2).isAtLeast(0);
+    testConcatOverflow(dim1, dim2);
+  }
+
+  private static void testConcatOverflow(int arraysDim1, int arraysDim2) {
+    assertThat((long) arraysDim1 * arraysDim2).isNotEqualTo((long) (arraysDim1 * arraysDim2));
+
+    double[][] arrays = new double[arraysDim1][];
+    // it's shared to avoid using too much memory in tests
+    double[] sharedArray = new double[arraysDim2];
+    Arrays.fill(arrays, sharedArray);
+
+    assertThrows(IllegalArgumentException.class, () -> Doubles.concat(arrays));
   }
 
   public void testEnsureCapacity() {
-    assertSame(EMPTY, Doubles.ensureCapacity(EMPTY, 0, 1));
-    assertSame(ARRAY1, Doubles.ensureCapacity(ARRAY1, 0, 1));
-    assertSame(ARRAY1, Doubles.ensureCapacity(ARRAY1, 1, 1));
-    assertTrue(
-        Arrays.equals(
-            new double[] {(double) 1, (double) 0, (double) 0},
-            Doubles.ensureCapacity(ARRAY1, 2, 1)));
+    assertThat(Doubles.ensureCapacity(EMPTY, 0, 1)).isSameInstanceAs(EMPTY);
+    assertThat(Doubles.ensureCapacity(ARRAY1, 0, 1)).isSameInstanceAs(ARRAY1);
+    assertThat(Doubles.ensureCapacity(ARRAY1, 1, 1)).isSameInstanceAs(ARRAY1);
+    assertThat(Arrays.equals(new double[] {1.0, 0.0, 0.0}, Doubles.ensureCapacity(ARRAY1, 2, 1)))
+        .isTrue();
   }
 
   public void testEnsureCapacity_fail() {
-    try {
-      Doubles.ensureCapacity(ARRAY1, -1, 1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      // notice that this should even fail when no growth was needed
-      Doubles.ensureCapacity(ARRAY1, 1, -1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Doubles.ensureCapacity(ARRAY1, -1, 1));
+    assertThrows(IllegalArgumentException.class, () -> Doubles.ensureCapacity(ARRAY1, 1, -1));
   }
 
   @GwtIncompatible // Double.toString returns different value in GWT.
   public void testJoin() {
-    assertEquals("", Doubles.join(",", EMPTY));
-    assertEquals("1.0", Doubles.join(",", ARRAY1));
-    assertEquals("1.0,2.0", Doubles.join(",", (double) 1, (double) 2));
-    assertEquals("1.02.03.0", Doubles.join("", (double) 1, (double) 2, (double) 3));
+    assertThat(Doubles.join(",", EMPTY)).isEmpty();
+    assertThat(Doubles.join(",", ARRAY1)).isEqualTo("1.0");
+    assertThat(Doubles.join(",", 1.0, 2.0)).isEqualTo("1.0,2.0");
+    assertThat(Doubles.join("", 1.0, 2.0, 3.0)).isEqualTo("1.02.03.0");
   }
 
   public void testJoinNonTrivialDoubles() {
-    assertEquals("", Doubles.join(",", EMPTY));
-    assertEquals("1.2", Doubles.join(",", 1.2));
-    assertEquals("1.3,2.4", Doubles.join(",", 1.3, 2.4));
-    assertEquals("1.42.53.6", Doubles.join("", 1.4, 2.5, 3.6));
+    assertThat(Doubles.join(",", EMPTY)).isEmpty();
+    assertThat(Doubles.join(",", 1.2)).isEqualTo("1.2");
+    assertThat(Doubles.join(",", 1.3, 2.4)).isEqualTo("1.3,2.4");
+    assertThat(Doubles.join("", 1.4, 2.5, 3.6)).isEqualTo("1.42.53.6");
   }
 
   public void testLexicographicalComparator() {
     List<double[]> ordered =
-        Arrays.asList(
+        asList(
             new double[] {},
             new double[] {LEAST},
             new double[] {LEAST, LEAST},
-            new double[] {LEAST, (double) 1},
-            new double[] {(double) 1},
-            new double[] {(double) 1, LEAST},
+            new double[] {LEAST, 1.0},
+            new double[] {1.0},
+            new double[] {1.0, LEAST},
             new double[] {GREATEST, Double.MAX_VALUE},
             new double[] {GREATEST, GREATEST},
             new double[] {GREATEST, GREATEST, GREATEST});
 
     Comparator<double[]> comparator = Doubles.lexicographicalComparator();
-    Helpers.testComparator(comparator, ordered);
+    testComparator(comparator, ordered);
   }
 
   public void testReverse() {
@@ -341,14 +342,14 @@ public class DoublesTest extends TestCase {
   private static void testReverse(double[] input, double[] expectedOutput) {
     input = Arrays.copyOf(input, input.length);
     Doubles.reverse(input);
-    assertTrue(Arrays.equals(expectedOutput, input));
+    assertThat(input).isEqualTo(expectedOutput);
   }
 
   private static void testReverse(
       double[] input, int fromIndex, int toIndex, double[] expectedOutput) {
     input = Arrays.copyOf(input, input.length);
     Doubles.reverse(input, fromIndex, toIndex);
-    assertTrue(Arrays.equals(expectedOutput, input));
+    assertThat(input).isEqualTo(expectedOutput);
   }
 
   public void testReverseIndexed() {
@@ -360,6 +361,137 @@ public class DoublesTest extends TestCase {
     testReverse(new double[] {-1, 1, -2, 2}, 1, 3, new double[] {-1, -2, 1, 2});
   }
 
+  private static void testRotate(double[] input, int distance, double[] expectedOutput) {
+    input = Arrays.copyOf(input, input.length);
+    Doubles.rotate(input, distance);
+    assertThat(input).isEqualTo(expectedOutput);
+  }
+
+  private static void testRotate(
+      double[] input, int distance, int fromIndex, int toIndex, double[] expectedOutput) {
+    input = Arrays.copyOf(input, input.length);
+    Doubles.rotate(input, distance, fromIndex, toIndex);
+    assertThat(input).isEqualTo(expectedOutput);
+  }
+
+  public void testRotate_emptyArray() {
+    double[] empty = {};
+    double[] expected = {};
+    testRotate(empty, -1, expected);
+    testRotate(empty, 0, expected);
+    testRotate(empty, 1, expected);
+  }
+
+  public void testRotate_singleElementArray() {
+    double[] single = {1};
+    double[] expected = {1};
+    testRotate(single, -2, expected);
+    testRotate(single, -1, expected);
+    testRotate(single, 0, expected);
+    testRotate(single, 1, expected);
+    testRotate(single, 2, expected);
+  }
+
+  public void testRotate_multiElementArray() {
+    testRotate(new double[] {1, 2}, -3, new double[] {2, 1});
+    testRotate(new double[] {1, 2}, -1, new double[] {2, 1});
+    testRotate(new double[] {1, 2}, -2, new double[] {1, 2});
+    testRotate(new double[] {1, 2}, 0, new double[] {1, 2});
+    testRotate(new double[] {1, 2}, 1, new double[] {2, 1});
+    testRotate(new double[] {1, 2}, 2, new double[] {1, 2});
+    testRotate(new double[] {1, 2}, 3, new double[] {2, 1});
+
+    testRotate(new double[] {1, 2, 3}, -5, new double[] {3, 1, 2});
+    testRotate(new double[] {1, 2, 3}, -4, new double[] {2, 3, 1});
+    testRotate(new double[] {1, 2, 3}, -3, new double[] {1, 2, 3});
+    testRotate(new double[] {1, 2, 3}, -2, new double[] {3, 1, 2});
+    testRotate(new double[] {1, 2, 3}, -1, new double[] {2, 3, 1});
+    testRotate(new double[] {1, 2, 3}, 0, new double[] {1, 2, 3});
+    testRotate(new double[] {1, 2, 3}, 1, new double[] {3, 1, 2});
+    testRotate(new double[] {1, 2, 3}, 2, new double[] {2, 3, 1});
+    testRotate(new double[] {1, 2, 3}, 3, new double[] {1, 2, 3});
+    testRotate(new double[] {1, 2, 3}, 4, new double[] {3, 1, 2});
+    testRotate(new double[] {1, 2, 3}, 5, new double[] {2, 3, 1});
+
+    testRotate(new double[] {1, 2, 3, 4}, -9, new double[] {2, 3, 4, 1});
+    testRotate(new double[] {1, 2, 3, 4}, -5, new double[] {2, 3, 4, 1});
+    testRotate(new double[] {1, 2, 3, 4}, -1, new double[] {2, 3, 4, 1});
+    testRotate(new double[] {1, 2, 3, 4}, 0, new double[] {1, 2, 3, 4});
+    testRotate(new double[] {1, 2, 3, 4}, 1, new double[] {4, 1, 2, 3});
+    testRotate(new double[] {1, 2, 3, 4}, 5, new double[] {4, 1, 2, 3});
+    testRotate(new double[] {1, 2, 3, 4}, 9, new double[] {4, 1, 2, 3});
+
+    testRotate(new double[] {1, 2, 3, 4, 5}, -6, new double[] {2, 3, 4, 5, 1});
+    testRotate(new double[] {1, 2, 3, 4, 5}, -4, new double[] {5, 1, 2, 3, 4});
+    testRotate(new double[] {1, 2, 3, 4, 5}, -3, new double[] {4, 5, 1, 2, 3});
+    testRotate(new double[] {1, 2, 3, 4, 5}, -1, new double[] {2, 3, 4, 5, 1});
+    testRotate(new double[] {1, 2, 3, 4, 5}, 0, new double[] {1, 2, 3, 4, 5});
+    testRotate(new double[] {1, 2, 3, 4, 5}, 1, new double[] {5, 1, 2, 3, 4});
+    testRotate(new double[] {1, 2, 3, 4, 5}, 3, new double[] {3, 4, 5, 1, 2});
+    testRotate(new double[] {1, 2, 3, 4, 5}, 4, new double[] {2, 3, 4, 5, 1});
+    testRotate(new double[] {1, 2, 3, 4, 5}, 6, new double[] {5, 1, 2, 3, 4});
+  }
+
+  public void testRotate_minValueDistance() {
+    testRotate(new double[] {1, 2, 3}, Integer.MIN_VALUE, new double[] {3, 1, 2});
+    testRotate(new double[] {0, 1, 2, 3, 4}, Integer.MIN_VALUE, 1, 4, new double[] {0, 3, 1, 2, 4});
+  }
+
+  public void testRotateIndexed_emptyRange() {
+    double[] empty = {};
+    double[] expectedEmpty = {};
+    testRotate(empty, 0, 0, 0, expectedEmpty);
+
+    double[] single = {1};
+    double[] expectedSingle = {1};
+    testRotate(single, 1, 1, 1, expectedSingle);
+
+    double[] array = {0, 1, 2};
+    double[] expectedArray = {0, 1, 2};
+    testRotate(array, 1, 1, 1, expectedArray);
+    testRotate(array, -1, 2, 2, expectedArray);
+  }
+
+  public void testRotateIndexed_singleElementRange() {
+    double[] single = {1};
+    double[] expectedSingle = {1};
+    testRotate(single, 0, 0, 1, expectedSingle);
+    testRotate(single, 1, 0, 1, expectedSingle);
+
+    double[] array = {0, 1, 2};
+    double[] expectedArray = {0, 1, 2};
+    testRotate(array, 1, 1, 2, expectedArray);
+    testRotate(array, -1, 2, 3, expectedArray);
+  }
+
+  public void testRotateIndexed_multiElementRange() {
+    // Rotate the central 5 elements, leaving the ends as-is
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -6, 1, 6, new double[] {0, 2, 3, 4, 5, 1, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -1, 1, 6, new double[] {0, 2, 3, 4, 5, 1, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 0, 1, 6, new double[] {0, 1, 2, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 5, 1, 6, new double[] {0, 1, 2, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 14, 1, 6, new double[] {0, 2, 3, 4, 5, 1, 6});
+
+    // Rotate the first three elements
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -2, 0, 3, new double[] {2, 0, 1, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -1, 0, 3, new double[] {1, 2, 0, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 0, 0, 3, new double[] {0, 1, 2, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 1, 0, 3, new double[] {2, 0, 1, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 2, 0, 3, new double[] {1, 2, 0, 3, 4, 5, 6});
+
+    // Rotate the last four elements
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -6, 3, 7, new double[] {0, 1, 2, 5, 6, 3, 4});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -5, 3, 7, new double[] {0, 1, 2, 4, 5, 6, 3});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -4, 3, 7, new double[] {0, 1, 2, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -3, 3, 7, new double[] {0, 1, 2, 6, 3, 4, 5});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -2, 3, 7, new double[] {0, 1, 2, 5, 6, 3, 4});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, -1, 3, 7, new double[] {0, 1, 2, 4, 5, 6, 3});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 0, 3, 7, new double[] {0, 1, 2, 3, 4, 5, 6});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 1, 3, 7, new double[] {0, 1, 2, 6, 3, 4, 5});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 2, 3, 7, new double[] {0, 1, 2, 5, 6, 3, 4});
+    testRotate(new double[] {0, 1, 2, 3, 4, 5, 6}, 3, 3, 7, new double[] {0, 1, 2, 4, 5, 6, 3});
+  }
+
   public void testSortDescending() {
     testSortDescending(new double[] {}, new double[] {});
     testSortDescending(new double[] {1}, new double[] {1});
@@ -367,16 +499,15 @@ public class DoublesTest extends TestCase {
     testSortDescending(new double[] {1, 3, 1}, new double[] {3, 1, 1});
     testSortDescending(new double[] {-1, 1, -2, 2}, new double[] {2, 1, -1, -2});
     testSortDescending(
-        new double[] {-1, 1, Double.NaN, -2, -0, 0, 2},
-        new double[] {Double.NaN, 2, 1, 0, -0, -1, -2});
+        new double[] {-1, 1, Double.NaN, -2, -0.0, 0, 2},
+        new double[] {Double.NaN, 2, 1, 0, -0.0, -1, -2});
   }
 
   private static void testSortDescending(double[] input, double[] expectedOutput) {
     input = Arrays.copyOf(input, input.length);
     Doubles.sortDescending(input);
-    // GWT's Arrays.equals doesn't appear to handle NaN correctly, so test each element individually
     for (int i = 0; i < input.length; i++) {
-      assertEquals(0, Double.compare(expectedOutput[i], input[i]));
+      assertThat(input[i]).isEqualTo(expectedOutput[i]);
     }
   }
 
@@ -384,9 +515,8 @@ public class DoublesTest extends TestCase {
       double[] input, int fromIndex, int toIndex, double[] expectedOutput) {
     input = Arrays.copyOf(input, input.length);
     Doubles.sortDescending(input, fromIndex, toIndex);
-    // GWT's Arrays.equals doesn't appear to handle NaN correctly, so test each element individually
     for (int i = 0; i < input.length; i++) {
-      assertEquals(0, Double.compare(expectedOutput[i], input[i]));
+      assertThat(input[i]).isEqualTo(expectedOutput[i]);
     }
   }
 
@@ -401,114 +531,115 @@ public class DoublesTest extends TestCase {
         new double[] {-1, 1, Double.NaN, -2, 2}, 1, 4, new double[] {-1, Double.NaN, 1, -2, 2});
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // SerializableTester
   public void testLexicographicalComparatorSerializable() {
     Comparator<double[]> comparator = Doubles.lexicographicalComparator();
-    assertSame(comparator, SerializableTester.reserialize(comparator));
+    assertThat(reserialize(comparator)).isSameInstanceAs(comparator);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // SerializableTester
   public void testStringConverterSerialization() {
-    SerializableTester.reserializeAndAssert(Doubles.stringConverter());
+    reserializeAndAssert(Doubles.stringConverter());
   }
 
   public void testToArray() {
     // need explicit type parameter to avoid javac warning!?
-    List<Double> none = Arrays.<Double>asList();
-    assertTrue(Arrays.equals(EMPTY, Doubles.toArray(none)));
+    List<Double> none = Arrays.asList();
+    assertThat(Doubles.toArray(none)).isEqualTo(EMPTY);
 
-    List<Double> one = Arrays.asList((double) 1);
-    assertTrue(Arrays.equals(ARRAY1, Doubles.toArray(one)));
+    List<Double> one = asList(1.0);
+    assertThat(Doubles.toArray(one)).isEqualTo(ARRAY1);
 
-    double[] array = {(double) 0, (double) 1, Math.PI};
+    double[] array = {0.0, 1.0, Math.PI};
 
-    List<Double> three = Arrays.asList((double) 0, (double) 1, Math.PI);
-    assertTrue(Arrays.equals(array, Doubles.toArray(three)));
+    List<Double> three = asList(0.0, 1.0, Math.PI);
+    assertThat(Doubles.toArray(three)).isEqualTo(array);
 
-    assertTrue(Arrays.equals(array, Doubles.toArray(Doubles.asList(array))));
+    assertThat(Doubles.toArray(Doubles.asList(array))).isEqualTo(array);
   }
 
   public void testToArray_threadSafe() {
     for (int delta : new int[] {+1, 0, -1}) {
       for (int i = 0; i < VALUES.length; i++) {
         List<Double> list = Doubles.asList(VALUES).subList(0, i);
-        Collection<Double> misleadingSize = Helpers.misleadingSizeCollection(delta);
+        Collection<Double> misleadingSize = misleadingSizeCollection(delta);
         misleadingSize.addAll(list);
         double[] arr = Doubles.toArray(misleadingSize);
-        assertEquals(i, arr.length);
+        assertThat(arr.length).isEqualTo(i);
         for (int j = 0; j < i; j++) {
-          assertEquals(VALUES[j], arr[j]);
+          assertThat(arr[j]).isEqualTo(VALUES[j]);
         }
       }
     }
   }
 
+  @SuppressWarnings("nullness") // test of a bogus call
   public void testToArray_withNull() {
-    List<Double> list = Arrays.asList((double) 0, (double) 1, null);
-    try {
-      Doubles.toArray(list);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    List<@Nullable Double> list = asList(0.0, 1.0, null);
+    assertThrows(NullPointerException.class, () -> Doubles.toArray(list));
   }
 
   public void testToArray_withConversion() {
-    double[] array = {(double) 0, (double) 1, (double) 2};
+    double[] array = {0.0, 1.0, 2.0};
 
-    List<Byte> bytes = Arrays.asList((byte) 0, (byte) 1, (byte) 2);
-    List<Short> shorts = Arrays.asList((short) 0, (short) 1, (short) 2);
-    List<Integer> ints = Arrays.asList(0, 1, 2);
-    List<Float> floats = Arrays.asList((float) 0, (float) 1, (float) 2);
-    List<Long> longs = Arrays.asList((long) 0, (long) 1, (long) 2);
-    List<Double> doubles = Arrays.asList((double) 0, (double) 1, (double) 2);
+    List<Byte> bytes = asList((byte) 0, (byte) 1, (byte) 2);
+    List<Short> shorts = asList((short) 0, (short) 1, (short) 2);
+    List<Integer> ints = asList(0, 1, 2);
+    List<Float> floats = asList(0.0f, 1.0f, 2.0f);
+    List<Long> longs = asList(0L, 1L, 2L);
+    List<Double> doubles = asList(0.0, 1.0, 2.0);
 
-    assertTrue(Arrays.equals(array, Doubles.toArray(bytes)));
-    assertTrue(Arrays.equals(array, Doubles.toArray(shorts)));
-    assertTrue(Arrays.equals(array, Doubles.toArray(ints)));
-    assertTrue(Arrays.equals(array, Doubles.toArray(floats)));
-    assertTrue(Arrays.equals(array, Doubles.toArray(longs)));
-    assertTrue(Arrays.equals(array, Doubles.toArray(doubles)));
+    assertThat(Doubles.toArray(bytes)).isEqualTo(array);
+    assertThat(Doubles.toArray(shorts)).isEqualTo(array);
+    assertThat(Doubles.toArray(ints)).isEqualTo(array);
+    assertThat(Doubles.toArray(floats)).isEqualTo(array);
+    assertThat(Doubles.toArray(longs)).isEqualTo(array);
+    assertThat(Doubles.toArray(doubles)).isEqualTo(array);
   }
 
+  @J2ktIncompatible // b/239034072: Kotlin varargs copy parameter arrays.
   public void testAsList_isAView() {
-    double[] array = {(double) 0, (double) 1};
+    double[] array = {0.0, 1.0};
     List<Double> list = Doubles.asList(array);
-    list.set(0, (double) 2);
-    assertTrue(Arrays.equals(new double[] {(double) 2, (double) 1}, array));
-    array[1] = (double) 3;
-    assertThat(list).containsExactly((double) 2, (double) 3).inOrder();
+    list.set(0, 2.0);
+    assertThat(array).isEqualTo(new double[] {2.0, 1.0});
+    array[1] = 3.0;
+    assertThat(list).containsExactly(2.0, 3.0).inOrder();
   }
 
   public void testAsList_toArray_roundTrip() {
-    double[] array = {(double) 0, (double) 1, (double) 2};
+    double[] array = {0.0, 1.0, 2.0};
     List<Double> list = Doubles.asList(array);
     double[] newArray = Doubles.toArray(list);
 
     // Make sure it returned a copy
-    list.set(0, (double) 4);
-    assertTrue(Arrays.equals(new double[] {(double) 0, (double) 1, (double) 2}, newArray));
-    newArray[1] = (double) 5;
-    assertEquals((double) 1, (double) list.get(1));
+    list.set(0, 4.0);
+    assertThat(newArray).isEqualTo(new double[] {0.0, 1.0, 2.0});
+    newArray[1] = 5.0;
+    assertThat((double) list.get(1)).isEqualTo(1.0);
   }
 
   // This test stems from a real bug found by andrewk
   public void testAsList_subList_toArray_roundTrip() {
-    double[] array = {(double) 0, (double) 1, (double) 2, (double) 3};
+    double[] array = {0.0, 1.0, 2.0, 3.0};
     List<Double> list = Doubles.asList(array);
-    assertTrue(
-        Arrays.equals(new double[] {(double) 1, (double) 2}, Doubles.toArray(list.subList(1, 3))));
-    assertTrue(Arrays.equals(new double[] {}, Doubles.toArray(list.subList(2, 2))));
+    assertThat(Doubles.toArray(list.subList(1, 3))).isEqualTo(new double[] {1.0, 2.0});
+    assertThat(Doubles.toArray(list.subList(2, 2))).isEmpty();
   }
 
+  // `primitives` can't depend on `collect`, so this is what the prod code has to return.
+  @SuppressWarnings("EmptyList")
   public void testAsListEmpty() {
-    assertSame(Collections.emptyList(), Doubles.asList(EMPTY));
+    assertThat(Doubles.asList(EMPTY)).isSameInstanceAs(emptyList());
   }
 
   /**
    * A reference implementation for {@code tryParse} that just catches the exception from {@link
    * Double#valueOf}.
    */
-  private static Double referenceTryParse(String input) {
+  private static @Nullable Double referenceTryParse(String input) {
     if (input.trim().length() < input.length()) {
       return null;
     }
@@ -522,7 +653,7 @@ public class DoublesTest extends TestCase {
   @GwtIncompatible // Doubles.tryParse
   private static void checkTryParse(String input) {
     Double expected = referenceTryParse(input);
-    assertEquals(expected, Doubles.tryParse(input));
+    assertThat(Doubles.tryParse(input)).isEqualTo(expected);
     if (expected != null && !Doubles.FLOATING_POINT_PATTERN.matcher(input).matches()) {
       // TODO(cpovirk): Use SourceCodeEscapers if it is added to Guava.
       StringBuilder escapedInput = new StringBuilder();
@@ -539,7 +670,7 @@ public class DoublesTest extends TestCase {
 
   @GwtIncompatible // Doubles.tryParse
   private static void checkTryParse(double expected, String input) {
-    assertEquals(Double.valueOf(expected), Doubles.tryParse(input));
+    assertThat(Doubles.tryParse(input)).isEqualTo(Double.valueOf(expected));
     assertThat(input)
         .matches(
             Pattern.compile(
@@ -566,7 +697,7 @@ public class DoublesTest extends TestCase {
     }
   }
 
-  @AndroidIncompatible // slow
+  @AndroidIncompatible // takes ~30s
   @GwtIncompatible // Doubles.tryParse
   public void testTryParseAllCodePoints() {
     // Exercise non-ASCII digit test cases and the like.
@@ -584,6 +715,7 @@ public class DoublesTest extends TestCase {
     }
   }
 
+  @J2ktIncompatible // hexadecimal doubles
   @GwtIncompatible // Doubles.tryParse
   public void testTryParseOfToHexStringIsOriginal() {
     for (double d : NUMBERS) {
@@ -630,11 +762,12 @@ public class DoublesTest extends TestCase {
               Pattern.compile(
                   Doubles.FLOATING_POINT_PATTERN.pattern(),
                   Doubles.FLOATING_POINT_PATTERN.flags()));
-      assertEquals(referenceTryParse(badInput), Doubles.tryParse(badInput));
-      assertNull(Doubles.tryParse(badInput));
+      assertThat(Doubles.tryParse(badInput)).isEqualTo(referenceTryParse(badInput));
+      assertThat(Doubles.tryParse(badInput)).isNull();
     }
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNulls() {
     new NullPointerTester().testAllPublicStaticMethods(Doubles.class);
@@ -642,52 +775,46 @@ public class DoublesTest extends TestCase {
 
   public void testStringConverter_convert() {
     Converter<String, Double> converter = Doubles.stringConverter();
-    assertEquals((Double) 1.0, converter.convert("1.0"));
-    assertEquals((Double) 0.0, converter.convert("0.0"));
-    assertEquals((Double) (-1.0), converter.convert("-1.0"));
-    assertEquals((Double) 1.0, converter.convert("1"));
-    assertEquals((Double) 0.0, converter.convert("0"));
-    assertEquals((Double) (-1.0), converter.convert("-1"));
-    assertEquals((Double) 1e6, converter.convert("1e6"));
-    assertEquals((Double) 1e-6, converter.convert("1e-6"));
+    assertThat(converter.convert("1.0")).isEqualTo(1.0);
+    assertThat(converter.convert("0.0")).isEqualTo(0.0);
+    assertThat(converter.convert("-1.0")).isEqualTo(-1.0);
+    assertThat(converter.convert("1")).isEqualTo(1.0);
+    assertThat(converter.convert("0")).isEqualTo(0.0);
+    assertThat(converter.convert("-1")).isEqualTo(-1.0);
+    assertThat(converter.convert("1e6")).isEqualTo(1e6);
+    assertThat(converter.convert("1e-6")).isEqualTo(1e-6);
   }
 
   public void testStringConverter_convertError() {
-    try {
-      Doubles.stringConverter().convert("notanumber");
-      fail();
-    } catch (NumberFormatException expected) {
-    }
+    assertThrows(
+        NumberFormatException.class, () -> Doubles.stringConverter().convert("notanumber"));
   }
 
   public void testStringConverter_nullConversions() {
-    assertNull(Doubles.stringConverter().convert(null));
-    assertNull(Doubles.stringConverter().reverse().convert(null));
+    assertThat(Doubles.stringConverter().convert(null)).isNull();
+    assertThat(Doubles.stringConverter().reverse().convert(null)).isNull();
   }
 
   @GwtIncompatible // Double.toString returns different value in GWT.
   public void testStringConverter_reverse() {
     Converter<String, Double> converter = Doubles.stringConverter();
-    assertEquals("1.0", converter.reverse().convert(1.0));
-    assertEquals("0.0", converter.reverse().convert(0.0));
-    assertEquals("-1.0", converter.reverse().convert(-1.0));
-    assertEquals("1000000.0", converter.reverse().convert(1e6));
-    assertEquals("1.0E-6", converter.reverse().convert(1e-6));
+    assertThat(converter.reverse().convert(1.0)).isEqualTo("1.0");
+    assertThat(converter.reverse().convert(0.0)).isEqualTo("0.0");
+    assertThat(converter.reverse().convert(-1.0)).isEqualTo("-1.0");
+    assertThat(converter.reverse().convert(1e6)).isEqualTo("1000000.0");
+    assertThat(converter.reverse().convert(1e-6)).isEqualTo("1.0E-6");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
-  public void testStringConverter_nullPointerTester() throws Exception {
+  public void testStringConverter_nullPointerTester() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicInstanceMethods(Doubles.stringConverter());
   }
 
   @GwtIncompatible
   public void testTryParse_withNullNoGwt() {
-    assertNull(Doubles.tryParse("null"));
-    try {
-      Doubles.tryParse(null);
-      fail("Expected NPE");
-    } catch (NullPointerException expected) {
-    }
+    assertThat(Doubles.tryParse("null")).isNull();
+    assertThrows(NullPointerException.class, () -> Doubles.tryParse(null));
   }
 }

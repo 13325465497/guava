@@ -16,7 +16,11 @@
 
 package com.google.common.collect;
 
-import com.google.common.base.Function;
+import static com.google.common.collect.Lists.newArrayListWithExpectedSize;
+import static com.google.common.collect.Lists.transform;
+import static java.lang.Math.min;
+import static java.util.concurrent.Executors.newFixedThreadPool;
+
 import com.google.common.primitives.Ints;
 import java.util.List;
 import java.util.Random;
@@ -26,10 +30,10 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Basher test for {@link ConcurrentHashMultiset}: start a bunch of threads, have each of them do
@@ -40,34 +44,35 @@ import junit.framework.TestCase;
  * @author mike nonemacher
  */
 
+@NullUnmarked
 public class ConcurrentHashMultisetBasherTest extends TestCase {
 
-  public void testAddAndRemove_ConcurrentHashMap() throws Exception {
-    testAddAndRemove(new ConcurrentHashMap<String, AtomicInteger>());
+  public void testAddAndRemove_concurrentHashMap() throws Exception {
+    testAddAndRemove(new ConcurrentHashMap<>());
   }
 
-  public void testAddAndRemove_ConcurrentSkipListMap() throws Exception {
-    testAddAndRemove(new ConcurrentSkipListMap<String, AtomicInteger>());
+  public void testAddAndRemove_concurrentSkipListMap() throws Exception {
+    testAddAndRemove(new ConcurrentSkipListMap<>());
   }
 
-  public void testAddAndRemove_MapMakerMap() throws Exception {
+  public void testAddAndRemove_mapMakerMap() throws Exception {
     MapMaker mapMaker = new MapMaker();
     // force MapMaker to use its own MapMakerInternalMap
     mapMaker.useCustomMap = true;
-    testAddAndRemove(mapMaker.<String, AtomicInteger>makeMap());
+    testAddAndRemove(mapMaker.makeMap());
   }
 
-  private void testAddAndRemove(ConcurrentMap<String, AtomicInteger> map)
+  private static void testAddAndRemove(ConcurrentMap<String, AtomicInteger> map)
       throws ExecutionException, InterruptedException {
 
-    final ConcurrentHashMultiset<String> multiset = new ConcurrentHashMultiset<>(map);
+    ConcurrentHashMultiset<String> multiset = ConcurrentHashMultiset.create(map);
     int nThreads = 20;
     int tasksPerThread = 10;
     int nTasks = nThreads * tasksPerThread;
-    ExecutorService pool = Executors.newFixedThreadPool(nThreads);
+    ExecutorService pool = newFixedThreadPool(nThreads);
     ImmutableList<String> keys = ImmutableList.of("a", "b", "c");
     try {
-      List<Future<int[]>> futures = Lists.newArrayListWithExpectedSize(nTasks);
+      List<Future<int[]>> futures = newArrayListWithExpectedSize(nTasks);
       for (int i = 0; i < nTasks; i++) {
         futures.add(pool.submit(new MutateTask(multiset, keys)));
       }
@@ -80,15 +85,7 @@ public class ConcurrentHashMultisetBasherTest extends TestCase {
         }
       }
 
-      List<Integer> actualCounts =
-          Lists.transform(
-              keys,
-              new Function<String, Integer>() {
-                @Override
-                public Integer apply(String key) {
-                  return multiset.count(key);
-                }
-              });
+      List<Integer> actualCounts = transform(keys, multiset::count);
       assertEquals("Counts not as expected", Ints.asList(deltas), actualCounts);
     } finally {
       pool.shutdownNow();
@@ -111,7 +108,7 @@ public class ConcurrentHashMultisetBasherTest extends TestCase {
     }
 
     @Override
-    public int[] call() throws Exception {
+    public int[] call() {
       int iterations = 100000;
       int nKeys = keys.size();
       int[] deltas = new int[nKeys];
@@ -132,7 +129,7 @@ public class ConcurrentHashMultisetBasherTest extends TestCase {
             {
               int newValue = random.nextInt(3);
               int oldValue = multiset.setCount(key, newValue);
-              deltas[keyIndex] += (newValue - oldValue);
+              deltas[keyIndex] += newValue - oldValue;
               break;
             }
           case SET_COUNT_IF:
@@ -140,7 +137,7 @@ public class ConcurrentHashMultisetBasherTest extends TestCase {
               int newValue = random.nextInt(3);
               int oldValue = multiset.count(key);
               if (multiset.setCount(key, oldValue, newValue)) {
-                deltas[keyIndex] += (newValue - oldValue);
+                deltas[keyIndex] += newValue - oldValue;
               }
               break;
             }
@@ -148,7 +145,7 @@ public class ConcurrentHashMultisetBasherTest extends TestCase {
             {
               int delta = random.nextInt(6); // [0, 5]
               int oldValue = multiset.remove(key, delta);
-              deltas[keyIndex] -= Math.min(delta, oldValue);
+              deltas[keyIndex] -= min(delta, oldValue);
               break;
             }
           case REMOVE_EXACTLY:

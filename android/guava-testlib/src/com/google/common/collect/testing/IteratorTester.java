@@ -16,9 +16,12 @@
 
 package com.google.common.collect.testing;
 
+import static java.util.Collections.singleton;
+
 import com.google.common.annotations.GwtCompatible;
-import java.util.Collections;
 import java.util.Iterator;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A utility for testing an Iterator implementation by comparing its behavior to that of a "known
@@ -50,11 +53,41 @@ import java.util.Iterator;
  * verify() method, which is called <em>after</em> each sequence and is guaranteed to be called
  * using the latest values obtained from {@link IteratorTester#newTargetIterator()}.
  *
+ * <p>The value you pass to the parameter {@code steps} should be greater than the length of your
+ * iterator, so that this class can check that your iterator behaves correctly when it is exhausted.
+ *
+ * <p>For example, to test {@link java.util.Collections#unmodifiableList(java.util.List)
+ * Collections.unmodifiableList}'s iterator:
+ *
+ * {@snippet :
+ * List<String> expectedElements = Arrays.asList("a", "b", "c", "d", "e");
+ * List<String> actualElements =
+ *     Collections.unmodifiableList(Arrays.asList("a", "b", "c", "d", "e"));
+ * IteratorTester<String> iteratorTester =
+ *     new IteratorTester<String>(
+ *         6,
+ *         IteratorFeature.UNMODIFIABLE,
+ *         expectedElements,
+ *         IteratorTester.KnownOrder.KNOWN_ORDER) {
+ *       @Override
+ *       protected Iterator<String> newTargetIterator() {
+ *         return actualElements.iterator();
+ *       }
+ *     };
+ * iteratorTester.test();
+ * iteratorTester.testForEachRemaining();
+ * }
+ *
+ * <p><b>Note</b>: It is necessary to use {@code IteratorTester.KnownOrder} as shown above, rather
+ * than {@code KnownOrder} directly, because otherwise the code cannot be compiled.
+ *
  * @author Kevin Bourrillion
  * @author Chris Povirk
  */
 @GwtCompatible
-public abstract class IteratorTester<E> extends AbstractIteratorTester<E, Iterator<E>> {
+@NullMarked
+public abstract class IteratorTester<E extends @Nullable Object>
+    extends AbstractIteratorTester<E, Iterator<E>> {
   /**
    * Creates an IteratorTester.
    *
@@ -66,7 +99,7 @@ public abstract class IteratorTester<E> extends AbstractIteratorTester<E, Iterat
       Iterable<? extends IteratorFeature> features,
       Iterable<E> expectedElements,
       KnownOrder knownOrder) {
-    super(steps, Collections.<E>singleton(null), features, expectedElements, knownOrder, 0);
+    super(steps, singleton(null), features, expectedElements, knownOrder, 0);
   }
 
   @Override

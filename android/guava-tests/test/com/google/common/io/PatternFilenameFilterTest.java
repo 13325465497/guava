@@ -16,24 +16,26 @@
 
 package com.google.common.io;
 
+import static org.junit.Assert.assertThrows;
+
+import com.google.common.testing.NullPointerTester;
+import com.google.common.testing.NullPointerTester.Visibility;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.regex.PatternSyntaxException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link PatternFilenameFilter}.
  *
  * @author Chris Nokleberg
  */
+@NullUnmarked
 public class PatternFilenameFilterTest extends TestCase {
 
   public void testSyntaxException() {
-    try {
-      new PatternFilenameFilter("(");
-      fail("expected exception");
-    } catch (PatternSyntaxException expected) {
-    }
+    assertThrows(PatternSyntaxException.class, () -> new PatternFilenameFilter("("));
   }
 
   public void testAccept() {
@@ -45,5 +47,16 @@ public class PatternFilenameFilterTest extends TestCase {
 
     // Show that dir is ignored
     assertTrue(filter.accept(null, "a"));
+  }
+
+  public void testNulls() throws Exception {
+    NullPointerTester tester = new NullPointerTester();
+
+    tester.testConstructors(PatternFilenameFilter.class, Visibility.PACKAGE);
+    tester.testStaticMethods(PatternFilenameFilter.class, Visibility.PACKAGE); // currently none
+
+    // The reason that we skip this method is discussed in a comment on the method.
+    tester.ignore(PatternFilenameFilter.class.getMethod("accept", File.class, String.class));
+    tester.testInstanceMethods(new PatternFilenameFilter(".*"), Visibility.PACKAGE);
   }
 }

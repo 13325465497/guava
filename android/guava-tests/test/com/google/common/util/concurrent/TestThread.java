@@ -17,19 +17,20 @@
 package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertNotNull;
-import static junit.framework.Assert.assertNull;
-import static junit.framework.Assert.assertSame;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.TearDown;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import junit.framework.AssertionFailedError;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A helper for concurrency testing. One or more {@code TestThread} instances are instantiated in a
@@ -48,6 +49,9 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @param <L> the type of the lock-like object to be used
  * @author Justin T. Sampson
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public final class TestThread<L> extends Thread implements TearDown {
 
   private static final long DUE_DILIGENCE_MILLIS = 100;
@@ -58,7 +62,7 @@ public final class TestThread<L> extends Thread implements TearDown {
   private final SynchronousQueue<Request> requestQueue = new SynchronousQueue<>();
   private final SynchronousQueue<Response> responseQueue = new SynchronousQueue<>();
 
-  private Throwable uncaughtThrowable = null;
+  private @Nullable Throwable uncaughtThrowable = null;
 
   public TestThread(L lockLikeObject, String threadName) {
     super(threadName);
@@ -66,20 +70,29 @@ public final class TestThread<L> extends Thread implements TearDown {
     start();
   }
 
-  // Thread.stop() is okay because all threads started by a test are dying at the end of the test,
-  // so there is no object state put at risk by stopping the threads abruptly. In some cases a test
-  // may put a thread into an uninterruptible operation intentionally, so there is no other way to
-  // clean up these threads.
-  @SuppressWarnings("deprecation")
+  /*
+   * TODO(b/318391980): Once we test only under Java 20 and higher, avoid calling Thread.stop. As
+   * of Java 20, it always throws an exception, and as of Java 26, the method does not even exist.
+   * For now, we continue using it to clean up under older JDKs.
+   *
+   * Our usages should at least be *relatively* safe: Typically, threads started by a test are dying
+   * at the end of the test, so there is no object state put at risk by stopping the threads
+   * abruptly. In other cases, a test may put a thread into an uninterruptible operation
+   * intentionally, so there is no other way to clean up these threads. (The better solution,
+   * though, would be to run the tests that use TestThread in separate VMs so that their threads
+   * don't hang around during other tests.)
+   */
   @Override
   public void tearDown() throws Exception {
-    stop();
-    join();
+    try {
+      Thread.class.getMethod("stop").invoke(this);
+      join();
+    } catch (ReflectiveOperationException e) {
+      // stop() threw or did not exist. Don't join() the thread, which might hang forever.
+    }
 
     if (uncaughtThrowable != null) {
-      throw (AssertionFailedError)
-          new AssertionFailedError("Uncaught throwable in " + getName())
-              .initCause(uncaughtThrowable);
+      throw new AssertionError("Uncaught throwable in " + getName(), uncaughtThrowable);
     }
   }
 
@@ -90,7 +103,7 @@ public final class TestThread<L> extends Thread implements TearDown {
     checkNotNull(methodName);
     checkNotNull(arguments);
     sendRequest(methodName, arguments);
-    assertSame(null, getResponse(methodName).getResult());
+    assertThat(getResponse(methodName).getResult()).isNull();
   }
 
   /**
@@ -128,7 +141,7 @@ public final class TestThread<L> extends Thread implements TearDown {
     checkNotNull(methodName);
     checkNotNull(arguments);
     sendRequest(methodName, arguments);
-    assertEquals(expected, getResponse(methodName).getThrowable().getClass());
+    assertThat(getResponse(methodName).getThrowable()).isInstanceOf(expected);
   }
 
   /**
@@ -143,7 +156,7 @@ public final class TestThread<L> extends Thread implements TearDown {
     sendRequest(methodName, arguments);
     Thread.sleep(DUE_DILIGENCE_MILLIS);
     assertEquals(true, invokeMethod("hasQueuedThread", this));
-    assertNull(responseQueue.poll());
+    assertThat(responseQueue.poll()).isNull();
   }
 
   /**
@@ -161,22 +174,22 @@ public final class TestThread<L> extends Thread implements TearDown {
     sendRequest(methodName, conditionLikeObject);
     Thread.sleep(DUE_DILIGENCE_MILLIS);
     assertEquals(true, invokeMethod("hasWaiters", conditionLikeObject));
-    assertNull(responseQueue.poll());
+    assertThat(responseQueue.poll()).isNull();
   }
 
   /**
    * Asserts that a prior call that had caused this thread to block or wait has since returned
    * normally.
    */
-  public void assertPriorCallReturns(@NullableDecl String methodName) throws Exception {
-    assertEquals(null, getResponse(methodName).getResult());
+  public void assertPriorCallReturns(@Nullable String methodName) throws Exception {
+    assertThat(getResponse(methodName).getResult()).isNull();
   }
 
   /**
    * Asserts that a prior call that had caused this thread to block or wait has since returned the
    * expected boolean value.
    */
-  public void assertPriorCallReturns(boolean expected, @NullableDecl String methodName)
+  public void assertPriorCallReturns(boolean expected, @Nullable String methodName)
       throws Exception {
     assertEquals(expected, getResponse(methodName).getResult());
   }
@@ -188,8 +201,7 @@ public final class TestThread<L> extends Thread implements TearDown {
    *     of time
    */
   private void sendRequest(String methodName, Object... arguments) throws Exception {
-    if (!requestQueue.offer(
-        new Request(methodName, arguments), TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+    if (!requestQueue.offer(new Request(methodName, arguments), TIMEOUT_MILLIS, MILLISECONDS)) {
       throw new TimeoutException();
     }
   }
@@ -203,11 +215,11 @@ public final class TestThread<L> extends Thread implements TearDown {
    *     this thread has called most recently
    */
   private Response getResponse(String methodName) throws Exception {
-    Response response = responseQueue.poll(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+    Response response = responseQueue.poll(TIMEOUT_MILLIS, MILLISECONDS);
     if (response == null) {
       throw new TimeoutException();
     }
-    assertEquals(methodName, response.methodName);
+    assertThat(response.methodName).isEqualTo(methodName);
     return response;
   }
 
@@ -215,7 +227,7 @@ public final class TestThread<L> extends Thread implements TearDown {
     return getMethod(methodName, arguments).invoke(lockLikeObject, arguments);
   }
 
-  private Method getMethod(String methodName, Object... arguments) throws Exception {
+  private Method getMethod(String methodName, Object... arguments) {
     METHODS:
     for (Method method : lockLikeObject.getClass().getMethods()) {
       Class<?>[] parameterTypes = method.getParameterTypes();
@@ -233,34 +245,40 @@ public final class TestThread<L> extends Thread implements TearDown {
 
   @Override
   public void run() {
-    assertSame(this, Thread.currentThread());
+    assertThat(Thread.currentThread()).isEqualTo(this);
     try {
       while (true) {
         Request request = requestQueue.take();
         Object result;
         try {
           result = invokeMethod(request.methodName, request.arguments);
-        } catch (ThreadDeath death) {
-          return;
         } catch (InvocationTargetException exception) {
           responseQueue.put(new Response(request.methodName, null, exception.getTargetException()));
           continue;
         } catch (Throwable throwable) {
+          if (isThreadDeath(throwable)) {
+            return;
+          }
           responseQueue.put(new Response(request.methodName, null, throwable));
           continue;
         }
         responseQueue.put(new Response(request.methodName, result, null));
       }
-    } catch (ThreadDeath death) {
-      return;
     } catch (InterruptedException ignored) {
       // SynchronousQueue sometimes throws InterruptedException while the threads are stopping.
     } catch (Throwable uncaught) {
+      if (isThreadDeath(uncaught)) {
+        return;
+      }
       this.uncaughtThrowable = uncaught;
     }
   }
 
-  private static class Request {
+  private static boolean isThreadDeath(Throwable t) {
+    return t.getClass().getName().equals("java.lang.ThreadDeath");
+  }
+
+  private static final class Request {
     final String methodName;
     final Object[] arguments;
 
@@ -270,26 +288,26 @@ public final class TestThread<L> extends Thread implements TearDown {
     }
   }
 
-  private static class Response {
+  private static final class Response {
     final String methodName;
-    final Object result;
-    final Throwable throwable;
+    final @Nullable Object result;
+    final @Nullable Throwable throwable;
 
-    Response(String methodName, Object result, Throwable throwable) {
+    Response(String methodName, @Nullable Object result, @Nullable Throwable throwable) {
       this.methodName = methodName;
       this.result = result;
       this.throwable = throwable;
     }
 
-    Object getResult() {
+    @Nullable Object getResult() {
       if (throwable != null) {
-        throw (AssertionFailedError) new AssertionFailedError().initCause(throwable);
+        throw new AssertionError(throwable);
       }
       return result;
     }
 
     Throwable getThrowable() {
-      assertNotNull(throwable);
+      assertThat(throwable).isNotNull();
       return throwable;
     }
   }

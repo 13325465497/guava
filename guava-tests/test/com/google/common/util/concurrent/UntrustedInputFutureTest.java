@@ -16,19 +16,26 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.util.concurrent.AbstractFuture.TrustedFuture;
+import com.google.common.util.concurrent.SettableAbstractFuture.UntrustedAbstractFuture;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link AbstractFuture} that use a non-{@link TrustedFuture} for {@link
  * AbstractFuture#setFuture} calls.
  */
 @GwtCompatible
-public class UntrustedInputFutureTest extends AbstractAbstractFutureTest {
+@NullUnmarked
+public class UntrustedInputFutureTest
+    extends AbstractAbstractFutureTest<UntrustedAbstractFuture<@Nullable Integer>> {
   @Override
-  AbstractFuture<Integer> newDelegate() {
-    AbstractFuture<Integer> future = new AbstractFuture<Integer>() {};
-    assertFalse(future instanceof TrustedFuture); // sanity check
+  UntrustedAbstractFuture<@Nullable Integer> newDelegate() {
+    UntrustedAbstractFuture<@Nullable Integer> future = new UntrustedAbstractFuture<>();
+    assertThat(future).isNotInstanceOf(TrustedFuture.class); // sanity check
     return future;
   }
 }

@@ -17,24 +17,31 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkElementIndex;
+import static java.lang.System.arraycopy;
+import static java.util.Objects.requireNonNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.annotations.VisibleForTesting;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link ImmutableList} backed by a simple array.
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(serializable = true, emulated = true)
+@GwtCompatible
 @SuppressWarnings("serial") // uses writeReplace(), not default serialization
-class RegularImmutableList<E> extends ImmutableList<E> {
+final class RegularImmutableList<E> extends ImmutableList<E> {
   static final ImmutableList<Object> EMPTY = new RegularImmutableList<>(new Object[0], 0);
+  static final UnmodifiableListIterator<Object> EMPTY_ITR = new Itr<>(EMPTY, 0);
 
-  @VisibleForTesting final transient Object[] array;
+  // The first `size` elements are non-null.
+  @VisibleForTesting final transient @Nullable Object[] array;
   private final transient int size;
 
-  RegularImmutableList(Object[] array, int size) {
+  RegularImmutableList(@Nullable Object[] array, int size) {
     this.array = array;
     this.size = size;
   }
@@ -50,7 +57,7 @@ class RegularImmutableList<E> extends ImmutableList<E> {
   }
 
   @Override
-  Object[] internalArray() {
+  @Nullable Object[] internalArray() {
     return array;
   }
 
@@ -65,8 +72,8 @@ class RegularImmutableList<E> extends ImmutableList<E> {
   }
 
   @Override
-  int copyIntoArray(Object[] dst, int dstOff) {
-    System.arraycopy(array, 0, dst, dstOff, size);
+  int copyIntoArray(@Nullable Object[] dst, int dstOff) {
+    arraycopy(array, 0, dst, dstOff, size);
     return dstOff + size;
   }
 
@@ -75,8 +82,18 @@ class RegularImmutableList<E> extends ImmutableList<E> {
   @SuppressWarnings("unchecked")
   public E get(int index) {
     checkElementIndex(index, size);
-    return (E) array[index];
+    // requireNonNull is safe because we guarantee that the first `size` elements are non-null.
+    return (E) requireNonNull(array[index]);
   }
 
   // TODO(lowasser): benchmark optimizations for equals() and see if they're worthwhile
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
+    return super.writeReplace();
+  }
 }

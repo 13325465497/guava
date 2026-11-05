@@ -18,13 +18,16 @@ package com.google.common.collect;
 
 import com.google.caliper.Benchmark;
 import com.google.caliper.Param;
+import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Benchmark for various ways to create an {@code ImmutableList}.
  *
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class ImmutableListCreationBenchmark {
 
   @Param({"10", "1000", "1000000"})
@@ -65,7 +68,7 @@ public class ImmutableListCreationBenchmark {
     int size = this.size;
     int dummy = 0;
     for (int rep = 0; rep < reps; rep++) {
-      List<Object> builder = Lists.newArrayList();
+      List<Object> builder = new ArrayList<>();
       for (int i = 0; i < size; i++) {
         builder.add(OBJECT);
       }

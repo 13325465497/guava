@@ -17,28 +17,32 @@ package com.google.common.net;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Strings.isNullOrEmpty;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.base.Objects;
-import com.google.common.base.Strings;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.common.primitives.Ints;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
 import java.io.Serializable;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable representation of a host and port.
  *
  * <p>Example usage:
  *
- * <pre>
- * HostAndPort hp = HostAndPort.fromString("[2001:db8::1]")
- *     .withDefaultPort(80)
- *     .requireBracketsForIPv6();
- * hp.getHost();   // returns "2001:db8::1"
- * hp.getPort();   // returns 80
- * hp.toString();  // returns "[2001:db8::1]:80"
- * </pre>
+ * {@snippet :
+ * HostAndPort hp =
+ *     HostAndPort.fromString("[2001:db8::1]")
+ *         .withDefaultPort(80)
+ *         .requireBracketsForIPv6();
+ * hp.getHost();  // returns "2001:db8::1"
+ * hp.getPort();  // returns 80
+ * hp.toString(); // returns "[2001:db8::1]:80"
+ * }
  *
  * <p>Here are some examples of recognized formats:
  *
@@ -59,7 +63,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Paul Marks
  * @since 10.0
  */
-@Beta
 @Immutable
 @GwtCompatible
 public final class HostAndPort implements Serializable {
@@ -162,6 +165,7 @@ public final class HostAndPort implements Serializable {
    * @return if parsing was successful, a populated HostAndPort object.
    * @throws IllegalArgumentException if nothing meaningful could be parsed.
    */
+  @CanIgnoreReturnValue // TODO(b/219820829): consider removing
   public static HostAndPort fromString(String hostPortString) {
     checkNotNull(hostPortString);
     String host;
@@ -181,20 +185,16 @@ public final class HostAndPort implements Serializable {
       } else {
         // 0 or 2+ colons. Bare hostname or IPv6 literal.
         host = hostPortString;
-        hasBracketlessColons = (colonPos >= 0);
+        hasBracketlessColons = colonPos >= 0;
       }
     }
 
-    int port = NO_PORT;
-    if (!Strings.isNullOrEmpty(portString)) {
-      // Try to parse the whole port string as a number.
-      // JDK7 accepts leading plus signs. We don't want to.
-      checkArgument(!portString.startsWith("+"), "Unparseable port number: %s", hostPortString);
-      try {
-        port = Integer.parseInt(portString);
-      } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("Unparseable port number: " + hostPortString);
-      }
+    Integer port;
+    if (isNullOrEmpty(portString)) {
+      port = NO_PORT;
+    } else {
+      port = Ints.tryParse(portString);
+      checkArgument(port != null, "Unparseable port number: %s", hostPortString);
       checkArgument(isValidPort(port), "Port number out of range: %s", hostPortString);
     }
 
@@ -204,19 +204,17 @@ public final class HostAndPort implements Serializable {
   /**
    * Parses a bracketed host-port string, throwing IllegalArgumentException if parsing fails.
    *
-   * @param hostPortString the full bracketed host-port specification. Post might not be specified.
+   * @param hostPortString the full bracketed host-port specification. Port might not be specified.
    * @return an array with 2 strings: host and port, in that order.
    * @throws IllegalArgumentException if parsing the bracketed host-port string fails.
    */
   private static String[] getHostAndPortFromBracketedHost(String hostPortString) {
-    int colonIndex = 0;
-    int closeBracketIndex = 0;
     checkArgument(
         hostPortString.charAt(0) == '[',
         "Bracketed host-port string must start with a bracket: %s",
         hostPortString);
-    colonIndex = hostPortString.indexOf(':');
-    closeBracketIndex = hostPortString.lastIndexOf(']');
+    int colonIndex = hostPortString.indexOf(':');
+    int closeBracketIndex = hostPortString.indexOf(']');
     checkArgument(
         colonIndex > -1 && closeBracketIndex > colonIndex,
         "Invalid bracketed host/port: %s",
@@ -271,6 +269,7 @@ public final class HostAndPort implements Serializable {
    * @return {@code this}, to enable chaining of calls.
    * @throws IllegalArgumentException if bracketless IPv6 is detected.
    */
+  @CanIgnoreReturnValue
   public HostAndPort requireBracketsForIPv6() {
     checkArgument(!hasBracketlessColons, "Possible bracketless IPv6 literal: %s", host);
     return this;
@@ -283,14 +282,14 @@ public final class HostAndPort implements Serializable {
     }
     if (other instanceof HostAndPort) {
       HostAndPort that = (HostAndPort) other;
-      return Objects.equal(this.host, that.host) && this.port == that.port;
+      return Objects.equals(this.host, that.host) && this.port == that.port;
     }
     return false;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(host, port);
+    return Objects.hash(host, port);
   }
 
   /** Rebuild the host:port string, including brackets if necessary. */
@@ -314,5 +313,5 @@ public final class HostAndPort implements Serializable {
     return port >= 0 && port <= 65535;
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

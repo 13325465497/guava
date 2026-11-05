@@ -16,15 +16,19 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.base.Predicates.instanceOf;
+import static com.google.common.collect.Iterables.all;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
-import static com.google.common.util.concurrent.Runnables.doNothing;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -34,19 +38,24 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Test for {@link WrappingExecutorService}
  *
  * @author Chris Nokleberg
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class WrappingExecutorServiceTest extends TestCase {
   private static final String RESULT_VALUE = "ran";
+
   // Uninteresting delegations
   public void testDelegations() throws InterruptedException {
     MockExecutor mock = new MockExecutor();
     TestExecutor testExecutor = new TestExecutor(mock);
-    assertFalse(testExecutor.awaitTermination(10, TimeUnit.MILLISECONDS));
+    assertFalse(testExecutor.awaitTermination(10, MILLISECONDS));
     mock.assertLastMethodCalled("awaitTermination");
     assertFalse(testExecutor.isTerminated());
     mock.assertLastMethodCalled("isTerminated");
@@ -62,7 +71,7 @@ public class WrappingExecutorServiceTest extends TestCase {
   public void testExecute() {
     MockExecutor mock = new MockExecutor();
     TestExecutor testExecutor = new TestExecutor(mock);
-    testExecutor.execute(doNothing());
+    testExecutor.execute(() -> {});
     mock.assertLastMethodCalled("execute");
   }
 
@@ -70,16 +79,16 @@ public class WrappingExecutorServiceTest extends TestCase {
     {
       MockExecutor mock = new MockExecutor();
       TestExecutor testExecutor = new TestExecutor(mock);
-      Future<?> f = testExecutor.submit(doNothing());
+      Future<?> f = testExecutor.submit(() -> {});
       mock.assertLastMethodCalled("submit");
       f.get();
     }
     {
       MockExecutor mock = new MockExecutor();
       TestExecutor testExecutor = new TestExecutor(mock);
-      Future<String> f = testExecutor.submit(doNothing(), RESULT_VALUE);
+      Future<String> f = testExecutor.submit(() -> {}, RESULT_VALUE);
       mock.assertLastMethodCalled("submit");
-      assertEquals(RESULT_VALUE, f.get());
+      assertThat(f.get()).isEqualTo(RESULT_VALUE);
     }
     {
       MockExecutor mock = new MockExecutor();
@@ -87,7 +96,7 @@ public class WrappingExecutorServiceTest extends TestCase {
       Callable<String> task = Callables.returning(RESULT_VALUE);
       Future<String> f = testExecutor.submit(task);
       mock.assertLastMethodCalled("submit");
-      assertEquals(RESULT_VALUE, f.get());
+      assertThat(f.get()).isEqualTo(RESULT_VALUE);
     }
   }
 
@@ -102,7 +111,7 @@ public class WrappingExecutorServiceTest extends TestCase {
     }
     {
       MockExecutor mock = new MockExecutor();
-      TimeUnit unit = TimeUnit.SECONDS;
+      TimeUnit unit = SECONDS;
       long timeout = 5;
       TestExecutor testExecutor = new TestExecutor(mock);
       List<Future<String>> futures = testExecutor.invokeAll(tasks, timeout, unit);
@@ -117,16 +126,16 @@ public class WrappingExecutorServiceTest extends TestCase {
       MockExecutor mock = new MockExecutor();
       TestExecutor testExecutor = new TestExecutor(mock);
       String s = testExecutor.invokeAny(tasks);
-      assertEquals("ran0", s);
+      assertThat(s).isEqualTo("ran0");
       mock.assertLastMethodCalled("invokeAny");
     }
     {
       MockExecutor mock = new MockExecutor();
-      TimeUnit unit = TimeUnit.SECONDS;
+      TimeUnit unit = SECONDS;
       long timeout = 5;
       TestExecutor testExecutor = new TestExecutor(mock);
       String s = testExecutor.invokeAny(tasks, timeout, unit);
-      assertEquals(RESULT_VALUE + "0", s);
+      assertThat(s).isEqualTo(RESULT_VALUE + "0");
       mock.assertMethodWithTimeout("invokeAny", timeout, unit);
     }
   }
@@ -134,12 +143,12 @@ public class WrappingExecutorServiceTest extends TestCase {
   private static void checkResults(List<Future<String>> futures)
       throws InterruptedException, ExecutionException {
     for (int i = 0; i < futures.size(); i++) {
-      assertEquals(RESULT_VALUE + i, futures.get(i).get());
+      assertThat(futures.get(i).get()).isEqualTo(RESULT_VALUE + i);
     }
   }
 
   private static List<Callable<String>> createTasks(int n) {
-    List<Callable<String>> callables = Lists.newArrayList();
+    List<Callable<String>> callables = new ArrayList<>();
     for (int i = 0; i < n; i++) {
       callables.add(Callables.returning(RESULT_VALUE + i));
     }
@@ -149,7 +158,7 @@ public class WrappingExecutorServiceTest extends TestCase {
   private static final class WrappedCallable<T> implements Callable<T> {
     private final Callable<T> delegate;
 
-    public WrappedCallable(Callable<T> delegate) {
+    WrappedCallable(Callable<T> delegate) {
       this.delegate = delegate;
     }
 
@@ -162,7 +171,7 @@ public class WrappingExecutorServiceTest extends TestCase {
   private static final class WrappedRunnable implements Runnable {
     private final Runnable delegate;
 
-    public WrappedRunnable(Runnable delegate) {
+    WrappedRunnable(Runnable delegate) {
       this.delegate = delegate;
     }
 
@@ -173,7 +182,7 @@ public class WrappingExecutorServiceTest extends TestCase {
   }
 
   private static final class TestExecutor extends WrappingExecutorService {
-    public TestExecutor(MockExecutor mock) {
+    TestExecutor(MockExecutor mock) {
       super(mock);
     }
 
@@ -188,17 +197,17 @@ public class WrappingExecutorServiceTest extends TestCase {
     }
   }
 
-  // TODO: If this test can ever depend on EasyMock or the like, use it instead.
+  // TODO: If this test can ever depend on Mockito or the like, use it instead.
   private static final class MockExecutor implements ExecutorService {
     private String lastMethodCalled = "";
     private long lastTimeoutInMillis = -1;
-    private ExecutorService inline = newDirectExecutorService();
+    private final ExecutorService inline = newDirectExecutorService();
 
-    public void assertLastMethodCalled(String method) {
-      assertEquals(method, lastMethodCalled);
+    void assertLastMethodCalled(String method) {
+      assertThat(lastMethodCalled).isEqualTo(method);
     }
 
-    public void assertMethodWithTimeout(String method, long timeout, TimeUnit unit) {
+    void assertMethodWithTimeout(String method, long timeout, TimeUnit unit) {
       assertLastMethodCalled(method + "Timeout");
       assertEquals(unit.toMillis(timeout), lastTimeoutInMillis);
     }
@@ -297,8 +306,8 @@ public class WrappingExecutorServiceTest extends TestCase {
     }
 
     private static <T> void assertTaskWrapped(Collection<? extends Callable<T>> tasks) {
-      Predicate<Object> p = Predicates.instanceOf(WrappedCallable.class);
-      assertTrue(Iterables.all(tasks, p));
+      Predicate<Object> p = instanceOf(WrappedCallable.class);
+      assertTrue(all(tasks, p));
     }
   }
 }

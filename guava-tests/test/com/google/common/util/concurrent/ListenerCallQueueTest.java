@@ -16,8 +16,12 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static java.util.concurrent.Executors.newFixedThreadPool;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ConcurrentHashMultiset;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultiset;
@@ -27,12 +31,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /** Tests for {@link ListenerCallQueue}. */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class ListenerCallQueueTest extends TestCase {
 
   private static final ListenerCallQueue.Event<Object> THROWING_EVENT =
@@ -124,19 +131,18 @@ public class ListenerCallQueueTest extends TestCase {
     }
 
     assertEquals(1, logHandler.getStoredLogRecords().size());
-    assertEquals(
-        "Exception while executing callback: MyListener custom-label",
-        logHandler.getStoredLogRecords().get(0).getMessage());
+    assertThat(logHandler.getStoredLogRecords().get(0).getMessage())
+        .isEqualTo("Exception while executing callback: MyListener custom-label");
   }
 
   public void testEnqueueAndDispatch_multithreaded() throws InterruptedException {
     Object listener = new Object();
-    ExecutorService service = Executors.newFixedThreadPool(4);
+    ExecutorService service = newFixedThreadPool(4);
     ListenerCallQueue<Object> queue = new ListenerCallQueue<>();
     try {
       queue.addListener(listener, service);
 
-      final CountDownLatch latch = new CountDownLatch(1);
+      CountDownLatch latch = new CountDownLatch(1);
       Multiset<Object> counters = ConcurrentHashMultiset.create();
       queue.enqueue(incrementingEvent(counters, listener, 1));
       queue.enqueue(incrementingEvent(counters, listener, 2));
@@ -155,12 +161,12 @@ public class ListenerCallQueueTest extends TestCase {
   public void testEnqueueAndDispatch_multithreaded_withThrowingRunnable()
       throws InterruptedException {
     Object listener = new Object();
-    ExecutorService service = Executors.newFixedThreadPool(4);
+    ExecutorService service = newFixedThreadPool(4);
     ListenerCallQueue<Object> queue = new ListenerCallQueue<>();
     try {
       queue.addListener(listener, service);
 
-      final CountDownLatch latch = new CountDownLatch(1);
+      CountDownLatch latch = new CountDownLatch(1);
       Multiset<Object> counters = ConcurrentHashMultiset.create();
       queue.enqueue(incrementingEvent(counters, listener, 1));
       queue.enqueue(THROWING_EVENT);
@@ -180,13 +186,13 @@ public class ListenerCallQueueTest extends TestCase {
     }
   }
 
-  private ListenerCallQueue.Event<Object> incrementingEvent(
+  private static ListenerCallQueue.Event<Object> incrementingEvent(
       Multiset<Object> counters, Object expectedListener, int expectedCount) {
     return incrementingEvent(counters, multiset(expectedListener, expectedCount));
   }
 
-  private ListenerCallQueue.Event<Object> incrementingEvent(
-      final Multiset<Object> counters, final Multiset<Object> expected) {
+  private static ListenerCallQueue.Event<Object> incrementingEvent(
+      Multiset<Object> counters, Multiset<Object> expected) {
     return new ListenerCallQueue.Event<Object>() {
       @Override
       public void call(Object listener) {
@@ -217,7 +223,7 @@ public class ListenerCallQueueTest extends TestCase {
     return builder.build();
   }
 
-  private ListenerCallQueue.Event<Object> countDownEvent(final CountDownLatch latch) {
+  private static ListenerCallQueue.Event<Object> countDownEvent(CountDownLatch latch) {
     return new ListenerCallQueue.Event<Object>() {
       @Override
       public void call(Object listener) {

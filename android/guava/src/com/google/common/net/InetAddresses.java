@@ -16,24 +16,30 @@ package com.google.common.net;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.hash.Hashing.murmur3_32_fixed;
+import static com.google.common.io.ByteStreams.newDataInput;
+import static java.lang.Math.max;
+import static java.lang.System.arraycopy;
+import static java.util.Objects.requireNonNull;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.common.base.CharMatcher;
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Splitter;
-import com.google.common.collect.Iterables;
-import com.google.common.hash.Hashing;
-import com.google.common.io.ByteStreams;
 import com.google.common.primitives.Ints;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.FormatMethod;
+import java.math.BigInteger;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@link InetAddress} instances.
@@ -96,13 +102,15 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Erik Kline
  * @since 5.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 public final class InetAddresses {
   private static final int IPV4_PART_COUNT = 4;
   private static final int IPV6_PART_COUNT = 8;
-  private static final Splitter IPV4_SPLITTER = Splitter.on('.').limit(IPV4_PART_COUNT);
-  private static final Splitter IPV6_SPLITTER = Splitter.on(':').limit(IPV6_PART_COUNT + 2);
+  private static final char IPV4_DELIMITER = '.';
+  private static final char IPV6_DELIMITER = ':';
+  private static final CharMatcher IPV4_DELIMITER_MATCHER = CharMatcher.is(IPV4_DELIMITER);
+  private static final CharMatcher IPV6_DELIMITER_MATCHER = CharMatcher.is(IPV6_DELIMITER);
   private static final Inet4Address LOOPBACK4 = (Inet4Address) forString("127.0.0.1");
   private static final Inet4Address ANY4 = (Inet4Address) forString("0.0.0.0");
 
@@ -122,7 +130,7 @@ public final class InetAddresses {
         bytes.length);
 
     // Given a 4-byte array, this cast should always succeed.
-    return (Inet4Address) bytesToInetAddress(bytes);
+    return (Inet4Address) bytesToInetAddress(bytes, null);
   }
 
   /**
@@ -130,38 +138,71 @@ public final class InetAddresses {
    *
    * <p>This deliberately avoids all nameservice lookups (e.g. no DNS).
    *
+   * <p>IPv4-mapped IPv6 addresses (e.g. {@code "::ffff:192.168.0.1"}) are returned as {@link
+   * Inet4Address} objects, not {@link Inet6Address}. This is consistent with the behavior of {@link
+   * InetAddress}.
+   *
+   * <p>This method accepts non-ASCII digits, for example {@code "１９２.１６８.０.１"} (those are fullwidth
+   * characters). That is consistent with {@link InetAddress}, but not with various RFCs. If you
+   * want to accept ASCII digits only, you can use something like {@code
+   * CharMatcher.ascii().matchesAllOf(ipString)}.
+   *
+   * <p>The scope ID is validated against the interfaces on the machine, which requires permissions
+   * under Android.
+   *
+   * <p><b>Android users on API >= 29:</b> Prefer {@code InetAddresses.parseNumericAddress}.
+   *
    * @param ipString {@code String} containing an IPv4 or IPv6 string literal, e.g. {@code
-   *     "192.168.0.1"} or {@code "2001:db8::1"}
+   *     "192.168.0.1"} or {@code "2001:db8::1"} or with a scope ID, e.g. {@code "2001:db8::1%eth0"}
    * @return {@link InetAddress} representing the argument
-   * @throws IllegalArgumentException if the argument is not a valid IP string literal
+   * @throws IllegalArgumentException if the argument is not a valid IP string literal or if the
+   *     address has a scope ID that fails validation against the interfaces on the machine (as
+   *     required by Java's {@link InetAddress})
    */
+  @CanIgnoreReturnValue // TODO(b/219820829): consider removing
   public static InetAddress forString(String ipString) {
-    byte[] addr = ipStringToBytes(ipString);
+    Scope scope = new Scope();
+    byte[] addr = ipStringToBytes(ipString, scope);
 
     // The argument was malformed, i.e. not an IP string literal.
     if (addr == null) {
       throw formatIllegalArgumentException("'%s' is not an IP string literal.", ipString);
     }
 
-    return bytesToInetAddress(addr);
+    return bytesToInetAddress(addr, scope.scope);
   }
 
   /**
    * Returns {@code true} if the supplied string is a valid IP string literal, {@code false}
    * otherwise.
    *
+   * <p>This method accepts non-ASCII digits, for example {@code "１９２.１６８.０.１"} (those are fullwidth
+   * characters). That is consistent with {@link InetAddress}, but not with various RFCs. If you
+   * want to accept ASCII digits only, you can use something like {@code
+   * CharMatcher.ascii().matchesAllOf(ipString)}.
+   *
+   * <p>Note that if this method returns {@code true}, a call to {@link #forString(String)} can
+   * still throw if the address has a scope ID that fails validation against the interfaces on the
+   * machine.
+   *
    * @param ipString {@code String} to evaluated as an IP string literal
    * @return {@code true} if the argument is a valid IP string literal
    */
   public static boolean isInetAddress(String ipString) {
-    return ipStringToBytes(ipString) != null;
+    return ipStringToBytes(ipString, null) != null;
   }
 
-  @NullableDecl
-  private static byte[] ipStringToBytes(String ipString) {
+  private static final class Scope {
+    private @Nullable String scope;
+  }
+
+  /** Returns {@code null} if unable to parse into a {@code byte[]}. */
+  private static byte @Nullable [] ipStringToBytes(String ipStringParam, @Nullable Scope scope) {
+    String ipString = ipStringParam;
     // Make a first pass to categorize the characters in this string.
     boolean hasColon = false;
     boolean hasDot = false;
+    int percentIndex = -1;
     for (int i = 0; i < ipString.length(); i++) {
       char c = ipString.charAt(i);
       if (c == '.') {
@@ -171,6 +212,9 @@ public final class InetAddresses {
           return null; // Colons must not appear after dots.
         }
         hasColon = true;
+      } else if (c == '%') {
+        percentIndex = i;
+        break;
       } else if (Character.digit(c, 16) == -1) {
         return null; // Everything else must be a decimal or hex digit.
       }
@@ -184,85 +228,110 @@ public final class InetAddresses {
           return null;
         }
       }
+      if (percentIndex != -1) {
+        if (scope != null) {
+          scope.scope = ipString.substring(percentIndex + 1);
+        }
+        ipString = ipString.substring(0, percentIndex);
+      }
       return textToNumericFormatV6(ipString);
     } else if (hasDot) {
+      if (percentIndex != -1) {
+        return null; // Scope IDs are not supported for IPV4
+      }
       return textToNumericFormatV4(ipString);
     }
     return null;
   }
 
-  @NullableDecl
-  private static byte[] textToNumericFormatV4(String ipString) {
-    byte[] bytes = new byte[IPV4_PART_COUNT];
-    int i = 0;
-    try {
-      for (String octet : IPV4_SPLITTER.split(ipString)) {
-        bytes[i++] = parseOctet(octet);
-      }
-    } catch (NumberFormatException ex) {
-      return null;
+  private static byte @Nullable [] textToNumericFormatV4(String ipString) {
+    if (IPV4_DELIMITER_MATCHER.countIn(ipString) + 1 != IPV4_PART_COUNT) {
+      return null; // Wrong number of parts
     }
 
-    return i == IPV4_PART_COUNT ? bytes : null;
+    byte[] bytes = new byte[IPV4_PART_COUNT];
+    int start = 0;
+    // Iterate through the parts of the ip string.
+    // Invariant: start is always the beginning of an octet.
+    for (int i = 0; i < IPV4_PART_COUNT; i++) {
+      int end = ipString.indexOf(IPV4_DELIMITER, start);
+      if (end == -1) {
+        end = ipString.length();
+      }
+      try {
+        bytes[i] = parseOctet(ipString, start, end);
+      } catch (NumberFormatException ex) {
+        return null;
+      }
+      start = end + 1;
+    }
+
+    return bytes;
   }
 
-  @NullableDecl
-  private static byte[] textToNumericFormatV6(String ipString) {
-    // An address can have [2..8] colons, and N colons make N+1 parts.
-    List<String> parts = IPV6_SPLITTER.splitToList(ipString);
-    if (parts.size() < 3 || parts.size() > IPV6_PART_COUNT + 1) {
+  private static byte @Nullable [] textToNumericFormatV6(String ipString) {
+    // An address can have [2..8] colons.
+    int delimiterCount = IPV6_DELIMITER_MATCHER.countIn(ipString);
+    if (delimiterCount < 2 || delimiterCount > IPV6_PART_COUNT) {
       return null;
     }
-
-    // Disregarding the endpoints, find "::" with nothing in between.
-    // This indicates that a run of zeroes has been skipped.
-    int skipIndex = -1;
-    for (int i = 1; i < parts.size() - 1; i++) {
-      if (parts.get(i).length() == 0) {
-        if (skipIndex >= 0) {
+    int partsSkipped = IPV6_PART_COUNT - (delimiterCount + 1); // estimate; may be modified later
+    boolean hasSkip = false;
+    // Scan for the appearance of ::, to mark a skip-format IPV6 string and adjust the partsSkipped
+    // estimate.
+    for (int i = 0; i < ipString.length() - 1; i++) {
+      if (ipString.charAt(i) == IPV6_DELIMITER && ipString.charAt(i + 1) == IPV6_DELIMITER) {
+        if (hasSkip) {
           return null; // Can't have more than one ::
         }
-        skipIndex = i;
+        hasSkip = true;
+        partsSkipped++; // :: means we skipped an extra part in between the two delimiters.
+        if (i == 0) {
+          partsSkipped++; // Begins with ::, so we skipped the part preceding the first :
+        }
+        if (i == ipString.length() - 2) {
+          partsSkipped++; // Ends with ::, so we skipped the part after the last :
+        }
       }
     }
-
-    int partsHi; // Number of parts to copy from above/before the "::"
-    int partsLo; // Number of parts to copy from below/after the "::"
-    if (skipIndex >= 0) {
-      // If we found a "::", then check if it also covers the endpoints.
-      partsHi = skipIndex;
-      partsLo = parts.size() - skipIndex - 1;
-      if (parts.get(0).length() == 0 && --partsHi != 0) {
-        return null; // ^: requires ^::
-      }
-      if (Iterables.getLast(parts).length() == 0 && --partsLo != 0) {
-        return null; // :$ requires ::$
-      }
-    } else {
-      // Otherwise, allocate the entire address to partsHi. The endpoints
-      // could still be empty, but parseHextet() will check for that.
-      partsHi = parts.size();
-      partsLo = 0;
+    if (ipString.charAt(0) == IPV6_DELIMITER && ipString.charAt(1) != IPV6_DELIMITER) {
+      return null; // ^: requires ^::
+    }
+    if (ipString.charAt(ipString.length() - 1) == IPV6_DELIMITER
+        && ipString.charAt(ipString.length() - 2) != IPV6_DELIMITER) {
+      return null; // :$ requires ::$
+    }
+    if (hasSkip && partsSkipped <= 0) {
+      return null; // :: must expand to at least one '0'
+    }
+    if (!hasSkip && delimiterCount + 1 != IPV6_PART_COUNT) {
+      return null; // Incorrect number of parts
     }
 
-    // If we found a ::, then we must have skipped at least one part.
-    // Otherwise, we must have exactly the right number of parts.
-    int partsSkipped = IPV6_PART_COUNT - (partsHi + partsLo);
-    if (!(skipIndex >= 0 ? partsSkipped >= 1 : partsSkipped == 0)) {
-      return null;
-    }
-
-    // Now parse the hextets into a byte array.
     ByteBuffer rawBytes = ByteBuffer.allocate(2 * IPV6_PART_COUNT);
     try {
-      for (int i = 0; i < partsHi; i++) {
-        rawBytes.putShort(parseHextet(parts.get(i)));
+      // Iterate through the parts of the ip string.
+      // Invariant: start is always the beginning of a hextet, or the second ':' of the skip
+      // sequence "::"
+      int start = 0;
+      if (ipString.charAt(0) == IPV6_DELIMITER) {
+        start = 1;
       }
-      for (int i = 0; i < partsSkipped; i++) {
-        rawBytes.putShort((short) 0);
-      }
-      for (int i = partsLo; i > 0; i--) {
-        rawBytes.putShort(parseHextet(parts.get(parts.size() - i)));
+      while (start < ipString.length()) {
+        int end = ipString.indexOf(IPV6_DELIMITER, start);
+        if (end == -1) {
+          end = ipString.length();
+        }
+        if (ipString.charAt(start) == IPV6_DELIMITER) {
+          // expand zeroes
+          for (int i = 0; i < partsSkipped; i++) {
+            rawBytes.putShort((short) 0);
+          }
+
+        } else {
+          rawBytes.putShort(parseHextet(ipString, start, end));
+        }
+        start = end + 1;
       }
     } catch (NumberFormatException ex) {
       return null;
@@ -270,8 +339,7 @@ public final class InetAddresses {
     return rawBytes.array();
   }
 
-  @NullableDecl
-  private static String convertDottedQuadToHex(String ipString) {
+  private static @Nullable String convertDottedQuadToHex(String ipString) {
     int lastColon = ipString.lastIndexOf(':');
     String initialPart = ipString.substring(0, lastColon + 1);
     String dottedQuad = ipString.substring(lastColon + 1);
@@ -284,22 +352,61 @@ public final class InetAddresses {
     return initialPart + penultimate + ":" + ultimate;
   }
 
-  private static byte parseOctet(String ipPart) {
-    // Note: we already verified that this string contains only hex digits.
-    int octet = Integer.parseInt(ipPart);
+  private static byte parseOctet(String ipString, int start, int end) {
+    // Note: we already verified that this string contains only hex digits, but the string may still
+    // contain non-decimal characters.
+    int length = end - start;
+    if (length <= 0 || length > 3) {
+      throw new NumberFormatException();
+    }
     // Disallow leading zeroes, because no clear standard exists on
     // whether these should be interpreted as decimal or octal.
-    if (octet > 255 || (ipPart.startsWith("0") && ipPart.length() > 1)) {
+    if (length > 1 && ipString.charAt(start) == '0') {
+      throw new NumberFormatException();
+    }
+    int octet = 0;
+    for (int i = start; i < end; i++) {
+      octet *= 10;
+      int digit = Character.digit(ipString.charAt(i), 10);
+      if (digit < 0) {
+        throw new NumberFormatException();
+      }
+      octet += digit;
+    }
+    if (octet > 255) {
       throw new NumberFormatException();
     }
     return (byte) octet;
   }
 
-  private static short parseHextet(String ipPart) {
+  /** Returns a -1 if unable to parse */
+  private static int tryParseDecimal(String string, int start, int end) {
+    long decimal = 0;
+    for (int i = start; i < end; i++) {
+      if (decimal > Integer.MAX_VALUE) {
+        return -1;
+      }
+      decimal *= 10;
+      int digit = Character.digit(string.charAt(i), 10);
+      if (digit < 0) {
+        return -1;
+      }
+      decimal += digit;
+    }
+    return decimal > Integer.MAX_VALUE ? -1 : (int) decimal;
+  }
+
+  // Parse a hextet out of the ipString from start (inclusive) to end (exclusive)
+  private static short parseHextet(String ipString, int start, int end) {
     // Note: we already verified that this string contains only hex digits.
-    int hextet = Integer.parseInt(ipPart, 16);
-    if (hextet > 0xffff) {
+    int length = end - start;
+    if (length <= 0 || length > 4) {
       throw new NumberFormatException();
+    }
+    int hextet = 0;
+    for (int i = start; i < end; i++) {
+      hextet = hextet << 4;
+      hextet |= Character.digit(ipString.charAt(i), 16);
     }
     return (short) hextet;
   }
@@ -314,9 +421,30 @@ public final class InetAddresses {
    * @param addr the raw 4-byte or 16-byte IP address in big-endian order
    * @return an InetAddress object created from the raw IP address
    */
-  private static InetAddress bytesToInetAddress(byte[] addr) {
+  private static InetAddress bytesToInetAddress(byte[] addr, @Nullable String scope) {
     try {
-      return InetAddress.getByAddress(addr);
+      InetAddress address = InetAddress.getByAddress(addr);
+      if (scope == null) {
+        return address;
+      }
+      checkArgument(
+          address instanceof Inet6Address, "Unexpected state, scope should only appear for ipv6");
+      Inet6Address v6Address = (Inet6Address) address;
+      int interfaceIndex = tryParseDecimal(scope, 0, scope.length());
+      if (interfaceIndex != -1) {
+        return Inet6Address.getByAddress(
+            v6Address.getHostAddress(), v6Address.getAddress(), interfaceIndex);
+      }
+      try {
+        NetworkInterface asInterface = NetworkInterface.getByName(scope);
+        if (asInterface == null) {
+          throw formatIllegalArgumentException("No such interface: '%s'", scope);
+        }
+        return Inet6Address.getByAddress(
+            v6Address.getHostAddress(), v6Address.getAddress(), asInterface);
+      } catch (SocketException | UnknownHostException e) {
+        throw new IllegalArgumentException("No such interface: " + scope, e);
+      }
     } catch (UnknownHostException e) {
       throw new AssertionError(e);
     }
@@ -328,10 +456,13 @@ public final class InetAddresses {
    * <p>For IPv4 addresses, this is identical to {@link InetAddress#getHostAddress()}, but for IPv6
    * addresses, the output follows <a href="http://tools.ietf.org/html/rfc5952">RFC 5952</a> section
    * 4. The main difference is that this method uses "::" for zero compression, while Java's version
-   * uses the uncompressed form.
+   * uses the uncompressed form (except on Android, where the zero compression is also done). The
+   * other difference is that this method outputs any scope ID in the format that it was provided at
+   * creation time, while Android may always output it as an interface name, even if it was supplied
+   * as a numeric ID.
    *
    * <p>This method uses hexadecimal for all IPv6 addresses, including IPv4-mapped IPv6 addresses
-   * such as "::c000:201". The output does not include a Scope ID.
+   * such as "::c000:201".
    *
    * @param ip {@link InetAddress} to be converted to an address string
    * @return {@code String} containing the text-formatted IP address
@@ -341,16 +472,32 @@ public final class InetAddresses {
     checkNotNull(ip);
     if (ip instanceof Inet4Address) {
       // For IPv4, Java's formatting is good enough.
-      return ip.getHostAddress();
+      // requireNonNull accommodates Android's @RecentlyNullable annotation on getHostAddress
+      return requireNonNull(ip.getHostAddress());
     }
-    checkArgument(ip instanceof Inet6Address);
     byte[] bytes = ip.getAddress();
     int[] hextets = new int[IPV6_PART_COUNT];
     for (int i = 0; i < hextets.length; i++) {
       hextets[i] = Ints.fromBytes((byte) 0, (byte) 0, bytes[2 * i], bytes[2 * i + 1]);
     }
     compressLongestRunOfZeroes(hextets);
-    return hextetsToIPv6String(hextets);
+
+    return hextetsToIPv6String(hextets) + scopeWithDelimiter((Inet6Address) ip);
+  }
+
+  private static String scopeWithDelimiter(Inet6Address ip) {
+    // getHostAddress on android sometimes maps the scope ID to an invalid interface name; if the
+    // mapped interface isn't present, fallback to use the scope ID (which has no validation against
+    // present interfaces)
+    NetworkInterface scopedInterface = ip.getScopedInterface();
+    if (scopedInterface != null) {
+      return "%" + scopedInterface.getName();
+    }
+    int scope = ip.getScopeId();
+    if (scope != 0) {
+      return "%" + scope;
+    }
+    return "";
   }
 
   /**
@@ -446,18 +593,25 @@ public final class InetAddresses {
    * Returns an InetAddress representing the literal IPv4 or IPv6 host portion of a URL, encoded in
    * the format specified by RFC 3986 section 3.2.2.
    *
-   * <p>This function is similar to {@link InetAddresses#forString(String)}, however, it requires
-   * that IPv6 addresses are surrounded by square brackets.
+   * <p>This method is similar to {@link InetAddresses#forString(String)}, however, it requires that
+   * IPv6 addresses are surrounded by square brackets.
    *
-   * <p>This function is the inverse of {@link InetAddresses#toUriString(java.net.InetAddress)}.
+   * <p>This method is the inverse of {@link InetAddresses#toUriString(java.net.InetAddress)}.
    *
-   * @param hostAddr A RFC 3986 section 3.2.2 encoded IPv4 or IPv6 address
+   * <p>This method accepts non-ASCII digits, for example {@code "１９２.１６８.０.１"} (those are fullwidth
+   * characters). That is consistent with {@link InetAddress}, but not with various RFCs. If you
+   * want to accept ASCII digits only, you can use something like {@code
+   * CharMatcher.ascii().matchesAllOf(ipString)}.
+   *
+   * @param hostAddr an RFC 3986 section 3.2.2 encoded IPv4 or IPv6 address
    * @return an InetAddress representing the address in {@code hostAddr}
    * @throws IllegalArgumentException if {@code hostAddr} is not a valid IPv4 address, or IPv6
-   *     address surrounded by square brackets
+   *     address surrounded by square brackets, or if the address has a scope ID that fails
+   *     validation against the interfaces on the machine (as required by Java's {@link
+   *     InetAddress})
    */
   public static InetAddress forUriString(String hostAddr) {
-    InetAddress addr = forUriStringNoThrow(hostAddr);
+    InetAddress addr = forUriStringOrNull(hostAddr, /* parseScope= */ true);
     if (addr == null) {
       throw formatIllegalArgumentException("Not a valid URI IP literal: '%s'", hostAddr);
     }
@@ -465,8 +619,7 @@ public final class InetAddresses {
     return addr;
   }
 
-  @NullableDecl
-  private static InetAddress forUriStringNoThrow(String hostAddr) {
+  private static @Nullable InetAddress forUriStringOrNull(String hostAddr, boolean parseScope) {
     checkNotNull(hostAddr);
 
     // Decide if this should be an IPv6 or IPv4 address.
@@ -481,23 +634,33 @@ public final class InetAddresses {
     }
 
     // Parse the address, and make sure the length/version is correct.
-    byte[] addr = ipStringToBytes(ipString);
+    Scope scope = parseScope ? new Scope() : null;
+    byte[] addr = ipStringToBytes(ipString, scope);
     if (addr == null || addr.length != expectBytes) {
       return null;
     }
 
-    return bytesToInetAddress(addr);
+    return bytesToInetAddress(addr, (scope != null) ? scope.scope : null);
   }
 
   /**
    * Returns {@code true} if the supplied string is a valid URI IP string literal, {@code false}
    * otherwise.
    *
+   * <p>This method accepts non-ASCII digits, for example {@code "１９２.１６８.０.１"} (those are fullwidth
+   * characters). That is consistent with {@link InetAddress}, but not with various RFCs. If you
+   * want to accept ASCII digits only, you can use something like {@code
+   * CharMatcher.ascii().matchesAllOf(ipString)}.
+   *
+   * <p>Note that if this method returns {@code true}, a call to {@link #forUriString(String)} can
+   * still throw if the address has a scope ID that fails validation against the interfaces on the
+   * machine.
+   *
    * @param ipString {@code String} to evaluated as an IP URI host string literal
    * @return {@code true} if the argument is a valid IP URI host
    */
   public static boolean isUriInetAddress(String ipString) {
-    return forUriStringNoThrow(ipString) != null;
+    return forUriStringOrNull(ipString, /* parseScope= */ false) != null;
   }
 
   /**
@@ -591,7 +754,6 @@ public final class InetAddresses {
    *
    * @since 5.0
    */
-  @Beta
   public static final class TeredoInfo {
     private final Inet4Address server;
     private final Inet4Address client;
@@ -609,7 +771,7 @@ public final class InetAddresses {
      */
     // TODO: why is this public?
     public TeredoInfo(
-        @NullableDecl Inet4Address server, @NullableDecl Inet4Address client, int port, int flags) {
+        @Nullable Inet4Address server, @Nullable Inet4Address client, int port, int flags) {
       checkArgument(
           (port >= 0) && (port <= 0xffff), "port '%s' is out of range (0 <= port <= 0xffff)", port);
       checkArgument(
@@ -669,10 +831,10 @@ public final class InetAddresses {
     byte[] bytes = ip.getAddress();
     Inet4Address server = getInet4Address(Arrays.copyOfRange(bytes, 4, 8));
 
-    int flags = ByteStreams.newDataInput(bytes, 8).readShort() & 0xffff;
+    int flags = newDataInput(bytes, 8).readShort() & 0xffff;
 
     // Teredo obfuscates the mapped client port, per section 4 of the RFC.
-    int port = ~ByteStreams.newDataInput(bytes, 10).readShort() & 0xffff;
+    int port = ~newDataInput(bytes, 10).readShort() & 0xffff;
 
     byte[] clientBytes = Arrays.copyOfRange(bytes, 12, 16);
     for (int i = 0; i < clientBytes.length; i++) {
@@ -788,12 +950,16 @@ public final class InetAddresses {
    * obscure {@link Inet6Address} methods, but it would be unwise to depend on such a
    * poorly-documented feature.)
    *
+   * <p>This method accepts non-ASCII digits. That is consistent with {@link InetAddress}, but not
+   * with various RFCs. If you want to accept ASCII digits only, you can use something like {@code
+   * CharMatcher.ascii().matchesAllOf(ipString)}.
+   *
    * @param ipString {@code String} to be examined for embedded IPv4-mapped IPv6 address format
    * @return {@code true} if the argument is a valid "mapped" address
    * @since 10.0
    */
   public static boolean isMappedIPv4Address(String ipString) {
-    byte[] bytes = ipStringToBytes(ipString);
+    byte[] bytes = ipStringToBytes(ipString, null);
     if (bytes != null && bytes.length == 16) {
       for (int i = 0; i < 10; i++) {
         if (bytes[i] != 0) {
@@ -815,12 +981,17 @@ public final class InetAddresses {
    *
    * <p>HACK: As long as applications continue to use IPv4 addresses for indexing into tables,
    * accounting, et cetera, it may be necessary to <b>coerce</b> IPv6 addresses into IPv4 addresses.
-   * This function does so by hashing the upper 64 bits into {@code 224.0.0.0/3} (64 bits into 29
-   * bits).
+   * This method does so by hashing 64 bits of the IPv6 address into {@code 224.0.0.0/3} (64 bits
+   * into 29 bits):
+   *
+   * <ul>
+   *   <li>If the IPv6 address contains an embedded IPv4 address, the function hashes that.
+   *   <li>Otherwise, it hashes the upper 64 bits of the IPv6 address.
+   * </ul>
    *
    * <p>A "coerced" IPv4 address is equivalent to itself.
    *
-   * <p>NOTE: This function is failsafe for security purposes: ALL IPv6 addresses (except localhost
+   * <p>NOTE: This method is failsafe for security purposes: ALL IPv6 addresses (except localhost
    * (::1)) are hashed to avoid the security risk associated with extracting an embedded IPv4
    * address that might permit elevated privileges.
    *
@@ -853,13 +1024,12 @@ public final class InetAddresses {
     if (hasEmbeddedIPv4ClientAddress(ip6)) {
       addressAsLong = getEmbeddedIPv4ClientAddress(ip6).hashCode();
     } else {
-
       // Just extract the high 64 bits (assuming the rest is user-modifiable).
       addressAsLong = ByteBuffer.wrap(ip6.getAddress(), 0, 8).getLong();
     }
 
     // Many strategies for hashing are possible. This might suffice for now.
-    int coercedHash = Hashing.murmur3_32().hashLong(addressAsLong).asInt();
+    int coercedHash = murmur3_32_fixed().hashLong(addressAsLong).asInt();
 
     // Squash into 224/4 Multicast and 240/4 Reserved space (i.e. 224/3).
     coercedHash |= 0xe0000000;
@@ -892,7 +1062,20 @@ public final class InetAddresses {
    * @since 7.0
    */
   public static int coerceToInteger(InetAddress ip) {
-    return ByteStreams.newDataInput(getCoercedIPv4Address(ip).getAddress()).readInt();
+    return newDataInput(getCoercedIPv4Address(ip).getAddress()).readInt();
+  }
+
+  /**
+   * Returns a BigInteger representing the address.
+   *
+   * <p>Unlike {@code coerceToInteger}, IPv6 addresses are not coerced to IPv4 addresses.
+   *
+   * @param address {@link InetAddress} to convert
+   * @return {@code BigInteger} representation of the address
+   * @since 28.2
+   */
+  public static BigInteger toBigInteger(InetAddress address) {
+    return new BigInteger(1, address.getAddress());
   }
 
   /**
@@ -903,6 +1086,72 @@ public final class InetAddresses {
    */
   public static Inet4Address fromInteger(int address) {
     return getInet4Address(Ints.toByteArray(address));
+  }
+
+  /**
+   * Returns the {@code Inet4Address} corresponding to a given {@code BigInteger}.
+   *
+   * @param address BigInteger representing the IPv4 address
+   * @return Inet4Address representation of the given BigInteger
+   * @throws IllegalArgumentException if the BigInteger is not between 0 and 2^32-1
+   * @since 28.2
+   */
+  public static Inet4Address fromIPv4BigInteger(BigInteger address) {
+    return (Inet4Address) fromBigInteger(address, false);
+  }
+
+  /**
+   * Returns the {@code Inet6Address} corresponding to a given {@code BigInteger}.
+   *
+   * @param address BigInteger representing the IPv6 address
+   * @return Inet6Address representation of the given BigInteger
+   * @throws IllegalArgumentException if the BigInteger is not between 0 and 2^128-1
+   * @since 28.2
+   */
+  public static Inet6Address fromIPv6BigInteger(BigInteger address) {
+    return (Inet6Address) fromBigInteger(address, true);
+  }
+
+  /**
+   * Converts a BigInteger to either an IPv4 or IPv6 address. If the IP is IPv4, it must be
+   * constrained to 32 bits, otherwise it is constrained to 128 bits.
+   *
+   * @param address the address represented as a big integer
+   * @param isIpv6 whether the created address should be IPv4 or IPv6
+   * @return the BigInteger converted to an address
+   * @throws IllegalArgumentException if the BigInteger is not between 0 and maximum value for IPv4
+   *     or IPv6 respectively
+   */
+  private static InetAddress fromBigInteger(BigInteger address, boolean isIpv6) {
+    checkArgument(address.signum() >= 0, "BigInteger must be greater than or equal to 0");
+
+    int numBytes = isIpv6 ? 16 : 4;
+
+    byte[] addressBytes = address.toByteArray();
+    byte[] targetCopyArray = new byte[numBytes];
+
+    int srcPos = max(0, addressBytes.length - numBytes);
+    int copyLength = addressBytes.length - srcPos;
+    int destPos = numBytes - copyLength;
+
+    // Check the extra bytes in the BigInteger are all zero.
+    for (int i = 0; i < srcPos; i++) {
+      if (addressBytes[i] != 0x00) {
+        throw formatIllegalArgumentException(
+            "BigInteger cannot be converted to InetAddress because it has more than %d"
+                + " bytes: %s",
+            numBytes, address);
+      }
+    }
+
+    // Copy the bytes into the least significant positions.
+    arraycopy(addressBytes, srcPos, targetCopyArray, destPos, copyLength);
+
+    try {
+      return InetAddress.getByAddress(targetCopyArray);
+    } catch (UnknownHostException impossible) {
+      throw new AssertionError(impossible);
+    }
   }
 
   /**
@@ -943,7 +1192,7 @@ public final class InetAddresses {
     checkArgument(i >= 0, "Decrementing %s would wrap.", address);
 
     addr[i]--;
-    return bytesToInetAddress(addr);
+    return bytesToInetAddress(addr, null);
   }
 
   /**
@@ -966,7 +1215,7 @@ public final class InetAddresses {
     checkArgument(i >= 0, "Incrementing %s would wrap.", address);
 
     addr[i]++;
-    return bytesToInetAddress(addr);
+    return bytesToInetAddress(addr, null);
   }
 
   /**
@@ -979,14 +1228,15 @@ public final class InetAddresses {
    */
   public static boolean isMaximum(InetAddress address) {
     byte[] addr = address.getAddress();
-    for (int i = 0; i < addr.length; i++) {
-      if (addr[i] != (byte) 0xff) {
+    for (byte b : addr) {
+      if (b != (byte) 0xff) {
         return false;
       }
     }
     return true;
   }
 
+  @FormatMethod
   private static IllegalArgumentException formatIllegalArgumentException(
       String format, Object... args) {
     return new IllegalArgumentException(String.format(Locale.ROOT, format, args));

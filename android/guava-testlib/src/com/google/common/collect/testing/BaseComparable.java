@@ -17,7 +17,10 @@
 package com.google.common.collect.testing;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Simple base class to verify that we handle generics correctly.
@@ -38,7 +41,7 @@ public class BaseComparable implements Comparable<BaseComparable>, Serializable 
   }
 
   @Override
-  public boolean equals(Object other) {
+  public boolean equals(@Nullable Object other) {
     if (other == null) {
       return false;
     } else if (other instanceof BaseComparable) {
@@ -53,5 +56,5 @@ public class BaseComparable implements Comparable<BaseComparable>, Serializable 
     return s.compareTo(o.s);
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

@@ -15,26 +15,30 @@
  */
 package com.google.common.collect;
 
-import com.google.common.annotations.GwtCompatible;
-import com.google.common.annotations.VisibleForTesting;
+import static com.google.common.collect.ImmutableList.asImmutableList;
+import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
+import static java.util.Objects.requireNonNull;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.RetainedWith;
-import com.google.j2objc.annotations.WeakOuter;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of ImmutableBiMap backed by a pair of JDK HashMaps, which have smartness
  * protecting against hash flooding.
  */
-@GwtCompatible(emulated = true)
+@GwtIncompatible
 final class JdkBackedImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
-  @VisibleForTesting
-  static <K, V> ImmutableBiMap<K, V> create(int n, Entry<K, V>[] entryArray) {
-    Map<K, V> forwardDelegate = Maps.newHashMapWithExpectedSize(n);
-    Map<V, K> backwardDelegate = Maps.newHashMapWithExpectedSize(n);
+  static <K, V> ImmutableBiMap<K, V> create(int n, @Nullable Entry<K, V>[] entryArray) {
+    Map<K, V> forwardDelegate = newHashMapWithExpectedSize(n);
+    Map<V, K> backwardDelegate = newHashMapWithExpectedSize(n);
     for (int i = 0; i < n; i++) {
-      Entry<K, V> e = RegularImmutableMap.makeImmutable(entryArray[i]);
+      // requireNonNull is safe because the first `n` elements have been filled in.
+      Entry<K, V> e = RegularImmutableMap.makeImmutable(requireNonNull(entryArray[i]));
       entryArray[i] = e;
       V oldValue = forwardDelegate.putIfAbsent(e.getKey(), e.getValue());
       if (oldValue != null) {
@@ -45,19 +49,25 @@ final class JdkBackedImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
         throw conflictException("value", oldKey + "=" + e.getValue(), entryArray[i]);
       }
     }
-    ImmutableList<Entry<K, V>> entryList = ImmutableList.asImmutableList(entryArray, n);
-    return new JdkBackedImmutableBiMap<>(entryList, forwardDelegate, backwardDelegate);
+    ImmutableList<Entry<K, V>> entryList = asImmutableList(entryArray, n);
+    return new JdkBackedImmutableBiMap<>(
+        entryList, forwardDelegate, backwardDelegate, /* inverse= */ null);
   }
 
   private final transient ImmutableList<Entry<K, V>> entries;
   private final Map<K, V> forwardDelegate;
   private final Map<V, K> backwardDelegate;
+  private final @Nullable JdkBackedImmutableBiMap<V, K> inverse;
 
   private JdkBackedImmutableBiMap(
-      ImmutableList<Entry<K, V>> entries, Map<K, V> forwardDelegate, Map<V, K> backwardDelegate) {
+      ImmutableList<Entry<K, V>> entries,
+      Map<K, V> forwardDelegate,
+      Map<V, K> backwardDelegate,
+      @Nullable JdkBackedImmutableBiMap<V, K> inverse) {
     this.entries = entries;
     this.forwardDelegate = forwardDelegate;
     this.backwardDelegate = backwardDelegate;
+    this.inverse = inverse;
   }
 
   @Override
@@ -65,27 +75,39 @@ final class JdkBackedImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
     return entries.size();
   }
 
-  @LazyInit @RetainedWith private transient JdkBackedImmutableBiMap<V, K> inverse;
-
   @Override
   public ImmutableBiMap<V, K> inverse() {
-    JdkBackedImmutableBiMap<V, K> result = inverse;
+    return inverse != null ? inverse : lazyInverse();
+  }
+
+  @LazyInit @RetainedWith private transient @Nullable JdkBackedImmutableBiMap<V, K> lazyInverse;
+
+  private ImmutableBiMap<V, K> lazyInverse() {
+    JdkBackedImmutableBiMap<V, K> result = lazyInverse;
     if (result == null) {
-      inverse =
-          result =
-              new JdkBackedImmutableBiMap<V, K>(
-                  new InverseEntries(), backwardDelegate, forwardDelegate);
-      result.inverse = this;
+      result =
+          lazyInverse =
+              new JdkBackedImmutableBiMap<>(
+                  new InverseEntries<>(entries),
+                  backwardDelegate,
+                  forwardDelegate,
+                  /* inverse= */ this);
     }
     return result;
   }
 
-  @WeakOuter
-  private final class InverseEntries extends ImmutableList<Entry<V, K>> {
+  private static final class InverseEntries<K extends @Nullable Object, V extends @Nullable Object>
+      extends ImmutableList<Entry<V, K>> {
+    private final ImmutableList<Entry<K, V>> entries;
+
+    InverseEntries(ImmutableList<Entry<K, V>> entries) {
+      this.entries = entries;
+    }
+
     @Override
     public Entry<V, K> get(int index) {
       Entry<K, V> entry = entries.get(index);
-      return Maps.immutableEntry(entry.getValue(), entry.getKey());
+      return immutableEntry(entry.getValue(), entry.getKey());
     }
 
     @Override
@@ -97,25 +119,41 @@ final class JdkBackedImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
     public int size() {
       return entries.size();
     }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @J2ktIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
+    }
   }
 
   @Override
-  public V get(@Nullable Object key) {
+  public @Nullable V get(@Nullable Object key) {
     return forwardDelegate.get(key);
   }
 
   @Override
-  ImmutableSet<Entry<K, V>> createEntrySet() {
-    return new ImmutableMapEntrySet.RegularEntrySet<K, V>(this, entries);
+  public ImmutableSet<Entry<K, V>> entrySet() {
+    return new ImmutableMapEntrySet.RegularEntrySet<>(this, entries);
   }
 
   @Override
-  ImmutableSet<K> createKeySet() {
-    return new ImmutableMapKeySet<K, V>(this);
+  public ImmutableSet<K> keySet() {
+    return new ImmutableMapKeySet<>(this);
   }
 
   @Override
   boolean isPartialView() {
     return false;
+  }
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible
+    Object writeReplace() {
+    return super.writeReplace();
   }
 }

@@ -17,16 +17,19 @@
 package com.google.common.io;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit tests for {@link CountingInputStream}.
  *
  * @author Chris Nokleberg
  */
+@NullUnmarked
 public class CountingInputStreamTest extends IoTestCase {
   private CountingInputStream counter;
 
@@ -90,28 +93,20 @@ public class CountingInputStreamTest extends IoTestCase {
   }
 
   public void testMarkNotSet() {
-    try {
-      counter.reset();
-      fail();
-    } catch (IOException expected) {
-      assertThat(expected).hasMessageThat().isEqualTo("Mark not set");
-    }
+    IOException expected = assertThrows(IOException.class, () -> counter.reset());
+    assertThat(expected).hasMessageThat().isEqualTo("Mark not set");
   }
 
   public void testMarkNotSupported() {
     counter = new CountingInputStream(new UnmarkableInputStream());
 
-    try {
-      counter.reset();
-      fail();
-    } catch (IOException expected) {
-      assertThat(expected).hasMessageThat().isEqualTo("Mark not supported");
-    }
+    IOException expected = assertThrows(IOException.class, () -> counter.reset());
+    assertThat(expected).hasMessageThat().isEqualTo("Mark not supported");
   }
 
   private static class UnmarkableInputStream extends InputStream {
     @Override
-    public int read() throws IOException {
+    public int read() {
       return 0;
     }
 

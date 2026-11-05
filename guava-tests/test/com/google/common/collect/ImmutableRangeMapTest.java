@@ -15,13 +15,16 @@
 package com.google.common.collect;
 
 import static com.google.common.collect.BoundType.OPEN;
+import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.testing.CollectorTester;
-import com.google.common.testing.SerializableTester;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@code ImmutableRangeMap}.
@@ -29,6 +32,7 @@ import junit.framework.TestCase;
  * @author Louis Wasserman
  */
 @GwtIncompatible // NavigableMap
+@NullUnmarked
 public class ImmutableRangeMapTest extends TestCase {
   private static final ImmutableList<Range<Integer>> RANGES;
   private static final int MIN_BOUND = 0;
@@ -37,7 +41,7 @@ public class ImmutableRangeMapTest extends TestCase {
   static {
     ImmutableList.Builder<Range<Integer>> builder = ImmutableList.builder();
 
-    builder.add(Range.<Integer>all());
+    builder.add(Range.all());
 
     // Add one-ended ranges
     for (int i = MIN_BOUND; i <= MAX_BOUND; i++) {
@@ -65,18 +69,10 @@ public class ImmutableRangeMapTest extends TestCase {
 
   public void testBuilderRejectsEmptyRanges() {
     for (int i = MIN_BOUND; i <= MAX_BOUND; i++) {
+      int ii = i;
       ImmutableRangeMap.Builder<Integer, Integer> builder = ImmutableRangeMap.builder();
-      try {
-        builder.put(Range.closedOpen(i, i), 1);
-        fail("Expected IllegalArgumentException");
-      } catch (IllegalArgumentException expected) {
-        // success
-      }
-      try {
-        builder.put(Range.openClosed(i, i), 1);
-        fail("Expected IllegalArgumentException");
-      } catch (IllegalArgumentException expected) {
-      }
+      assertThrows(IllegalArgumentException.class, () -> builder.put(Range.closedOpen(ii, ii), 1));
+      assertThrows(IllegalArgumentException.class, () -> builder.put(Range.openClosed(ii, ii), 1));
     }
   }
 
@@ -120,11 +116,7 @@ public class ImmutableRangeMapTest extends TestCase {
   }
 
   public void testSpanEmpty() {
-    try {
-      ImmutableRangeMap.of().span();
-      fail("Expected NoSuchElementException");
-    } catch (NoSuchElementException expected) {
-    }
+    assertThrows(NoSuchElementException.class, () -> ImmutableRangeMap.of().span());
   }
 
   public void testSpanSingleRange() {
@@ -157,9 +149,9 @@ public class ImmutableRangeMapTest extends TestCase {
           for (int i = MIN_BOUND; i <= MAX_BOUND; i++) {
             Entry<Range<Integer>, Integer> expectedEntry = null;
             if (range1.contains(i)) {
-              expectedEntry = Maps.immutableEntry(range1, 1);
+              expectedEntry = immutableEntry(range1, 1);
             } else if (range2.contains(i)) {
-              expectedEntry = Maps.immutableEntry(range2, 2);
+              expectedEntry = immutableEntry(range2, 2);
             }
 
             assertEquals(expectedEntry, rangeMap.getEntry(i));
@@ -180,7 +172,7 @@ public class ImmutableRangeMapTest extends TestCase {
     }
   }
 
-  @AndroidIncompatible // slow
+  // Android: takes ~25s
   public void testAsMapOfRanges() {
     for (Range<Integer> range1 : RANGES) {
       for (Range<Integer> range2 : RANGES) {
@@ -194,8 +186,8 @@ public class ImmutableRangeMapTest extends TestCase {
           ImmutableMap<Range<Integer>, Integer> descendingMap = rangeMap.asDescendingMapOfRanges();
           assertEquals(expectedAsMap, asMap);
           assertEquals(expectedAsMap, descendingMap);
-          SerializableTester.reserializeAndAssert(asMap);
-          SerializableTester.reserializeAndAssert(descendingMap);
+          reserializeAndAssert(asMap);
+          reserializeAndAssert(descendingMap);
           assertEquals(
               ImmutableList.copyOf(asMap.entrySet()).reverse(),
               ImmutableList.copyOf(descendingMap.entrySet()));
@@ -207,6 +199,8 @@ public class ImmutableRangeMapTest extends TestCase {
       }
     }
   }
+
+  @AndroidIncompatible // ~30s; doable but probably not worth it. We could test on fewer ranges
 
   public void testSubRangeMap() {
     for (Range<Integer> range1 : RANGES) {
@@ -235,7 +229,7 @@ public class ImmutableRangeMapTest extends TestCase {
 
   public void testSerialization() {
     ImmutableRangeMap<Integer, Integer> emptyRangeMap = ImmutableRangeMap.of();
-    SerializableTester.reserializeAndAssert(emptyRangeMap);
+    reserializeAndAssert(emptyRangeMap);
 
     ImmutableRangeMap<Integer, Integer> nonEmptyRangeMap =
         new ImmutableRangeMap.Builder<Integer, Integer>()
@@ -248,15 +242,15 @@ public class ImmutableRangeMapTest extends TestCase {
     ImmutableMap<Range<Integer>, Integer> test = nonEmptyRangeMap.asMapOfRanges();
 
     for (Range<Integer> range : test.keySet()) {
-      SerializableTester.reserializeAndAssert(range);
+      reserializeAndAssert(range);
     }
 
-    SerializableTester.reserializeAndAssert(test.keySet());
+    reserializeAndAssert(test.keySet());
 
-    SerializableTester.reserializeAndAssert(nonEmptyRangeMap);
+    reserializeAndAssert(nonEmptyRangeMap);
   }
 
-  public void testToImmutableRangeSet() {
+  public void testToImmutableRangeMap() {
     Range<Integer> rangeOne = Range.closedOpen(1, 5);
     Range<Integer> rangeTwo = Range.openClosed(6, 7);
     ImmutableRangeMap<Integer, Integer> rangeMap =

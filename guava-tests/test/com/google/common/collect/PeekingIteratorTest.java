@@ -17,19 +17,24 @@
 package com.google.common.collect;
 
 import static com.google.common.collect.Iterators.peekingIterator;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.testing.IteratorFeature.MODIFIABLE;
 import static com.google.common.collect.testing.IteratorFeature.UNMODIFIABLE;
 import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.Collections.unmodifiableList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.IteratorTester;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link PeekingIterator}.
@@ -37,7 +42,8 @@ import junit.framework.TestCase;
  * @author Mick Killianey
  */
 @SuppressWarnings("serial") // No serialization is used in this test
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class PeekingIteratorTest extends TestCase {
 
   /**
@@ -47,23 +53,23 @@ public class PeekingIteratorTest extends TestCase {
    *
    * <p>This IteratorTester makes copies of the master so that it can later verify that {@link
    * PeekingIterator#remove()} removes the same elements as the reference's iterator {@code
-   * #remove()}.
+   * remove()}.
    */
-  private static class PeekingIteratorTester<T> extends IteratorTester<T> {
-    private Iterable<T> master;
-    private List<T> targetList;
+  private static class PeekingIteratorTester<T extends @Nullable Object> extends IteratorTester<T> {
+    private final Iterable<T> master;
+    private @Nullable List<T> targetList;
 
-    public PeekingIteratorTester(Collection<T> master) {
-      super(master.size() + 3, MODIFIABLE, master, IteratorTester.KnownOrder.KNOWN_ORDER);
+    PeekingIteratorTester(Collection<T> master) {
+      super(master.size() + 3, MODIFIABLE, master, KnownOrder.KNOWN_ORDER);
       this.master = master;
     }
 
     @Override
     protected Iterator<T> newTargetIterator() {
       // make copy from master to verify later
-      targetList = Lists.newArrayList(master);
+      targetList = newArrayList(master);
       Iterator<T> iterator = targetList.iterator();
-      return Iterators.peekingIterator(iterator);
+      return peekingIterator(iterator);
     }
 
     @Override
@@ -73,7 +79,7 @@ public class PeekingIteratorTest extends TestCase {
     }
   }
 
-  private <T> void actsLikeIteratorHelper(final List<T> list) {
+  private static <T extends @Nullable Object> void actsLikeIteratorHelper(List<T> list) {
     // Check with modifiable copies of the list
     new PeekingIteratorTester<T>(list).test();
 
@@ -82,48 +88,43 @@ public class PeekingIteratorTest extends TestCase {
         list.size() * 2 + 2, UNMODIFIABLE, list, IteratorTester.KnownOrder.KNOWN_ORDER) {
       @Override
       protected Iterator<T> newTargetIterator() {
-        Iterator<T> iterator = Collections.unmodifiableList(list).iterator();
-        return Iterators.peekingIterator(iterator);
+        Iterator<T> iterator = unmodifiableList(list).iterator();
+        return peekingIterator(iterator);
       }
     }.test();
   }
 
   public void testPeekingIteratorBehavesLikeIteratorOnEmptyIterable() {
-    actsLikeIteratorHelper(Collections.emptyList());
+    actsLikeIteratorHelper(emptyList());
   }
 
   public void testPeekingIteratorBehavesLikeIteratorOnSingletonIterable() {
-    actsLikeIteratorHelper(Collections.singletonList(new Object()));
+    actsLikeIteratorHelper(singletonList(new Object()));
   }
 
   // TODO(cpovirk): instead of skipping, use a smaller number of steps
   @GwtIncompatible // works but takes 5 minutes to run
   public void testPeekingIteratorBehavesLikeIteratorOnThreeElementIterable() {
-    actsLikeIteratorHelper(Lists.newArrayList("A", "B", "C"));
+    actsLikeIteratorHelper(newArrayList("A", "B", "C"));
   }
 
   @GwtIncompatible // works but takes 5 minutes to run
   public void testPeekingIteratorAcceptsNullElements() {
-    actsLikeIteratorHelper(Lists.newArrayList(null, "A", null));
+    actsLikeIteratorHelper(Lists.<@Nullable String>newArrayList(null, "A", null));
   }
 
   public void testPeekOnEmptyList() {
-    List<?> list = Collections.emptyList();
+    List<?> list = emptyList();
     Iterator<?> iterator = list.iterator();
-    PeekingIterator<?> peekingIterator = Iterators.peekingIterator(iterator);
+    PeekingIterator<?> peekingIterator = peekingIterator(iterator);
 
-    try {
-      peekingIterator.peek();
-      fail("Should throw NoSuchElementException if nothing to peek()");
-    } catch (NoSuchElementException e) {
-      /* expected */
-    }
+    assertThrows(NoSuchElementException.class, () -> peekingIterator.peek());
   }
 
   public void testPeekDoesntChangeIteration() {
-    List<?> list = Lists.newArrayList("A", "B", "C");
+    List<?> list = newArrayList("A", "B", "C");
     Iterator<?> iterator = list.iterator();
-    PeekingIterator<?> peekingIterator = Iterators.peekingIterator(iterator);
+    PeekingIterator<?> peekingIterator = peekingIterator(iterator);
 
     assertEquals("Should be able to peek() at first element", "A", peekingIterator.peek());
     assertEquals(
@@ -143,41 +144,21 @@ public class PeekingIteratorTest extends TestCase {
     assertEquals(
         "next() should still return last element after peeking", "C", peekingIterator.next());
 
-    try {
-      peekingIterator.peek();
-      fail("Should throw exception if no next to peek()");
-    } catch (NoSuchElementException e) {
-      /* expected */
-    }
-    try {
-      peekingIterator.peek();
-      fail("Should continue to throw exception if no next to peek()");
-    } catch (NoSuchElementException e) {
-      /* expected */
-    }
-    try {
-      peekingIterator.next();
-      fail("next() should still throw exception after the end of iteration");
-    } catch (NoSuchElementException e) {
-      /* expected */
-    }
+    assertThrows(NoSuchElementException.class, () -> peekingIterator.peek());
+    assertThrows(NoSuchElementException.class, () -> peekingIterator.peek());
+    assertThrows(NoSuchElementException.class, () -> peekingIterator.next());
   }
 
   public void testCantRemoveAfterPeek() {
-    List<String> list = Lists.newArrayList("A", "B", "C");
+    List<String> list = newArrayList("A", "B", "C");
     Iterator<String> iterator = list.iterator();
-    PeekingIterator<?> peekingIterator = Iterators.peekingIterator(iterator);
+    PeekingIterator<?> peekingIterator = peekingIterator(iterator);
 
     assertEquals("A", peekingIterator.next());
     assertEquals("B", peekingIterator.peek());
 
     /* Should complain on attempt to remove() after peek(). */
-    try {
-      peekingIterator.remove();
-      fail("remove() should throw IllegalStateException after a peek()");
-    } catch (IllegalStateException e) {
-      /* expected */
-    }
+    assertThrows(IllegalStateException.class, () -> peekingIterator.remove());
 
     assertEquals(
         "After remove() throws exception, peek should still be ok", "B", peekingIterator.peek());
@@ -224,7 +205,7 @@ public class PeekingIteratorTest extends TestCase {
     }
   }
 
-  public void testPeekingIteratorDoesntAdvancePrematurely() throws Exception {
+  public void testPeekingIteratorDoesntAdvancePrematurely() {
     /*
      * This test will catch problems where the underlying iterator
      * throws a RuntimeException when retrieving the nth element.
@@ -241,7 +222,7 @@ public class PeekingIteratorTest extends TestCase {
 
     /* Checks the case where a later element throws an exception. */
 
-    list = Lists.newArrayList(1, 2);
+    list = newArrayList(1, 2);
     iterator = peekingIterator(new ThrowsAtEndIterator<Integer>(list));
     assertTrue(iterator.hasNext());
     iterator.next();
@@ -250,11 +231,7 @@ public class PeekingIteratorTest extends TestCase {
     assertNextThrows(iterator);
   }
 
-  private void assertNextThrows(Iterator<?> iterator) {
-    try {
-      iterator.next();
-      fail();
-    } catch (ThrowsAtEndException expected) {
-    }
+  private static void assertNextThrows(Iterator<?> iterator) {
+    assertThrows(ThrowsAtEndException.class, () -> iterator.next());
   }
 }

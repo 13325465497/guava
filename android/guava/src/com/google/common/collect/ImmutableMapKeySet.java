@@ -18,8 +18,9 @@ package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code keySet()} implementation for {@link ImmutableMap}.
@@ -27,7 +28,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Jesse Wilson
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
   private final ImmutableMap<K, V> map;
 
@@ -46,7 +47,7 @@ final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
   }
 
   @Override
-  public boolean contains(@NullableDecl Object object) {
+  public boolean contains(@Nullable Object object) {
     return map.containsKey(object);
   }
 
@@ -60,14 +61,16 @@ final class ImmutableMapKeySet<K, V> extends IndexedImmutableSet<K> {
     return true;
   }
 
-  @GwtIncompatible // serialization
   @Override
-  Object writeReplace() {
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
     return new KeySetSerializedForm<K>(map);
   }
 
-  @GwtIncompatible // serialization
-  private static class KeySetSerializedForm<K> implements Serializable {
+  @GwtIncompatible
+  @J2ktIncompatible
+  private static final class KeySetSerializedForm<K> implements Serializable {
     final ImmutableMap<K, ?> map;
 
     KeySetSerializedForm(ImmutableMap<K, ?> map) {

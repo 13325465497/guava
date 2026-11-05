@@ -17,142 +17,97 @@
 package com.google.common.util.concurrent;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
-import java.security.Permission;
+import com.google.common.util.concurrent.TestExceptions.SomeCheckedException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit tests for {@link Callables}.
  *
  * @author Isaac Shum
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
 public class CallablesTest extends TestCase {
 
+  @J2ktIncompatible // TODO(b/324550390): Enable
   public void testReturning() throws Exception {
-    assertNull(Callables.returning(null).call());
+    assertThat(Callables.returning(null).call()).isNull();
 
     Object value = new Object();
     Callable<Object> callable = Callables.returning(value);
-    assertSame(value, callable.call());
+    assertThat(callable.call()).isEqualTo(value);
     // Expect the same value on subsequent calls
-    assertSame(value, callable.call());
+    assertThat(callable.call()).isEqualTo(value);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible
   public void testAsAsyncCallable() throws Exception {
-    final String expected = "MyCallableString";
-    Callable<String> callable =
-        new Callable<String>() {
-          @Override
-          public String call() throws Exception {
-            return expected;
-          }
-        };
+    String expected = "MyCallableString";
+    Callable<String> callable = () -> expected;
 
     AsyncCallable<String> asyncCallable =
-        Callables.asAsyncCallable(callable, MoreExecutors.newDirectExecutorService());
+        Callables.asAsyncCallable(callable, newDirectExecutorService());
 
     ListenableFuture<String> future = asyncCallable.call();
-    assertSame(expected, future.get());
+    assertThat(future.get()).isEqualTo(expected);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible
   public void testAsAsyncCallable_exception() throws Exception {
-    final Exception expected = new IllegalArgumentException();
+    Exception expected = new IllegalArgumentException();
     Callable<String> callable =
-        new Callable<String>() {
-          @Override
-          public String call() throws Exception {
-            throw expected;
-          }
+        () -> {
+          throw expected;
         };
 
     AsyncCallable<String> asyncCallable =
-        Callables.asAsyncCallable(callable, MoreExecutors.newDirectExecutorService());
+        Callables.asAsyncCallable(callable, newDirectExecutorService());
 
     ListenableFuture<String> future = asyncCallable.call();
-    try {
-      future.get();
-      fail("Expected exception to be thrown");
-    } catch (ExecutionException e) {
-      assertThat(e).hasCauseThat().isSameInstanceAs(expected);
-    }
+    ExecutionException e = assertThrows(ExecutionException.class, () -> future.get());
+    assertThat(e).hasCauseThat().isEqualTo(expected);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // threads
   public void testRenaming() throws Exception {
     String oldName = Thread.currentThread().getName();
-    final Supplier<String> newName = Suppliers.ofInstance("MyCrazyThreadName");
-    Callable<Void> callable =
-        new Callable<Void>() {
-          @Override
-          public Void call() throws Exception {
-            assertEquals(Thread.currentThread().getName(), newName.get());
-            return null;
-          }
+    Supplier<String> newName = Suppliers.ofInstance("MyCrazyThreadName");
+    Callable<@Nullable Void> callable =
+        () -> {
+          assertThat(Thread.currentThread().getName()).isEqualTo(newName.get());
+          return null;
         };
     Callables.threadRenaming(callable, newName).call();
-    assertEquals(oldName, Thread.currentThread().getName());
+    assertThat(Thread.currentThread().getName()).isEqualTo(oldName);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // threads
-  public void testRenaming_exceptionalReturn() throws Exception {
+  public void testRenaming_exceptionalReturn() {
     String oldName = Thread.currentThread().getName();
-    final Supplier<String> newName = Suppliers.ofInstance("MyCrazyThreadName");
-    class MyException extends Exception {}
-    Callable<Void> callable =
-        new Callable<Void>() {
-          @Override
-          public Void call() throws Exception {
-            assertEquals(Thread.currentThread().getName(), newName.get());
-            throw new MyException();
-          }
+    Supplier<String> newName = Suppliers.ofInstance("MyCrazyThreadName");
+    Callable<@Nullable Void> callable =
+        () -> {
+          assertThat(Thread.currentThread().getName()).isEqualTo(newName.get());
+          throw new SomeCheckedException();
         };
-    try {
-      Callables.threadRenaming(callable, newName).call();
-      fail();
-    } catch (MyException expected) {
-    }
-    assertEquals(oldName, Thread.currentThread().getName());
-  }
-
-  @GwtIncompatible // threads
-
-  public void testRenaming_noPermissions() throws Exception {
-    System.setSecurityManager(
-        new SecurityManager() {
-          @Override
-          public void checkAccess(Thread t) {
-            throw new SecurityException();
-          }
-
-          @Override
-          public void checkPermission(Permission perm) {
-            // Do nothing so we can clear the security manager at the end
-          }
-        });
-    try {
-      final String oldName = Thread.currentThread().getName();
-      Supplier<String> newName = Suppliers.ofInstance("MyCrazyThreadName");
-      Callable<Void> callable =
-          new Callable<Void>() {
-            @Override
-            public Void call() throws Exception {
-              assertEquals(Thread.currentThread().getName(), oldName);
-              return null;
-            }
-          };
-      Callables.threadRenaming(callable, newName).call();
-      assertEquals(oldName, Thread.currentThread().getName());
-    } finally {
-      System.setSecurityManager(null);
-    }
+    assertThrows(
+        SomeCheckedException.class, () -> Callables.threadRenaming(callable, newName).call());
+    assertThat(Thread.currentThread().getName()).isEqualTo(oldName);
   }
 }

@@ -16,6 +16,8 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.copyToList;
+import static com.google.common.collect.testing.Helpers.getMethod;
 import static com.google.common.collect.testing.IteratorFeature.MODIFIABLE;
 import static com.google.common.collect.testing.IteratorFeature.UNMODIFIABLE;
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_REMOVE;
@@ -23,10 +25,11 @@ import static com.google.common.collect.testing.features.ListFeature.SUPPORTS_AD
 import static com.google.common.collect.testing.features.ListFeature.SUPPORTS_SET;
 import static com.google.common.collect.testing.testers.Platform.listListIteratorTesterNumIterations;
 import static java.util.Collections.singleton;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.collect.testing.Helpers;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.IteratorFeature;
 import com.google.common.collect.testing.ListIteratorTester;
 import com.google.common.collect.testing.features.CollectionFeature;
@@ -36,7 +39,8 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A generic JUnit test which tests {@code listIterator} operations on a list. Can't be invoked
@@ -45,9 +49,9 @@ import org.junit.Ignore;
  * @author Chris Povirk
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public class ListListIteratorTester<E> extends AbstractListTester<E> {
+@GwtCompatible
+@NullMarked
+public class ListListIteratorTester<E extends @Nullable Object> extends AbstractListTester<E> {
   @CollectionFeature.Require(absent = SUPPORTS_REMOVE)
   @ListFeature.Require(absent = {SUPPORTS_SET, SUPPORTS_ADD_WITH_INDEX})
   public void testListIterator_unmodifiable() {
@@ -69,7 +73,7 @@ public class ListListIteratorTester<E> extends AbstractListTester<E> {
         listListIteratorTesterNumIterations(),
         singleton(e4()),
         features,
-        Helpers.copyToList(getOrderedElements()),
+        copyToList(getOrderedElements()),
         0) {
       @Override
       protected ListIterator<E> newTargetIterator() {
@@ -85,23 +89,16 @@ public class ListListIteratorTester<E> extends AbstractListTester<E> {
   }
 
   public void testListIterator_tooLow() {
-    try {
-      getList().listIterator(-1);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> getList().listIterator(-1));
   }
 
   public void testListIterator_tooHigh() {
-    try {
-      getList().listIterator(getNumElements() + 1);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(
+        IndexOutOfBoundsException.class, () -> getList().listIterator(getNumElements() + 1));
   }
 
   public void testListIterator_atSize() {
-    getList().listIterator(getNumElements());
+    assertNotNull(getList().listIterator(getNumElements()));
     // TODO: run the iterator through ListIteratorTester
   }
 
@@ -109,19 +106,21 @@ public class ListListIteratorTester<E> extends AbstractListTester<E> {
    * Returns the {@link Method} instance for {@link #testListIterator_fullyModifiable()} so that
    * tests of {@link CopyOnWriteArraySet} can suppress it with {@code
    * FeatureSpecificTestSuiteBuilder.suppressing()} until <a
-   * href="http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6570575">Sun bug 6570575</a> is fixed.
+   * href="https://bugs.openjdk.org/browse/JDK-6570575">JDK-6570575</a> is fixed.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getListIteratorFullyModifiableMethod() {
-    return Helpers.getMethod(ListListIteratorTester.class, "testListIterator_fullyModifiable");
+    return getMethod(ListListIteratorTester.class, "testListIterator_fullyModifiable");
   }
 
   /**
    * Returns the {@link Method} instance for {@link #testListIterator_unmodifiable()} so that it can
    * be suppressed in GWT tests.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getListIteratorUnmodifiableMethod() {
-    return Helpers.getMethod(ListListIteratorTester.class, "testListIterator_unmodifiable");
+    return getMethod(ListListIteratorTester.class, "testListIterator_unmodifiable");
   }
 }

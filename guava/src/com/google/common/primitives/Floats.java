@@ -18,22 +18,26 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
-import static java.lang.Float.NEGATIVE_INFINITY;
-import static java.lang.Float.POSITIVE_INFINITY;
+import static com.google.common.base.Strings.lenientFormat;
+import static java.lang.Float.parseFloat;
+import static java.lang.Math.floorMod;
+import static java.lang.System.arraycopy;
+import static java.util.Arrays.sort;
+import static java.util.Collections.emptyList;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Converter;
+import com.google.errorprone.annotations.InlineMe;
 import java.io.Serializable;
 import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.RandomAccess;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@code float} primitives, that are not already found in
@@ -45,31 +49,39 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Kevin Bourrillion
  * @since 1.0
  */
-@GwtCompatible(emulated = true)
-public final class Floats {
+@GwtCompatible
+public final class Floats extends FloatsMethodsForWeb {
   private Floats() {}
 
   /**
    * The number of bytes required to represent a primitive {@code float} value.
    *
-   * <p><b>Java 8 users:</b> use {@link Float#BYTES} instead.
+   * <p>Prefer {@link Float#BYTES} instead.
    *
    * @since 10.0
    */
-  public static final int BYTES = Float.SIZE / Byte.SIZE;
+  public static final int BYTES = Float.BYTES;
 
   /**
-   * Returns a hash code for {@code value}; equal to the result of invoking {@code ((Float)
-   * value).hashCode()}.
+   * Represents the smallest {@code float} value that is strictly greater than zero. This is an
+   * alias for {@link Float#MIN_VALUE}, but has a name that more clearly expresses its meaning.
    *
-   * <p><b>Java 8 users:</b> use {@link Float#hashCode(float)} instead.
+   * <p><b>Note:</b> the most negative finite float value is {@code -Float.MAX_VALUE}.
+   *
+   * @since 33.8.0
+   */
+  @SuppressWarnings("MinPositive")
+  public static final float MIN_POSITIVE_VALUE = Float.MIN_VALUE;
+
+  /**
+   * Returns a hash code for {@code value}; obsolete alternative to {@link Float#hashCode(float)}.
    *
    * @param value a primitive {@code float} value
    * @return a hash code for the value
    */
+  @InlineMe(replacement = "Float.hashCode(value)")
   public static int hashCode(float value) {
-    // TODO(kevinb): is there a better way, that's still gwt-safe?
-    return ((Float) value).hashCode();
+    return Float.hashCode(value);
   }
 
   /**
@@ -85,6 +97,7 @@ public final class Floats {
    * @param b the second {@code float} to compare
    * @return the result of invoking {@link Float#compare(float, float)}
    */
+  @InlineMe(replacement = "Float.compare(a, b)")
   public static int compare(float a, float b) {
     return Float.compare(a, b);
   }
@@ -93,12 +106,13 @@ public final class Floats {
    * Returns {@code true} if {@code value} represents a real number. This is equivalent to, but not
    * necessarily implemented as, {@code !(Float.isInfinite(value) || Float.isNaN(value))}.
    *
-   * <p><b>Java 8 users:</b> use {@link Float#isFinite(float)} instead.
+   * <p>Prefer {@link Float#isFinite(float)} instead.
    *
    * @since 10.0
    */
+  @InlineMe(replacement = "Float.isFinite(value)")
   public static boolean isFinite(float value) {
-    return NEGATIVE_INFINITY < value && value < POSITIVE_INFINITY;
+    return Float.isFinite(value);
   }
 
   /**
@@ -204,6 +218,8 @@ public final class Floats {
    *     the array
    * @throws IllegalArgumentException if {@code array} is empty
    */
+  @GwtIncompatible(
+      "Available in GWT! Annotation is to avoid conflict with GWT specialization of base class.")
   public static float min(float... array) {
     checkArgument(array.length > 0);
     float min = array[0];
@@ -222,6 +238,8 @@ public final class Floats {
    *     in the array
    * @throws IllegalArgumentException if {@code array} is empty
    */
+  @GwtIncompatible(
+      "Available in GWT! Annotation is to avoid conflict with GWT specialization of base class.")
   public static float max(float... array) {
     checkArgument(array.length > 0);
     float max = array[0];
@@ -238,16 +256,22 @@ public final class Floats {
    * unchanged. If {@code value} is less than {@code min}, {@code min} is returned, and if {@code
    * value} is greater than {@code max}, {@code max} is returned.
    *
+   * <p><b>Java 21+ users:</b> Use {@link Math#clamp(float, float, float)} instead.
+   *
    * @param value the {@code float} value to constrain
    * @param min the lower bound (inclusive) of the range to constrain {@code value} to
    * @param max the upper bound (inclusive) of the range to constrain {@code value} to
    * @throws IllegalArgumentException if {@code min > max}
    * @since 21.0
    */
-  @Beta
   public static float constrainToRange(float value, float min, float max) {
-    checkArgument(min <= max, "min (%s) must be less than or equal to max (%s)", min, max);
-    return Math.min(Math.max(value, min), max);
+    // avoid auto-boxing by not using Preconditions.checkArgument(); see Guava issue 3984
+    // Reject NaN by testing for the good case (min <= max) instead of the bad (min > max).
+    if (min <= max) {
+      return Math.min(Math.max(value, min), max);
+    }
+    throw new IllegalArgumentException(
+        lenientFormat("min (%s) must be less than or equal to max (%s)", min, max));
   }
 
   /**
@@ -257,24 +281,34 @@ public final class Floats {
    *
    * @param arrays zero or more {@code float} arrays
    * @return a single array containing all the values from the source arrays, in order
+   * @throws IllegalArgumentException if the total number of elements in {@code arrays} does not fit
+   *     in an {@code int}
    */
   public static float[] concat(float[]... arrays) {
-    int length = 0;
+    long length = 0;
     for (float[] array : arrays) {
       length += array.length;
     }
-    float[] result = new float[length];
+    float[] result = new float[checkNoOverflow(length)];
     int pos = 0;
     for (float[] array : arrays) {
-      System.arraycopy(array, 0, result, pos, array.length);
+      arraycopy(array, 0, result, pos, array.length);
       pos += array.length;
     }
     return result;
   }
 
+  private static int checkNoOverflow(long result) {
+    checkArgument(
+        result == (int) result,
+        "the total number of elements (%s) in the arrays must fit in an int",
+        result);
+    return (int) result;
+  }
+
   private static final class FloatConverter extends Converter<String, Float>
       implements Serializable {
-    static final FloatConverter INSTANCE = new FloatConverter();
+    static final Converter<String, Float> INSTANCE = new FloatConverter();
 
     @Override
     protected Float doForward(String value) {
@@ -295,7 +329,7 @@ public final class Floats {
       return INSTANCE;
     }
 
-    private static final long serialVersionUID = 1;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 1;
   }
 
   /**
@@ -304,7 +338,6 @@ public final class Floats {
    *
    * @since 16.0
    */
-  @Beta
   public static Converter<String, Float> stringConverter() {
     return FloatConverter.INSTANCE;
   }
@@ -418,7 +451,7 @@ public final class Floats {
   public static void sortDescending(float[] array, int fromIndex, int toIndex) {
     checkNotNull(array);
     checkPositionIndexes(fromIndex, toIndex, array.length);
-    Arrays.sort(array, fromIndex, toIndex);
+    sort(array, fromIndex, toIndex);
     reverse(array, fromIndex, toIndex);
   }
 
@@ -451,6 +484,54 @@ public final class Floats {
       array[i] = array[j];
       array[j] = tmp;
     }
+  }
+
+  /**
+   * Performs a right rotation of {@code array} of "distance" places, so that the first element is
+   * moved to index "distance", and the element at index {@code i} ends up at index {@code (distance
+   * + i) mod array.length}. This is equivalent to {@code Collections.rotate(Floats.asList(array),
+   * distance)}, but is considerably faster and avoids allocation and garbage collection.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @since 32.0.0
+   */
+  public static void rotate(float[] array, int distance) {
+    rotate(array, distance, 0, array.length);
+  }
+
+  /**
+   * Performs a right rotation of {@code array} between {@code fromIndex} inclusive and {@code
+   * toIndex} exclusive. This is equivalent to {@code
+   * Collections.rotate(Floats.asList(array).subList(fromIndex, toIndex), distance)}, but is
+   * considerably faster and avoids allocations and garbage collection.
+   *
+   * <p>The provided "distance" may be negative, which will rotate left.
+   *
+   * @throws IndexOutOfBoundsException if {@code fromIndex < 0}, {@code toIndex > array.length}, or
+   *     {@code toIndex > fromIndex}
+   * @since 32.0.0
+   */
+  public static void rotate(float[] array, int distance, int fromIndex, int toIndex) {
+    // See Ints.rotate for more details about possible algorithms here.
+    checkNotNull(array);
+    checkPositionIndexes(fromIndex, toIndex, array.length);
+    int length = toIndex - fromIndex;
+    if (length <= 1) {
+      return;
+    }
+
+    // Map the given distance to an equivalent, non-negative value less than "length".
+    distance = floorMod(distance, length);
+    if (distance == 0) {
+      return;
+    }
+    // The current index of what will become the first element of the rotated section.
+    int newFirstIndex = toIndex - distance;
+
+    reverse(array, fromIndex, newFirstIndex);
+    reverse(array, newFirstIndex, toIndex);
+    reverse(array, fromIndex, toIndex);
   }
 
   /**
@@ -493,18 +574,19 @@ public final class Floats {
    * <p>The returned list may have unexpected behavior if it contains {@code NaN}, or if {@code NaN}
    * is used as a parameter to any of its methods.
    *
+   * <p>The returned list is serializable.
+   *
    * @param backingArray the array to back the list
    * @return a list view of the array
    */
   public static List<Float> asList(float... backingArray) {
     if (backingArray.length == 0) {
-      return Collections.emptyList();
+      return emptyList();
     }
     return new FloatArrayAsList(backingArray);
   }
 
-  @GwtCompatible
-  private static class FloatArrayAsList extends AbstractList<Float>
+  private static final class FloatArrayAsList extends AbstractList<Float>
       implements RandomAccess, Serializable {
     final float[] array;
     final int start;
@@ -537,13 +619,13 @@ public final class Floats {
     }
 
     @Override
-    public boolean contains(Object target) {
+    public boolean contains(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       return (target instanceof Float) && Floats.indexOf(array, (Float) target, start, end) != -1;
     }
 
     @Override
-    public int indexOf(Object target) {
+    public int indexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Float) {
         int i = Floats.indexOf(array, (Float) target, start, end);
@@ -555,7 +637,7 @@ public final class Floats {
     }
 
     @Override
-    public int lastIndexOf(Object target) {
+    public int lastIndexOf(@Nullable Object target) {
       // Overridden to prevent a ton of boxing
       if (target instanceof Float) {
         int i = Floats.lastIndexOf(array, (Float) target, start, end);
@@ -580,7 +662,7 @@ public final class Floats {
       int size = size();
       checkPositionIndexes(fromIndex, toIndex, size);
       if (fromIndex == toIndex) {
-        return Collections.emptyList();
+        return emptyList();
       }
       return new FloatArrayAsList(array, start + fromIndex, start + toIndex);
     }
@@ -610,7 +692,7 @@ public final class Floats {
     public int hashCode() {
       int result = 1;
       for (int i = start; i < end; i++) {
-        result = 31 * result + Floats.hashCode(array[i]);
+        result = 31 * result + Float.hashCode(array[i]);
       }
       return result;
     }
@@ -629,12 +711,12 @@ public final class Floats {
       return Arrays.copyOfRange(array, start, end);
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
   /**
    * Parses the specified string as a single-precision floating point value. The ASCII character
-   * {@code '-'} (<code>'&#92;u002D'</code>) is recognized as the minus sign.
+   * {@code '-'} (U+002D) is recognized as the minus sign.
    *
    * <p>Unlike {@link Float#parseFloat(String)}, this method returns {@code null} instead of
    * throwing an exception if parsing fails. Valid inputs are exactly those accepted by {@link
@@ -646,16 +728,16 @@ public final class Floats {
    * @param string the string representation of a {@code float} value
    * @return the floating point value represented by {@code string}, or {@code null} if {@code
    *     string} has a length of zero or cannot be parsed as a {@code float} value
+   * @throws NullPointerException if {@code string} is {@code null}
    * @since 14.0
    */
-  @Beta
   @GwtIncompatible // regular expressions
   public static @Nullable Float tryParse(String string) {
     if (Doubles.FLOATING_POINT_PATTERN.matcher(string).matches()) {
       // TODO(lowasser): could be potentially optimized, but only with
       // extensive testing
       try {
-        return Float.parseFloat(string);
+        return parseFloat(string);
       } catch (NumberFormatException e) {
         // Float.parseFloat has changed specs several times, so fall through
         // gracefully

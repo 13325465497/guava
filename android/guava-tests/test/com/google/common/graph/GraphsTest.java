@@ -16,16 +16,18 @@
 
 package com.google.common.graph;
 
+import static com.google.common.graph.AbstractNetworkTest.validateNetwork;
+import static com.google.common.graph.Graphs.TransitiveClosureSelfLoopStrategy.ADD_SELF_LOOPS_ALWAYS;
+import static com.google.common.graph.Graphs.TransitiveClosureSelfLoopStrategy.ADD_SELF_LOOPS_FOR_CYCLES;
 import static com.google.common.graph.Graphs.copyOf;
 import static com.google.common.graph.Graphs.inducedSubgraph;
-import static com.google.common.graph.Graphs.reachableNodes;
 import static com.google.common.graph.Graphs.transitiveClosure;
 import static com.google.common.graph.Graphs.transpose;
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ImmutableSet;
-import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -35,6 +37,7 @@ import org.junit.runners.JUnit4;
  * the missing nodes to the graph, then adds the edge between them.
  */
 @RunWith(JUnit4.class)
+@NullUnmarked
 public class GraphsTest {
   private static final Integer N1 = 1;
   private static final Integer N2 = 2;
@@ -56,14 +59,10 @@ public class GraphsTest {
   // in one class (may be a utility class for error messages).
   private static final String ERROR_PARALLEL_EDGE = "connected by a different edge";
   private static final String ERROR_NEGATIVE_COUNT = "is non-negative";
-  private static final String ERROR_ADDED_PARALLEL_EDGE =
-      "Should not be allowed to add a parallel edge.";
-  private static final String ERROR_ADDED_SELF_LOOP =
-      "Should not be allowed to add a self-loop edge.";
   static final String ERROR_SELF_LOOP = "self-loops are not allowed";
 
   @Test
-  public void transitiveClosure_directedGraph() {
+  public void transitiveClosure_directedGraph_addSelfLoopsAlways() {
     MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
     directedGraph.putEdge(N1, N2);
     directedGraph.putEdge(N1, N3);
@@ -79,11 +78,30 @@ public class GraphsTest {
     expectedClosure.putEdge(N3, N3);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(directedGraph, expectedClosure);
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_ALWAYS)).isEqualTo(expectedClosure);
   }
 
   @Test
-  public void transitiveClosure_undirectedGraph() {
+  public void transitiveClosure_directedGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
+    directedGraph.putEdge(N1, N2);
+    directedGraph.putEdge(N1, N3);
+    directedGraph.putEdge(N2, N3);
+    directedGraph.addNode(N4);
+
+    // the above graph is its own transitive closure
+    MutableGraph<Integer> expectedClosure = GraphBuilder.directed().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.addNode(N4);
+
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_undirectedGraph_addSelfLoopsAlways() {
     MutableGraph<Integer> undirectedGraph =
         GraphBuilder.undirected().allowsSelfLoops(false).build();
     undirectedGraph.putEdge(N1, N2);
@@ -100,11 +118,34 @@ public class GraphsTest {
     expectedClosure.putEdge(N3, N3);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(undirectedGraph, expectedClosure);
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_ALWAYS))
+        .isEqualTo(expectedClosure);
   }
 
   @Test
-  public void transitiveClosure_directedPathGraph() {
+  public void transitiveClosure_undirectedGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> undirectedGraph =
+        GraphBuilder.undirected().allowsSelfLoops(false).build();
+    undirectedGraph.putEdge(N1, N2);
+    undirectedGraph.putEdge(N1, N3);
+    undirectedGraph.putEdge(N2, N3);
+    undirectedGraph.addNode(N4);
+
+    MutableGraph<Integer> expectedClosure = GraphBuilder.undirected().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N1);
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N2, N2);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.putEdge(N3, N3);
+    expectedClosure.addNode(N4); // N4 is isolated => no incident edges in this transitive closure
+
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_directedPathGraph_addSelfLoopsAlways() {
     MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
     directedGraph.putEdge(N1, N2);
     directedGraph.putEdge(N2, N3);
@@ -122,7 +163,26 @@ public class GraphsTest {
     expectedClosure.putEdge(N3, N4);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(directedGraph, expectedClosure);
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_ALWAYS)).isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_directedPathGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
+    directedGraph.putEdge(N1, N2);
+    directedGraph.putEdge(N2, N3);
+    directedGraph.putEdge(N3, N4);
+
+    MutableGraph<Integer> expectedClosure = GraphBuilder.directed().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N1, N4);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.putEdge(N2, N4);
+    expectedClosure.putEdge(N3, N4);
+
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
   }
 
   @Test
@@ -145,11 +205,36 @@ public class GraphsTest {
     expectedClosure.putEdge(N3, N4);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(undirectedGraph, expectedClosure);
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_ALWAYS))
+        .isEqualTo(expectedClosure);
   }
 
   @Test
-  public void transitiveClosure_directedCycleGraph() {
+  public void transitiveClosure_undirectedPathGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> undirectedGraph =
+        GraphBuilder.undirected().allowsSelfLoops(false).build();
+    undirectedGraph.putEdge(N1, N2);
+    undirectedGraph.putEdge(N2, N3);
+    undirectedGraph.putEdge(N3, N4);
+
+    MutableGraph<Integer> expectedClosure = GraphBuilder.undirected().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N1);
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N1, N4);
+    expectedClosure.putEdge(N2, N2);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.putEdge(N2, N4);
+    expectedClosure.putEdge(N3, N3);
+    expectedClosure.putEdge(N3, N4);
+    expectedClosure.putEdge(N4, N4);
+
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_directedCycleGraph_addSelfLoopsAlways() {
     MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
     directedGraph.putEdge(N1, N2);
     directedGraph.putEdge(N2, N3);
@@ -174,11 +259,41 @@ public class GraphsTest {
     expectedClosure.putEdge(N4, N3);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(directedGraph, expectedClosure);
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_ALWAYS)).isEqualTo(expectedClosure);
   }
 
   @Test
-  public void transitiveClosure_undirectedCycleGraph() {
+  public void transitiveClosure_directedCycleGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(false).build();
+    directedGraph.putEdge(N1, N2);
+    directedGraph.putEdge(N2, N3);
+    directedGraph.putEdge(N3, N4);
+    directedGraph.putEdge(N4, N1);
+
+    MutableGraph<Integer> expectedClosure = GraphBuilder.directed().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N1);
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N1, N4);
+    expectedClosure.putEdge(N2, N1);
+    expectedClosure.putEdge(N2, N2);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.putEdge(N2, N4);
+    expectedClosure.putEdge(N3, N1);
+    expectedClosure.putEdge(N3, N2);
+    expectedClosure.putEdge(N3, N3);
+    expectedClosure.putEdge(N3, N4);
+    expectedClosure.putEdge(N4, N1);
+    expectedClosure.putEdge(N4, N2);
+    expectedClosure.putEdge(N4, N3);
+    expectedClosure.putEdge(N4, N4);
+
+    assertThat(transitiveClosure(directedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_undirectedCycleGraph_addSelfLoopsAlways() {
     MutableGraph<Integer> undirectedGraph =
         GraphBuilder.undirected().allowsSelfLoops(false).build();
     undirectedGraph.putEdge(N1, N2);
@@ -198,7 +313,33 @@ public class GraphsTest {
     expectedClosure.putEdge(N3, N4);
     expectedClosure.putEdge(N4, N4);
 
-    checkTransitiveClosure(undirectedGraph, expectedClosure);
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_ALWAYS))
+        .isEqualTo(expectedClosure);
+  }
+
+  @Test
+  public void transitiveClosure_undirectedCycleGraph_addSelfLoopsForCycles() {
+    MutableGraph<Integer> undirectedGraph =
+        GraphBuilder.undirected().allowsSelfLoops(false).build();
+    undirectedGraph.putEdge(N1, N2);
+    undirectedGraph.putEdge(N2, N3);
+    undirectedGraph.putEdge(N3, N4);
+    undirectedGraph.putEdge(N4, N1);
+
+    MutableGraph<Integer> expectedClosure = GraphBuilder.undirected().allowsSelfLoops(true).build();
+    expectedClosure.putEdge(N1, N1);
+    expectedClosure.putEdge(N1, N2);
+    expectedClosure.putEdge(N1, N3);
+    expectedClosure.putEdge(N1, N4);
+    expectedClosure.putEdge(N2, N2);
+    expectedClosure.putEdge(N2, N3);
+    expectedClosure.putEdge(N2, N4);
+    expectedClosure.putEdge(N3, N3);
+    expectedClosure.putEdge(N3, N4);
+    expectedClosure.putEdge(N4, N4);
+
+    assertThat(transitiveClosure(undirectedGraph, ADD_SELF_LOOPS_FOR_CYCLES))
+        .isEqualTo(expectedClosure);
   }
 
   @Test
@@ -316,7 +457,7 @@ public class GraphsTest {
     Network<Integer, String> transpose = transpose(directedGraph);
     assertThat(transpose).isEqualTo(expectedTranspose);
     assertThat(transpose(transpose)).isSameInstanceAs(directedGraph);
-    AbstractNetworkTest.validateNetwork(transpose);
+    validateNetwork(transpose);
 
     assertThat(transpose.edgesConnecting(N1, N2)).isEmpty();
     assertThat(transpose.edgeConnectingOrNull(N1, N2)).isNull();
@@ -330,13 +471,12 @@ public class GraphsTest {
     // View should be updated.
     assertThat(transpose.edgesConnecting(N1, N2)).containsExactly(E21);
     assertThat(transpose.edgeConnectingOrNull(N1, N2)).isEqualTo(E21);
-
-    AbstractNetworkTest.validateNetwork(transpose);
+    validateNetwork(transpose);
   }
 
   @Test
   public void inducedSubgraph_graph() {
-    Set<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
+    ImmutableSet<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
 
     MutableGraph<Integer> directedGraph = GraphBuilder.directed().allowsSelfLoops(true).build();
     directedGraph.putEdge(N1, N2);
@@ -355,7 +495,7 @@ public class GraphsTest {
 
   @Test
   public void inducedSubgraph_valueGraph() {
-    Set<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
+    ImmutableSet<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
 
     MutableValueGraph<Integer, String> directedGraph =
         ValueGraphBuilder.directed().allowsSelfLoops(true).build();
@@ -376,7 +516,7 @@ public class GraphsTest {
 
   @Test
   public void inducedSubgraph_network() {
-    Set<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
+    ImmutableSet<Integer> nodeSubset = ImmutableSet.of(N1, N2, N4);
 
     MutableNetwork<Integer, String> directedGraph =
         NetworkBuilder.directed().allowsSelfLoops(true).build();
@@ -399,20 +539,14 @@ public class GraphsTest {
   public void inducedSubgraph_nodeNotInGraph() {
     MutableNetwork<Integer, String> undirectedGraph = NetworkBuilder.undirected().build();
 
-    try {
-      inducedSubgraph(undirectedGraph, ImmutableSet.of(N1));
-      fail("Should have rejected getting induced subgraph with node not in original graph.");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> inducedSubgraph(undirectedGraph, ImmutableSet.of(N1)));
   }
 
   @Test
   public void copyOf_nullArgument() {
-    try {
-      copyOf((Graph<?>) null);
-      fail("Should have rejected a null graph.");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> copyOf((Graph<?>) null));
   }
 
   @Test
@@ -475,20 +609,13 @@ public class GraphsTest {
     assertThat(directedGraph.edgesConnecting(N2, N1)).isEmpty();
 
     // By default, parallel edges are not allowed.
-    try {
-      directedGraph.addEdge(N1, N2, E12_A);
-      fail(ERROR_ADDED_PARALLEL_EDGE);
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_PARALLEL_EDGE);
-    }
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> directedGraph.addEdge(N1, N2, E12_A));
+    assertThat(e).hasMessageThat().contains(ERROR_PARALLEL_EDGE);
 
     // By default, self-loop edges are not allowed.
-    try {
-      directedGraph.addEdge(N1, N1, E11);
-      fail(ERROR_ADDED_SELF_LOOP);
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_SELF_LOOP);
-    }
+    e = assertThrows(IllegalArgumentException.class, () -> directedGraph.addEdge(N1, N1, E11));
+    assertThat(e).hasMessageThat().contains(ERROR_SELF_LOOP);
   }
 
   @Test
@@ -501,26 +628,15 @@ public class GraphsTest {
     assertThat(undirectedGraph.edgesConnecting(N2, N1)).isEqualTo(ImmutableSet.of(E12));
 
     // By default, parallel edges are not allowed.
-    try {
-      undirectedGraph.addEdge(N1, N2, E12_A);
-      fail(ERROR_ADDED_PARALLEL_EDGE);
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_PARALLEL_EDGE);
-    }
-    try {
-      undirectedGraph.addEdge(N2, N1, E21);
-      fail(ERROR_ADDED_PARALLEL_EDGE);
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_PARALLEL_EDGE);
-    }
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> undirectedGraph.addEdge(N1, N2, E12_A));
+    assertThat(e).hasMessageThat().contains(ERROR_PARALLEL_EDGE);
+    e = assertThrows(IllegalArgumentException.class, () -> undirectedGraph.addEdge(N2, N1, E21));
+    assertThat(e).hasMessageThat().contains(ERROR_PARALLEL_EDGE);
 
     // By default, self-loop edges are not allowed.
-    try {
-      undirectedGraph.addEdge(N1, N1, E11);
-      fail(ERROR_ADDED_SELF_LOOP);
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_SELF_LOOP);
-    }
+    e = assertThrows(IllegalArgumentException.class, () -> undirectedGraph.addEdge(N1, N1, E11));
+    assertThat(e).hasMessageThat().contains(ERROR_SELF_LOOP);
   }
 
   @Test
@@ -564,12 +680,10 @@ public class GraphsTest {
 
   @Test
   public void builder_expectedNodeCount_negative() {
-    try {
-      NetworkBuilder.directed().expectedNodeCount(-1);
-      fail("Should have rejected negative expected node count.");
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_NEGATIVE_COUNT);
-    }
+    IllegalArgumentException e =
+        assertThrows(
+            IllegalArgumentException.class, () -> NetworkBuilder.directed().expectedNodeCount(-1));
+    assertThat(e).hasMessageThat().contains(ERROR_NEGATIVE_COUNT);
   }
 
   @Test
@@ -592,19 +706,10 @@ public class GraphsTest {
 
   @Test
   public void builder_expectedEdgeCount_negative() {
-    try {
-      NetworkBuilder.directed().expectedEdgeCount(-1);
-      fail("Should have rejected negative expected edge count.");
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains(ERROR_NEGATIVE_COUNT);
-    }
-  }
-
-  private static <N> void checkTransitiveClosure(Graph<N> originalGraph, Graph<N> expectedClosure) {
-    for (N node : originalGraph.nodes()) {
-      assertThat(reachableNodes(originalGraph, node)).isEqualTo(expectedClosure.successors(node));
-    }
-    assertThat(transitiveClosure(originalGraph)).isEqualTo(expectedClosure);
+    IllegalArgumentException e =
+        assertThrows(
+            IllegalArgumentException.class, () -> NetworkBuilder.directed().expectedEdgeCount(-1));
+    assertThat(e).hasMessageThat().contains(ERROR_NEGATIVE_COUNT);
   }
 
   private static MutableGraph<Integer> buildDirectedGraph() {

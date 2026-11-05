@@ -20,12 +20,14 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.Iterator;
+import org.jspecify.annotations.Nullable;
 
 /** Precondition checks useful in collection implementations. */
 @GwtCompatible
 final class CollectPreconditions {
 
-  static void checkEntryNotNull(Object key, Object value) {
+  static void checkEntryNotNull(@Nullable Object key, @Nullable Object value) {
     if (key == null) {
       throw new NullPointerException("null key in entry: null=" + value);
     } else if (value == null) {
@@ -49,6 +51,15 @@ final class CollectPreconditions {
     return value;
   }
 
+  /** A variant of {@link #checkNonnegative} that throws {@link IndexOutOfBoundsException}. */
+  @CanIgnoreReturnValue
+  static int checkNonnegativeIndex(int value, String name) {
+    if (value < 0) {
+      throw new IndexOutOfBoundsException(name + " cannot be negative but was: " + value);
+    }
+    return value;
+  }
+
   static void checkPositive(int value, String name) {
     if (value <= 0) {
       throw new IllegalArgumentException(name + " must be positive but was: " + value);
@@ -56,10 +67,12 @@ final class CollectPreconditions {
   }
 
   /**
-   * Precondition tester for {@code Iterator.remove()} that throws an exception with a consistent
+   * Precondition tester for {@link Iterator#remove} that throws an exception with a consistent
    * error message.
    */
   static void checkRemove(boolean canRemove) {
     checkState(canRemove, "no calls to next() since the last call to remove()");
   }
+
+  private CollectPreconditions() {}
 }

@@ -16,19 +16,19 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.getMethod;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.collect.testing.Helpers;
+import com.google.common.annotations.J2ktIncompatible;
 import java.lang.reflect.Method;
-import org.junit.Ignore;
 
 /**
  * Tests {@link java.util.List#hashCode}.
  *
  * @author George van den Driessche
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public class ListHashCodeTester<E> extends AbstractListTester<E> {
   public void testHashCode() {
     int expectedHashCode = 1;
@@ -45,8 +45,9 @@ public class ListHashCodeTester<E> extends AbstractListTester<E> {
    * Returns the {@link Method} instance for {@link #testHashCode()} so that list tests on
    * unhashable objects can suppress it with {@code FeatureSpecificTestSuiteBuilder.suppressing()}.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getHashCodeMethod() {
-    return Helpers.getMethod(ListHashCodeTester.class, "testHashCode");
+    return getMethod(ListHashCodeTester.class, "testHashCode");
   }
 }

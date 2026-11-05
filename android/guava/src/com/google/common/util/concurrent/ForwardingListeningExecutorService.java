@@ -15,8 +15,9 @@
 package com.google.common.util.concurrent;
 
 import com.google.common.annotations.GwtIncompatible;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.concurrent.Callable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A listening executor service which forwards all its method calls to another listening executor
@@ -24,10 +25,14 @@ import java.util.concurrent.Callable;
  * executor service as desired per the <a
  * href="http://en.wikipedia.org/wiki/Decorator_pattern">decorator pattern</a>.
  *
+ * <p><b>{@code default} method warning:</b> This class does <i>not</i> forward calls to {@code
+ * default} methods. Instead, it inherits their default implementations. When those implementations
+ * invoke methods, they invoke methods on the {@code ForwardingListeningExecutorService}.
+ *
  * @author Isaac Shum
  * @since 10.0
  */
-@CanIgnoreReturnValue // TODO(cpovirk): Consider being more strict.
+@J2ktIncompatible
 @GwtIncompatible
 public abstract class ForwardingListeningExecutorService extends ForwardingExecutorService
     implements ListeningExecutorService {
@@ -38,7 +43,7 @@ public abstract class ForwardingListeningExecutorService extends ForwardingExecu
   protected abstract ListeningExecutorService delegate();
 
   @Override
-  public <T> ListenableFuture<T> submit(Callable<T> task) {
+  public <T extends @Nullable Object> ListenableFuture<T> submit(Callable<T> task) {
     return delegate().submit(task);
   }
 
@@ -48,7 +53,8 @@ public abstract class ForwardingListeningExecutorService extends ForwardingExecu
   }
 
   @Override
-  public <T> ListenableFuture<T> submit(Runnable task, T result) {
+  public <T extends @Nullable Object> ListenableFuture<T> submit(
+      Runnable task, @ParametricNullness T result) {
     return delegate().submit(task, result);
   }
 }

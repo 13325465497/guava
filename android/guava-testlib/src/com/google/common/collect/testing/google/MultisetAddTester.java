@@ -17,12 +17,12 @@
 package com.google.common.collect.testing.google;
 
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_ADD;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptySet;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.features.CollectionFeature;
-import java.util.Arrays;
-import java.util.Collections;
-import org.junit.Ignore;
 
 /**
  * Tests for {@code Multiset.add}.
@@ -30,15 +30,10 @@ import org.junit.Ignore;
  * @author Jared Levy
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MultisetAddTester<E> extends AbstractMultisetTester<E> {
   @CollectionFeature.Require(absent = SUPPORTS_ADD)
   public void testAddUnsupported() {
-    try {
-      getMultiset().add(e0());
-      fail("Expected UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> getMultiset().add(e0()));
   }
 
   @CollectionFeature.Require(SUPPORTS_ADD)
@@ -73,37 +68,25 @@ public class MultisetAddTester<E> extends AbstractMultisetTester<E> {
 
   @CollectionFeature.Require(absent = SUPPORTS_ADD)
   public void testAddOccurrences_unsupported() {
-    try {
-      getMultiset().add(e0(), 2);
-      fail("unsupported multiset.add(E, int) didn't throw exception");
-    } catch (UnsupportedOperationException required) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> getMultiset().add(e0(), 2));
   }
 
   @CollectionFeature.Require(SUPPORTS_ADD)
   public void testAddOccurrencesNegative() {
-    try {
-      getMultiset().add(e0(), -1);
-      fail("multiset.add(E, -1) didn't throw an exception");
-    } catch (IllegalArgumentException required) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> getMultiset().add(e0(), -1));
   }
 
   @CollectionFeature.Require(SUPPORTS_ADD)
   public void testAddTooMany() {
     getMultiset().add(e3(), Integer.MAX_VALUE);
-    try {
-      getMultiset().add(e3());
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> getMultiset().add(e3()));
     assertEquals(Integer.MAX_VALUE, getMultiset().count(e3()));
     assertEquals(Integer.MAX_VALUE, getMultiset().size());
   }
 
   @CollectionFeature.Require(SUPPORTS_ADD)
   public void testAddAll_emptySet() {
-    assertFalse(getMultiset().addAll(Collections.<E>emptySet()));
+    assertFalse(getMultiset().addAll(emptySet()));
     expectUnchanged();
   }
 
@@ -115,7 +98,7 @@ public class MultisetAddTester<E> extends AbstractMultisetTester<E> {
 
   @CollectionFeature.Require(SUPPORTS_ADD)
   public void testAddAll_nonEmptyList() {
-    assertTrue(getMultiset().addAll(Arrays.asList(e3(), e4(), e3())));
+    assertTrue(getMultiset().addAll(asList(e3(), e4(), e3())));
     expectAdded(e3(), e4(), e3());
   }
 

@@ -16,7 +16,7 @@
 
 package com.google.common.graph;
 
-import com.google.common.annotations.Beta;
+import com.google.errorprone.annotations.DoNotMock;
 
 /**
  * A functional interface for <a
@@ -25,22 +25,22 @@ import com.google.common.annotations.Beta;
  * <p>This interface is meant to be used as the type of a parameter to graph algorithms (such as
  * topological sort) that only need a way of accessing the predecessors of a node in a graph.
  *
- * <h3>Usage</h3>
+ * <h2>Usage</h2>
  *
  * Given an algorithm, for example:
  *
- * <pre>{@code
+ * {@snippet :
  * public <N> someGraphAlgorithm(N startNode, PredecessorsFunction<N> predecessorsFunction);
- * }</pre>
+ * }
  *
  * you will invoke it depending on the graph representation you're using.
  *
  * <p>If you have an instance of one of the primary {@code common.graph} types ({@link Graph},
  * {@link ValueGraph}, and {@link Network}):
  *
- * <pre>{@code
+ * {@snippet :
  * someGraphAlgorithm(startNode, graph);
- * }</pre>
+ * }
  *
  * This works because those types each implement {@code PredecessorsFunction}. It will also work
  * with any other implementation of this interface.
@@ -48,23 +48,23 @@ import com.google.common.annotations.Beta;
  * <p>If you have your own graph implementation based around a custom node type {@code MyNode},
  * which has a method {@code getParents()} that retrieves its predecessors in a graph:
  *
- * <pre>{@code
+ * {@snippet :
  * someGraphAlgorithm(startNode, MyNode::getParents);
- * }</pre>
+ * }
  *
  * <p>If you have some other mechanism for returning the predecessors of a node, or one that doesn't
  * return a {@code Iterable<? extends N>}, then you can use a lambda to perform a more general
  * transformation:
  *
- * <pre>{@code
+ * {@snippet :
  * someGraphAlgorithm(startNode, node -> ImmutableList.of(node.mother(), node.father()));
- * }</pre>
+ * }
  *
  * <p>Graph algorithms that need additional capabilities (accessing both predecessors and
  * successors, iterating over the edges, etc.) should declare their input to be of a type that
  * provides those capabilities, such as {@link Graph}, {@link ValueGraph}, or {@link Network}.
  *
- * <h3>Additional documentation</h3>
+ * <h2>Additional documentation</h2>
  *
  * <p>See the Guava User Guide for the {@code common.graph} package (<a
  * href="https://github.com/google/guava/wiki/GraphsExplained">"Graphs Explained"</a>) for
@@ -77,7 +77,7 @@ import com.google.common.annotations.Beta;
  * @param <N> Node parameter type
  * @since 23.0
  */
-@Beta
+@DoNotMock("Implement with a lambda, or use GraphBuilder to build a Graph with the desired edges")
 public interface PredecessorsFunction<N> {
 
   /**

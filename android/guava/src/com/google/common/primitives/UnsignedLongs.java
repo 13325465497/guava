@@ -18,7 +18,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.math.BigInteger;
@@ -48,12 +47,12 @@ import java.util.Comparator;
  * @author Colin Evans
  * @since 10.0
  */
-@Beta
 @GwtCompatible
 public final class UnsignedLongs {
   private UnsignedLongs() {}
 
-  public static final long MAX_VALUE = -1L; // Equivalent to 2^64 - 1
+  /** A constant holding the maximum value an unsigned {@code long} can have, 2^64 - 1. */
+  public static final long MAX_VALUE = -1L;
 
   /**
    * A (self-inverse) bijection which converts the ordering on unsigned longs to the ordering on
@@ -68,13 +67,15 @@ public final class UnsignedLongs {
    * Compares the two specified {@code long} values, treating them as unsigned values between {@code
    * 0} and {@code 2^64 - 1} inclusive.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#compareUnsigned(long, long)} instead.
+   * <p><b>Note:</b> this method is now unnecessary and should be treated as deprecated; use the
+   * equivalent {@link Long#compareUnsigned(long, long)} method instead.
    *
    * @param a the first unsigned {@code long} to compare
    * @param b the second unsigned {@code long} to compare
    * @return a negative value if {@code a} is less than {@code b}; a positive value if {@code a} is
    *     greater than {@code b}; or zero if they are equal
    */
+  @SuppressWarnings("InlineMeInliner") // Integer.compare unavailable under GWT+J2CL
   public static int compare(long a, long b) {
     return Longs.compare(flip(a), flip(b));
   }
@@ -152,6 +153,9 @@ public final class UnsignedLongs {
    * <p>The returned comparator is inconsistent with {@link Object#equals(Object)} (since arrays
    * support only identity equality), but it is consistent with {@link Arrays#equals(long[],
    * long[])}.
+   *
+   * <p><b>Java 9+ users:</b> Use {@link Arrays#compareUnsigned(long[], long[])
+   * Arrays::compareUnsigned}.
    */
   public static Comparator<long[]> lexicographicalComparator() {
     return LexicographicalComparator.INSTANCE;
@@ -238,7 +242,7 @@ public final class UnsignedLongs {
    * Returns dividend / divisor, where the dividend and divisor are treated as unsigned 64-bit
    * quantities.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#divideUnsigned(long, long)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#divideUnsigned(long, long)} instead.
    *
    * @param dividend the dividend (numerator)
    * @param divisor the divisor (denominator)
@@ -273,7 +277,7 @@ public final class UnsignedLongs {
    * Returns dividend % divisor, where the dividend and divisor are treated as unsigned 64-bit
    * quantities.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#remainderUnsigned(long, long)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#remainderUnsigned(long, long)} instead.
    *
    * @param dividend the dividend (numerator)
    * @param divisor the divisor (denominator)
@@ -308,7 +312,7 @@ public final class UnsignedLongs {
   /**
    * Returns the unsigned {@code long} value represented by the given decimal string.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#parseUnsignedLong(String)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#parseUnsignedLong(String)} instead.
    *
    * @throws NumberFormatException if the string does not contain a valid unsigned {@code long}
    *     value
@@ -323,7 +327,7 @@ public final class UnsignedLongs {
   /**
    * Returns the unsigned {@code long} value represented by a string with the given radix.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#parseUnsignedLong(String, int)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#parseUnsignedLong(String, int)} instead.
    *
    * @param string the string containing the unsigned {@code long} representation to be parsed.
    * @param radix the radix to use while parsing {@code string}
@@ -336,7 +340,7 @@ public final class UnsignedLongs {
   @CanIgnoreReturnValue
   public static long parseUnsignedLong(String string, int radix) {
     checkNotNull(string);
-    if (string.length() == 0) {
+    if (string.isEmpty()) {
       throw new NumberFormatException("empty string");
     }
     if (radix < Character.MIN_RADIX || radix > Character.MAX_RADIX) {
@@ -402,7 +406,7 @@ public final class UnsignedLongs {
     static final int[] maxSafeDigits = new int[Character.MAX_RADIX + 1];
 
     static {
-      BigInteger overflow = new BigInteger("10000000000000000", 16);
+      BigInteger overflow = BigInteger.ONE.shiftLeft(64);
       for (int i = Character.MIN_RADIX; i <= Character.MAX_RADIX; i++) {
         maxValueDivs[i] = divide(MAX_VALUE, i);
         maxValueMods[i] = (int) remainder(MAX_VALUE, i);
@@ -425,7 +429,7 @@ public final class UnsignedLongs {
           return true;
         }
         // current == maxValueDivs[radix]
-        return (digit > maxValueMods[radix]);
+        return digit > maxValueMods[radix];
       }
 
       // current < 0: high bit is set
@@ -436,7 +440,7 @@ public final class UnsignedLongs {
   /**
    * Returns a string representation of x, where x is treated as unsigned.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#toUnsignedString(long)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#toUnsignedString(long)} instead.
    */
   public static String toString(long x) {
     return toString(x, 10);
@@ -446,7 +450,7 @@ public final class UnsignedLongs {
    * Returns a string representation of {@code x} for the given radix, where {@code x} is treated as
    * unsigned.
    *
-   * <p><b>Java 8 users:</b> use {@link Long#toUnsignedString(long, int)} instead.
+   * <p><b>Java 8+ users:</b> use {@link Long#toUnsignedString(long, int)} instead.
    *
    * @param x the value to convert to a string.
    * @param radix the radix to use while working with {@code x}

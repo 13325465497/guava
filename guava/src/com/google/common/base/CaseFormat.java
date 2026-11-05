@@ -15,10 +15,13 @@
 package com.google.common.base;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Utility class for converting between various ASCII case formats. Behavior is undefined for
@@ -29,7 +32,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  */
 @GwtCompatible
 public enum CaseFormat {
-  /** Hyphenated variable naming convention, e.g., "lower-hyphen". */
+  /**
+   * Hyphenated variable naming convention, e.g., "lower-hyphen". This format is also colloquially
+   * known as "kebab case".
+   */
   LOWER_HYPHEN(CharMatcher.is('-'), "-") {
     @Override
     String normalizeWord(String word) {
@@ -118,7 +124,7 @@ public enum CaseFormat {
   /**
    * Converts the specified {@code String str} from this format to the specified {@code format}. A
    * "best effort" approach is taken; if {@code str} does not conform to the assumed format, then
-   * the behavior of this method is undefined but we make a reasonable effort at converting anyway.
+   * the behavior of this method is undefined, but we make a reasonable effort at converting anyway.
    */
   public final String to(CaseFormat format, String str) {
     checkNotNull(format);
@@ -135,21 +141,22 @@ public enum CaseFormat {
     while ((j = wordBoundary.indexIn(s, ++j)) != -1) {
       if (i == 0) {
         // include some extra space for separators
-        out = new StringBuilder(s.length() + 4 * wordSeparator.length());
+        out = new StringBuilder(s.length() + 4 * format.wordSeparator.length());
         out.append(format.normalizeFirstWord(s.substring(i, j)));
       } else {
-        out.append(format.normalizeWord(s.substring(i, j)));
+        requireNonNull(out).append(format.normalizeWord(s.substring(i, j)));
       }
       out.append(format.wordSeparator);
       i = j + wordSeparator.length();
     }
     return (i == 0)
         ? format.normalizeFirstWord(s)
-        : out.append(format.normalizeWord(s.substring(i))).toString();
+        : requireNonNull(out).append(format.normalizeWord(s.substring(i))).toString();
   }
 
   /**
-   * Returns a {@code Converter} that converts strings from this format to {@code targetFormat}.
+   * Returns a serializable {@code Converter} that converts strings from this format to {@code
+   * targetFormat}.
    *
    * @since 16.0
    */
@@ -179,9 +186,9 @@ public enum CaseFormat {
     }
 
     @Override
-    public boolean equals(@Nullable Object object) {
-      if (object instanceof StringConverter) {
-        StringConverter that = (StringConverter) object;
+    public boolean equals(@Nullable Object obj) {
+      if (obj instanceof StringConverter) {
+        StringConverter that = (StringConverter) obj;
         return sourceFormat.equals(that.sourceFormat) && targetFormat.equals(that.targetFormat);
       }
       return false;
@@ -189,7 +196,7 @@ public enum CaseFormat {
 
     @Override
     public int hashCode() {
-      return sourceFormat.hashCode() ^ targetFormat.hashCode();
+      return 3 * sourceFormat.hashCode() + targetFormat.hashCode();
     }
 
     @Override
@@ -197,7 +204,7 @@ public enum CaseFormat {
       return sourceFormat + ".converterTo(" + targetFormat + ")";
     }
 
-    private static final long serialVersionUID = 0L;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0L;
   }
 
   abstract String normalizeWord(String word);

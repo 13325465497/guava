@@ -16,74 +16,80 @@
 
 package com.google.common.reflect;
 
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.testing.NullPointerTester;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /** Tests for {@link Reflection} */
+@NullUnmarked
 public class ReflectionTest extends TestCase {
 
-  public void testGetPackageName() throws Exception {
-    assertEquals("java.lang", Reflection.getPackageName(Iterable.class));
-    assertEquals("java", Reflection.getPackageName("java.MyType"));
-    assertEquals("java.lang", Reflection.getPackageName(Iterable.class.getName()));
-    assertEquals("", Reflection.getPackageName("NoPackage"));
-    assertEquals("java.util", Reflection.getPackageName(Map.Entry.class));
+  public void testGetPackageName() {
+    assertThat(Reflection.getPackageName(Iterable.class)).isEqualTo("java.lang");
+    assertThat(Reflection.getPackageName("java.MyType")).isEqualTo("java");
+    assertThat(Reflection.getPackageName(Iterable.class.getName())).isEqualTo("java.lang");
+    assertThat(Reflection.getPackageName("NoPackage")).isEqualTo("");
+    assertThat(Reflection.getPackageName(Map.Entry.class)).isEqualTo("java.util");
   }
 
-  public void testNewProxy() throws Exception {
+  public void testNewProxy() {
     Runnable runnable = Reflection.newProxy(Runnable.class, X_RETURNER);
-    assertEquals("x", runnable.toString());
+    assertThat(runnable.toString()).isEqualTo("x");
   }
 
-  public void testNewProxyCantWorkOnAClass() throws Exception {
-    try {
-      Reflection.newProxy(Object.class, X_RETURNER);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+  public void testNewProxyCantWorkOnAClass() {
+    assertThrows(
+        IllegalArgumentException.class, () -> Reflection.newProxy(Object.class, X_RETURNER));
   }
 
   private static final InvocationHandler X_RETURNER =
       new InvocationHandler() {
         @Override
-        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        public @Nullable Object invoke(
+            Object proxy, Method method, @Nullable Object @Nullable [] args) {
           return "x";
         }
       };
 
-  private static int classesInitialized = 0;
+  private static final AtomicInteger classesInitialized = new AtomicInteger(0);
 
   private static class A {
     static {
-      ++classesInitialized;
+      classesInitialized.incrementAndGet();
     }
   }
 
   private static class B {
     static {
-      ++classesInitialized;
+      classesInitialized.incrementAndGet();
     }
   }
 
   private static class C {
     static {
-      ++classesInitialized;
+      classesInitialized.incrementAndGet();
     }
   }
 
   public void testInitialize() {
-    assertEquals("This test can't be included twice in the same suite.", 0, classesInitialized);
+    assertEquals(
+        "This test can't be included twice in the same suite.", 0, classesInitialized.get());
 
     Reflection.initialize(A.class);
-    assertEquals(1, classesInitialized);
+    assertEquals(1, classesInitialized.get());
 
     Reflection.initialize(
         A.class, // Already initialized (above)
         B.class, C.class);
-    assertEquals(3, classesInitialized);
+    assertEquals(3, classesInitialized.get());
   }
 
   public void testNullPointers() {

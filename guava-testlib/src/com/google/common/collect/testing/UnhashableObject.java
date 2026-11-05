@@ -17,6 +17,7 @@
 package com.google.common.collect.testing;
 
 import com.google.common.annotations.GwtCompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An unhashable object to be used in testing as values in our collections.
@@ -32,7 +33,7 @@ public class UnhashableObject implements Comparable<UnhashableObject> {
   }
 
   @Override
-  public boolean equals(Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object instanceof UnhashableObject) {
       UnhashableObject that = (UnhashableObject) object;
       return this.value == that.value;
@@ -53,6 +54,6 @@ public class UnhashableObject implements Comparable<UnhashableObject> {
 
   @Override
   public int compareTo(UnhashableObject o) {
-    return (this.value < o.value) ? -1 : (this.value > o.value) ? 1 : 0;
+    return Integer.compare(this.value, o.value);
   }
 }

@@ -17,9 +17,11 @@
 package com.google.common.primitives;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.System.arraycopy;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.testing.ListTestSuiteBuilder;
 import com.google.common.collect.testing.SampleElements;
@@ -31,13 +33,16 @@ import java.util.List;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Test suite covering {@link Doubles#asList(double[])}.
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
+@AndroidIncompatible // test-suite builders
 public class DoubleArrayAsListTest extends TestCase {
 
   private static List<Double> asList(Double[] values) {
@@ -48,12 +53,13 @@ public class DoubleArrayAsListTest extends TestCase {
     return Doubles.asList(temp);
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // suite
   public static Test suite() {
     List<ListTestSuiteBuilder<Double>> builders =
         ImmutableList.of(
             ListTestSuiteBuilder.using(new DoublesAsListGenerator()).named("Doubles.asList"),
-            ListTestSuiteBuilder.using(new DoublsAsListHeadSubListGenerator())
+            ListTestSuiteBuilder.using(new DoublesAsListHeadSubListGenerator())
                 .named("Doubles.asList, head subList"),
             ListTestSuiteBuilder.using(new DoublesAsListTailSubListGenerator())
                 .named("Doubles.asList, tail subList"),
@@ -79,15 +85,15 @@ public class DoubleArrayAsListTest extends TestCase {
 
   public static final class DoublesAsListGenerator extends TestDoubleListGenerator {
     @Override
-    protected List<Double> create(Double[] elements) {
+    List<Double> create(Double[] elements) {
       return asList(elements);
     }
   }
 
-  public static final class DoublsAsListHeadSubListGenerator extends TestDoubleListGenerator {
+  public static final class DoublesAsListHeadSubListGenerator extends TestDoubleListGenerator {
     @Override
-    protected List<Double> create(Double[] elements) {
-      Double[] suffix = {Double.MIN_VALUE, Double.MAX_VALUE};
+    List<Double> create(Double[] elements) {
+      Double[] suffix = {Doubles.MIN_POSITIVE_VALUE, Double.MAX_VALUE};
       Double[] all = concat(elements, suffix);
       return asList(all).subList(0, elements.length);
     }
@@ -95,8 +101,8 @@ public class DoubleArrayAsListTest extends TestCase {
 
   public static final class DoublesAsListTailSubListGenerator extends TestDoubleListGenerator {
     @Override
-    protected List<Double> create(Double[] elements) {
-      Double[] prefix = {(double) 86, (double) 99};
+    List<Double> create(Double[] elements) {
+      Double[] prefix = {86.0, 99.0};
       Double[] all = concat(prefix, elements);
       return asList(all).subList(2, elements.length + 2);
     }
@@ -104,9 +110,9 @@ public class DoubleArrayAsListTest extends TestCase {
 
   public static final class DoublesAsListMiddleSubListGenerator extends TestDoubleListGenerator {
     @Override
-    protected List<Double> create(Double[] elements) {
-      Double[] prefix = {Double.MIN_VALUE, Double.MAX_VALUE};
-      Double[] suffix = {(double) 86, (double) 99};
+    List<Double> create(Double[] elements) {
+      Double[] prefix = {Doubles.MIN_POSITIVE_VALUE, Double.MAX_VALUE};
+      Double[] suffix = {86.0, 99.0};
       Double[] all = concat(concat(prefix, elements), suffix);
       return asList(all).subList(2, elements.length + 2);
     }
@@ -114,8 +120,8 @@ public class DoubleArrayAsListTest extends TestCase {
 
   private static Double[] concat(Double[] left, Double[] right) {
     Double[] result = new Double[left.length + right.length];
-    System.arraycopy(left, 0, result, 0, left.length);
-    System.arraycopy(right, 0, result, left.length, right.length);
+    arraycopy(left, 0, result, 0, left.length);
+    arraycopy(right, 0, result, left.length, right.length);
     return result;
   }
 
@@ -139,7 +145,7 @@ public class DoubleArrayAsListTest extends TestCase {
      * Creates a new collection containing the given elements; implement this method instead of
      * {@link #create(Object...)}.
      */
-    protected abstract List<Double> create(Double[] elements);
+    abstract List<Double> create(Double[] elements);
 
     @Override
     public Double[] createArray(int length) {
@@ -155,7 +161,7 @@ public class DoubleArrayAsListTest extends TestCase {
 
   public static class SampleDoubles extends SampleElements<Double> {
     public SampleDoubles() {
-      super((double) 0, (double) 1, (double) 2, (double) 3, (double) 4);
+      super(0.0, 1.0, 2.0, 3.0, 4.0);
     }
   }
 }

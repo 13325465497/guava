@@ -17,11 +17,15 @@
 package com.google.common.collect;
 
 import static com.google.common.collect.BoundType.CLOSED;
+import static com.google.common.collect.Sets.newTreeSet;
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Arrays.asList;
 import static java.util.Collections.sort;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.Helpers.NullsBeforeB;
 import com.google.common.collect.testing.NavigableSetTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringSetGenerator;
@@ -31,7 +35,7 @@ import com.google.common.collect.testing.google.MultisetFeature;
 import com.google.common.collect.testing.google.SortedMultisetTestSuiteBuilder;
 import com.google.common.collect.testing.google.TestStringMultisetGenerator;
 import java.lang.reflect.Method;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -40,16 +44,21 @@ import java.util.SortedSet;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link TreeMultiset}.
  *
  * @author Neal Kanodia
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class TreeMultisetTest extends TestCase {
 
+  @J2ktIncompatible
   @GwtIncompatible // suite
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -57,7 +66,7 @@ public class TreeMultisetTest extends TestCase {
                 new TestStringMultisetGenerator() {
                   @Override
                   protected Multiset<String> create(String[] elements) {
-                    return TreeMultiset.create(Arrays.asList(elements));
+                    return TreeMultiset.create(asList(elements));
                   }
 
                   @Override
@@ -104,12 +113,12 @@ public class TreeMultisetTest extends TestCase {
                 new TestStringSetGenerator() {
                   @Override
                   protected Set<String> create(String[] elements) {
-                    return TreeMultiset.create(Arrays.asList(elements)).elementSet();
+                    return TreeMultiset.create(asList(elements)).elementSet();
                   }
 
                   @Override
                   public List<String> order(List<String> insertionOrder) {
-                    return Lists.newArrayList(Sets.newTreeSet(insertionOrder));
+                    return new ArrayList<>(newTreeSet(insertionOrder));
                   }
                 })
             .named("TreeMultiset[Ordering.natural].elementSet")
@@ -129,7 +138,7 @@ public class TreeMultisetTest extends TestCase {
     assertEquals(3, multiset.size());
     assertEquals(2, multiset.count("foo"));
     assertEquals(Ordering.natural(), multiset.comparator());
-    assertEquals("[bar, foo x 2]", multiset.toString());
+    assertThat(multiset.toString()).isEqualTo("[bar, foo x 2]");
   }
 
   public void testCreateWithComparator() {
@@ -138,14 +147,14 @@ public class TreeMultisetTest extends TestCase {
     multiset.add("bar");
     assertEquals(3, multiset.size());
     assertEquals(2, multiset.count("foo"));
-    assertEquals("[foo x 2, bar]", multiset.toString());
+    assertThat(multiset.toString()).isEqualTo("[foo x 2, bar]");
   }
 
   public void testCreateFromIterable() {
-    Multiset<String> multiset = TreeMultiset.create(Arrays.asList("foo", "bar", "foo"));
+    Multiset<String> multiset = TreeMultiset.create(asList("foo", "bar", "foo"));
     assertEquals(3, multiset.size());
     assertEquals(2, multiset.count("foo"));
-    assertEquals("[bar, foo x 2]", multiset.toString());
+    assertThat(multiset.toString()).isEqualTo("[bar, foo x 2]");
   }
 
   public void testToString() {
@@ -154,7 +163,7 @@ public class TreeMultisetTest extends TestCase {
     ms.add("c", 1);
     ms.add("b", 2);
 
-    assertEquals("[a x 3, b x 2, c]", ms.toString());
+    assertThat(ms.toString()).isEqualTo("[a x 3, b x 2, c]");
   }
 
   public void testElementSetSortedSetMethods() {
@@ -164,8 +173,8 @@ public class TreeMultisetTest extends TestCase {
     ms.add("b", 2);
     SortedSet<String> elementSet = ms.elementSet();
 
-    assertEquals("a", elementSet.first());
-    assertEquals("c", elementSet.last());
+    assertThat(elementSet.first()).isEqualTo("a");
+    assertThat(elementSet.last()).isEqualTo("c");
     assertEquals(Ordering.natural(), elementSet.comparator());
 
     assertThat(elementSet.headSet("b")).containsExactly("a");
@@ -212,7 +221,7 @@ public class TreeMultisetTest extends TestCase {
     SortedSet<String> subset = elementSet.subSet("b", "f");
     assertThat(subset).containsExactly("b", "c", "d", "e").inOrder();
 
-    assertTrue(subset.removeAll(Arrays.asList("a", "c")));
+    assertTrue(subset.removeAll(asList("a", "c")));
     assertThat(elementSet).containsExactly("a", "b", "d", "e", "f").inOrder();
     assertThat(subset).containsExactly("b", "d", "e").inOrder();
     assertEquals(10, ms.size());
@@ -232,7 +241,7 @@ public class TreeMultisetTest extends TestCase {
     SortedSet<String> subset = elementSet.subSet("b", "f");
     assertThat(subset).containsExactly("b", "c", "d", "e").inOrder();
 
-    assertTrue(subset.retainAll(Arrays.asList("a", "c")));
+    assertTrue(subset.retainAll(asList("a", "c")));
     assertThat(elementSet).containsExactly("a", "c", "f").inOrder();
     assertThat(subset).containsExactly("c");
     assertEquals(5, ms.size());
@@ -258,7 +267,7 @@ public class TreeMultisetTest extends TestCase {
     assertEquals(3, ms.size());
   }
 
-  public void testCustomComparator() throws Exception {
+  public void testCustomComparator() {
     Comparator<String> comparator =
         new Comparator<String>() {
           @Override
@@ -277,14 +286,14 @@ public class TreeMultisetTest extends TestCase {
     assertThat(ms).containsExactly("d", "c", "b", "b", "a").inOrder();
 
     SortedSet<String> elementSet = ms.elementSet();
-    assertEquals("d", elementSet.first());
-    assertEquals("a", elementSet.last());
+    assertThat(elementSet.first()).isEqualTo("d");
+    assertThat(elementSet.last()).isEqualTo("a");
     assertEquals(comparator, elementSet.comparator());
   }
 
-  public void testNullAcceptingComparator() throws Exception {
-    Comparator<String> comparator = Ordering.<String>natural().nullsFirst();
-    TreeMultiset<String> ms = TreeMultiset.create(comparator);
+  public void testNullAcceptingComparator() {
+    Comparator<@Nullable String> comparator = Ordering.<String>natural().nullsFirst();
+    TreeMultiset<@Nullable String> ms = TreeMultiset.create(comparator);
 
     ms.add("b");
     ms.add(null);
@@ -295,10 +304,76 @@ public class TreeMultisetTest extends TestCase {
     assertThat(ms).containsExactly(null, null, null, "a", "b", "b").inOrder();
     assertEquals(3, ms.count(null));
 
-    SortedSet<String> elementSet = ms.elementSet();
-    assertEquals(null, elementSet.first());
-    assertEquals("b", elementSet.last());
+    SortedSet<@Nullable String> elementSet = ms.elementSet();
+    assertThat(elementSet.first()).isNull();
+    assertThat(elementSet.last()).isEqualTo("b");
     assertEquals(comparator, elementSet.comparator());
+  }
+
+  public void testSetCountConditional_nullEmpty_decrease() {
+    Multiset<String> ms = TreeMultiset.create();
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 0));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_nullEmpty_noChange() {
+    Multiset<String> ms = TreeMultiset.create();
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 1));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_nullEmpty_increase() {
+    Multiset<String> ms = TreeMultiset.create();
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 2));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_nullAfterClear() {
+    Multiset<String> ms = TreeMultiset.create();
+    ms.add("a");
+    ms.clear();
+
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 0));
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 1));
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 2));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_nullNonEmpty() {
+    Multiset<String> ms = TreeMultiset.create();
+    ms.add("a");
+
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 0));
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 1));
+    assertThrows(NullPointerException.class, () -> ms.setCount(null, 1, 2));
+    assertThat(ms).containsExactly("a");
+  }
+
+  public void testSetCountConditional_nullEmpty_zeroCounts() {
+    Multiset<String> ms = TreeMultiset.create();
+    assertTrue(((Multiset<@Nullable String>) ms).setCount(null, 0, 0));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_nullAcceptingComparator() {
+    Multiset<@Nullable String> ms = TreeMultiset.create(Ordering.<String>natural().nullsFirst());
+    assertFalse(ms.setCount(null, 1, 0));
+    assertFalse(ms.setCount(null, 1, 1));
+    assertFalse(ms.setCount(null, 1, 2));
+    assertThat(ms).isEmpty();
+
+    assertTrue(ms.setCount(null, 0, 2));
+    assertEquals(2, ms.count(null));
+    assertTrue(ms.setCount(null, 2, 0));
+    assertThat(ms).isEmpty();
+  }
+
+  public void testSetCountConditional_empty_wrongCount() {
+    Multiset<String> ms = TreeMultiset.create();
+    assertFalse(ms.setCount("a", 1, 0));
+    assertFalse(ms.setCount("a", 1, 1));
+    assertFalse(ms.setCount("a", 1, 2));
+    assertThat(ms).isEmpty();
   }
 
   private static final Comparator<String> DEGENERATE_COMPARATOR =
@@ -310,7 +385,7 @@ public class TreeMultisetTest extends TestCase {
       };
 
   /** Test a TreeMultiset with a comparator that can return 0 when comparing unequal values. */
-  public void testDegenerateComparator() throws Exception {
+  public void testDegenerateComparator() {
     TreeMultiset<String> ms = TreeMultiset.create(DEGENERATE_COMPARATOR);
 
     ms.add("foo");
@@ -331,8 +406,8 @@ public class TreeMultisetTest extends TestCase {
     assertEquals(ms2, ms);
 
     SortedSet<String> elementSet = ms.elementSet();
-    assertEquals("a", elementSet.first());
-    assertEquals("foo", elementSet.last());
+    assertThat(elementSet.first()).isEqualTo("a");
+    assertThat(elementSet.last()).isEqualTo("foo");
     assertEquals(DEGENERATE_COMPARATOR, elementSet.comparator());
   }
 
@@ -355,6 +430,7 @@ public class TreeMultisetTest extends TestCase {
     assertEquals(Integer.MAX_VALUE, ms.tailMultiset("a", CLOSED).size());
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   @AndroidIncompatible // Reflection bug, or actual binary compatibility problem?
   public void testElementSetBridgeMethods() {

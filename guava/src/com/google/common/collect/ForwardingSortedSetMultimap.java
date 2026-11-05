@@ -19,7 +19,7 @@ package com.google.common.collect;
 import com.google.common.annotations.GwtCompatible;
 import java.util.Comparator;
 import java.util.SortedSet;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A sorted set multimap which forwards all its method calls to another sorted set multimap.
@@ -34,8 +34,9 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @since 3.0
  */
 @GwtCompatible
-public abstract class ForwardingSortedSetMultimap<K, V> extends ForwardingSetMultimap<K, V>
-    implements SortedSetMultimap<K, V> {
+public abstract class ForwardingSortedSetMultimap<
+        K extends @Nullable Object, V extends @Nullable Object>
+    extends ForwardingSetMultimap<K, V> implements SortedSetMultimap<K, V> {
 
   /** Constructor for use by subclasses. */
   protected ForwardingSortedSetMultimap() {}
@@ -44,7 +45,7 @@ public abstract class ForwardingSortedSetMultimap<K, V> extends ForwardingSetMul
   protected abstract SortedSetMultimap<K, V> delegate();
 
   @Override
-  public SortedSet<V> get(@Nullable K key) {
+  public SortedSet<V> get(@ParametricNullness K key) {
     return delegate().get(key);
   }
 
@@ -54,12 +55,12 @@ public abstract class ForwardingSortedSetMultimap<K, V> extends ForwardingSetMul
   }
 
   @Override
-  public SortedSet<V> replaceValues(K key, Iterable<? extends V> values) {
+  public SortedSet<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values) {
     return delegate().replaceValues(key, values);
   }
 
   @Override
-  public Comparator<? super V> valueComparator() {
+  public @Nullable Comparator<? super V> valueComparator() {
     return delegate().valueComparator();
   }
 }

@@ -21,7 +21,7 @@ import com.google.j2objc.annotations.Weak;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.concurrent.Executor;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A subscriber method on a specific object, plus the executor that should be used for dispatching
@@ -42,7 +42,7 @@ class Subscriber {
   }
 
   /** The event bus this subscriber belongs to. */
-  @Weak private EventBus bus;
+  @Weak private final EventBus bus;
 
   /** The object with the subscriber method. */
   @VisibleForTesting final Object target;
@@ -63,16 +63,13 @@ class Subscriber {
   }
 
   /** Dispatches {@code event} to this subscriber using the proper executor. */
-  final void dispatchEvent(final Object event) {
+  final void dispatchEvent(Object event) {
     executor.execute(
-        new Runnable() {
-          @Override
-          public void run() {
-            try {
-              invokeSubscriberMethod(event);
-            } catch (InvocationTargetException e) {
-              bus.handleSubscriberException(e.getCause(), context(event));
-            }
+        () -> {
+          try {
+            invokeSubscriberMethod(event);
+          } catch (InvocationTargetException e) {
+            bus.handleSubscriberException(e.getCause(), context(event));
           }
         });
   }
@@ -107,8 +104,9 @@ class Subscriber {
     return (31 + method.hashCode()) * 31 + System.identityHashCode(target);
   }
 
+  @SuppressWarnings("ReferenceEquality") // see comment below
   @Override
-  public final boolean equals(@NullableDecl Object obj) {
+  public final boolean equals(@Nullable Object obj) {
     if (obj instanceof Subscriber) {
       Subscriber that = (Subscriber) obj;
       // Use == so that different equal instances will still receive events.

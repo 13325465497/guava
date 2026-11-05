@@ -17,21 +17,22 @@
 package com.google.common.eventbus;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitUninterruptibly;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Queues;
-import com.google.common.util.concurrent.Uninterruptibles;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link Dispatcher} implementations.
  *
  * @author Colin Decker
  */
-
+@NullUnmarked
 public class DispatcherTest extends TestCase {
 
   private final EventBus bus = new EventBus();
@@ -52,8 +53,7 @@ public class DispatcherTest extends TestCase {
           subscriber(bus, s1, "handleString", String.class),
           subscriber(bus, s2, "handleString", String.class));
 
-  private final ConcurrentLinkedQueue<Object> dispatchedSubscribers =
-      Queues.newConcurrentLinkedQueue();
+  private final ConcurrentLinkedQueue<Object> dispatchedSubscribers = new ConcurrentLinkedQueue<>();
 
   private Dispatcher dispatcher;
 
@@ -79,42 +79,42 @@ public class DispatcherTest extends TestCase {
   public void testLegacyAsyncDispatcher() {
     dispatcher = Dispatcher.legacyAsync();
 
-    final CyclicBarrier barrier = new CyclicBarrier(2);
-    final CountDownLatch latch = new CountDownLatch(2);
+    CyclicBarrier barrier = new CyclicBarrier(2);
+    CountDownLatch latch = new CountDownLatch(2);
 
     new Thread(
-            new Runnable() {
-              @Override
-              public void run() {
-                try {
-                  barrier.await();
-                } catch (Exception e) {
-                  throw new AssertionError(e);
-                }
-
-                dispatcher.dispatch(2, integerSubscribers.iterator());
-                latch.countDown();
+            () -> {
+              try {
+                barrier.await();
+              } catch (BrokenBarrierException e) {
+                throw new AssertionError(e);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(e);
               }
+
+              dispatcher.dispatch(2, integerSubscribers.iterator());
+              latch.countDown();
             })
         .start();
 
     new Thread(
-            new Runnable() {
-              @Override
-              public void run() {
-                try {
-                  barrier.await();
-                } catch (Exception e) {
-                  throw new AssertionError(e);
-                }
-
-                dispatcher.dispatch("foo", stringSubscribers.iterator());
-                latch.countDown();
+            () -> {
+              try {
+                barrier.await();
+              } catch (BrokenBarrierException e) {
+                throw new AssertionError(e);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(e);
               }
+
+              dispatcher.dispatch("foo", stringSubscribers.iterator());
+              latch.countDown();
             })
         .start();
 
-    Uninterruptibles.awaitUninterruptibly(latch);
+    awaitUninterruptibly(latch);
 
     // See Dispatcher.LegacyAsyncDispatcher for an explanation of why there aren't really any
     // useful testable guarantees about the behavior of that dispatcher in a multithreaded

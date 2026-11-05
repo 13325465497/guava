@@ -18,11 +18,15 @@ package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.CollectPreconditions.checkNonnegative;
 import static com.google.common.collect.CollectPreconditions.checkRemove;
+import static com.google.common.collect.Maps.safeGet;
+import static java.util.Objects.requireNonNull;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.InvalidObjectException;
@@ -33,8 +37,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.ObjIntConsumer;
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Basic implementation of {@code Multiset<E>} backed by an instance of {@code Map<E, Count>}.
@@ -44,8 +47,9 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
-abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implements Serializable {
+@GwtCompatible
+abstract class AbstractMapBasedMultiset<E extends @Nullable Object> extends AbstractMultiset<E>
+    implements Serializable {
   // TODO(lowasser): consider overhauling this back to Map<E, Integer>
   private transient Map<E, Count> backingMap;
 
@@ -57,13 +61,13 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   private transient long size;
 
   /** Standard constructor. */
-  protected AbstractMapBasedMultiset(Map<E, Count> backingMap) {
+  AbstractMapBasedMultiset(Map<E, Count> backingMap) {
     checkArgument(backingMap.isEmpty());
     this.backingMap = backingMap;
   }
 
   /** Used during deserialization only. The backing map must be empty. */
-  void setBackingMap(Map<E, Count> backingMap) {
+  final void setBackingMap(Map<E, Count> backingMap) {
     this.backingMap = backingMap;
   }
 
@@ -77,13 +81,13 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
    * was retrieved.
    */
   @Override
-  public Set<Multiset.Entry<E>> entrySet() {
+  public final Set<Entry<E>> entrySet() {
     return super.entrySet();
   }
 
   @Override
-  Iterator<E> elementIterator() {
-    final Iterator<Map.Entry<E, Count>> backingEntries = backingMap.entrySet().iterator();
+  final Iterator<E> elementIterator() {
+    Iterator<Map.Entry<E, Count>> backingEntries = backingMap.entrySet().iterator();
     return new Iterator<E>() {
       Map.@Nullable Entry<E, Count> toRemove;
 
@@ -93,15 +97,16 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
       }
 
       @Override
+      @ParametricNullness
       public E next() {
-        final Map.Entry<E, Count> mapEntry = backingEntries.next();
+        Map.Entry<E, Count> mapEntry = backingEntries.next();
         toRemove = mapEntry;
         return mapEntry.getKey();
       }
 
       @Override
       public void remove() {
-        checkRemove(toRemove != null);
+        checkState(toRemove != null, "no calls to next() since the last call to remove()");
         size -= toRemove.getValue().getAndSet(0);
         backingEntries.remove();
         toRemove = null;
@@ -110,9 +115,9 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   }
 
   @Override
-  Iterator<Entry<E>> entryIterator() {
-    final Iterator<Map.Entry<E, Count>> backingEntries = backingMap.entrySet().iterator();
-    return new Iterator<Multiset.Entry<E>>() {
+  final Iterator<Entry<E>> internalEntryIterator() {
+    Iterator<Map.Entry<E, Count>> backingEntries = backingMap.entrySet().iterator();
+    return new Iterator<Entry<E>>() {
       Map.@Nullable Entry<E, Count> toRemove;
 
       @Override
@@ -121,11 +126,12 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
       }
 
       @Override
-      public Multiset.Entry<E> next() {
-        final Map.Entry<E, Count> mapEntry = backingEntries.next();
+      public Entry<E> next() {
+        Map.Entry<E, Count> mapEntry = backingEntries.next();
         toRemove = mapEntry;
         return new Multisets.AbstractEntry<E>() {
           @Override
+          @ParametricNullness
           public E getElement() {
             return mapEntry.getKey();
           }
@@ -146,7 +152,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
 
       @Override
       public void remove() {
-        checkRemove(toRemove != null);
+        checkState(toRemove != null, "no calls to next() since the last call to remove()");
         size -= toRemove.getValue().getAndSet(0);
         backingEntries.remove();
         toRemove = null;
@@ -155,13 +161,13 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   }
 
   @Override
-  public void forEachEntry(ObjIntConsumer<? super E> action) {
+  public final void forEachEntry(ObjIntConsumer<? super E> action) {
     checkNotNull(action);
     backingMap.forEach((element, count) -> action.accept(element, count.get()));
   }
 
   @Override
-  public void clear() {
+  public final void clear() {
     for (Count frequency : backingMap.values()) {
       frequency.set(0);
     }
@@ -170,19 +176,19 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   }
 
   @Override
-  int distinctElements() {
+  final int internalDistinctElements() {
     return backingMap.size();
   }
 
   // Optimizations - Query Operations
 
   @Override
-  public int size() {
+  public final int size() {
     return Ints.saturatedCast(size);
   }
 
   @Override
-  public Iterator<E> iterator() {
+  public final Iterator<E> iterator() {
     return new MapBasedMultisetIterator();
   }
 
@@ -191,9 +197,9 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
    * retrieve the Map.Entry<E, Count> entry, which can then be used for
    * a more efficient remove() call.
    */
-  private class MapBasedMultisetIterator implements Iterator<E> {
+  private final class MapBasedMultisetIterator implements Iterator<E> {
     final Iterator<Map.Entry<E, Count>> entryIterator;
-    Map.@MonotonicNonNull Entry<E, Count> currentEntry;
+    Map.@Nullable Entry<E, Count> currentEntry;
     int occurrencesLeft;
     boolean canRemove;
 
@@ -207,6 +213,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
     }
 
     @Override
+    @ParametricNullness
     public E next() {
       if (occurrencesLeft == 0) {
         currentEntry = entryIterator.next();
@@ -214,13 +221,21 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
       }
       occurrencesLeft--;
       canRemove = true;
-      return currentEntry.getKey();
+      /*
+       * requireNonNull is safe because occurrencesLeft starts at 0, forcing us to initialize
+       * currentEntry above. After that, we never clear it.
+       */
+      return requireNonNull(currentEntry).getKey();
     }
 
     @Override
     public void remove() {
       checkRemove(canRemove);
-      int frequency = currentEntry.getValue().get();
+      /*
+       * requireNonNull is safe because canRemove is set to true only after we initialize
+       * currentEntry (which we never subsequently clear).
+       */
+      int frequency = requireNonNull(currentEntry).getValue().get();
       if (frequency <= 0) {
         throw new ConcurrentModificationException();
       }
@@ -233,8 +248,8 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   }
 
   @Override
-  public int count(@Nullable Object element) {
-    Count frequency = Maps.safeGet(backingMap, element);
+  public final int count(@Nullable Object element) {
+    Count frequency = safeGet(backingMap, element);
     return (frequency == null) ? 0 : frequency.get();
   }
 
@@ -248,7 +263,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
    */
   @CanIgnoreReturnValue
   @Override
-  public int add(@Nullable E element, int occurrences) {
+  public final int add(@ParametricNullness E element, int occurrences) {
     if (occurrences == 0) {
       return count(element);
     }
@@ -270,7 +285,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
 
   @CanIgnoreReturnValue
   @Override
-  public int remove(@Nullable Object element, int occurrences) {
+  public final int remove(@Nullable Object element, int occurrences) {
     if (occurrences == 0) {
       return count(element);
     }
@@ -298,7 +313,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   // Roughly a 33% performance improvement over AbstractMultiset.setCount().
   @CanIgnoreReturnValue
   @Override
-  public int setCount(@Nullable E element, int count) {
+  public final int setCount(@ParametricNullness E element, int count) {
     checkNonnegative(count, "count");
 
     Count existingCounter;
@@ -315,7 +330,7 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
       }
     }
 
-    size += (count - oldCount);
+    size += count - oldCount;
     return oldCount;
   }
 
@@ -328,11 +343,11 @@ abstract class AbstractMapBasedMultiset<E> extends AbstractMultiset<E> implement
   }
 
   // Don't allow default serialization.
-  @GwtIncompatible // java.io.ObjectStreamException
-  private void readObjectNoData() throws ObjectStreamException {
+  @GwtIncompatible
+  @J2ktIncompatible
+    private void readObjectNoData() throws ObjectStreamException {
     throw new InvalidObjectException("Stream data required");
   }
 
-  @GwtIncompatible // not needed in emulated source.
-  private static final long serialVersionUID = -2250766705698539974L;
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = -2250766705698539974L;
 }

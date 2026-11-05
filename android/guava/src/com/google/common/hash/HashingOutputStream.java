@@ -17,6 +17,7 @@ package com.google.common.hash;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.Beta;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -24,9 +25,10 @@ import java.io.OutputStream;
 /**
  * An {@link OutputStream} that maintains a hash of the data written to it.
  *
- * @author Nick Piepmeier
+ * @author Zoe Piepmeier
  * @since 16.0
  */
+@J2ktIncompatible
 @Beta
 public final class HashingOutputStream extends FilterOutputStream {
   private final Hasher hasher;

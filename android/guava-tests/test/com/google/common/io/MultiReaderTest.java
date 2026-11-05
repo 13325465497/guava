@@ -16,39 +16,47 @@
 
 package com.google.common.io;
 
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.nCopies;
+
 import com.google.common.collect.ImmutableList;
 import java.io.FilterReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
-/** @author ricebin */
+/**
+ * @author ricebin
+ */
+@NullUnmarked
 public class MultiReaderTest extends TestCase {
 
   public void testOnlyOneOpen() throws Exception {
     String testString = "abcdefgh";
-    final CharSource source = newCharSource(testString);
-    final int[] counter = new int[1];
+    CharSource source = newCharSource(testString);
     CharSource reader =
         new CharSource() {
+          int openStreams = 0;
+
           @Override
           public Reader openStream() throws IOException {
-            if (counter[0]++ != 0) {
+            if (openStreams++ != 0) {
               throw new IllegalStateException("More than one source open");
             }
             return new FilterReader(source.openStream()) {
               @Override
               public void close() throws IOException {
                 super.close();
-                counter[0]--;
+                openStreams--;
               }
             };
           }
         };
     Reader joinedReader = CharSource.concat(reader, reader, reader).openStream();
     String result = CharStreams.toString(joinedReader);
-    assertEquals(testString.length() * 3, result.length());
+    assertThat(result).hasLength(testString.length() * 3);
   }
 
   public void testReady() throws Exception {
@@ -69,10 +77,17 @@ public class MultiReaderTest extends TestCase {
     Reader joinedReader = CharSource.concat(source, source).openStream();
 
     String expectedString = testString + testString;
-    assertEquals(expectedString, CharStreams.toString(joinedReader));
+    assertThat(CharStreams.toString(joinedReader)).isEqualTo(expectedString);
   }
 
-  private static CharSource newCharSource(final String text) {
+  public void testRead_noStackOverflow_manyEmptySources() throws IOException {
+    try (Reader joinedReader =
+        CharSource.concat(nCopies(100_000, CharSource.empty())).openStream()) {
+      assertEquals(-1, joinedReader.read());
+    }
+  }
+
+  private static CharSource newCharSource(String text) {
     return new CharSource() {
       @Override
       public Reader openStream() {

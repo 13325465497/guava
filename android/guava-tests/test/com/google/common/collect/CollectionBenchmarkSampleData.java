@@ -17,17 +17,22 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import static com.google.common.collect.Sets.newHashSetWithExpectedSize;
+import static java.util.Collections.shuffle;
 
-import com.google.common.primitives.Ints;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Package up sample data for common collections benchmarking.
  *
  * @author Nicholaus Shupe
  */
+@NullUnmarked
 class CollectionBenchmarkSampleData {
   private final boolean isUserTypeFast;
   private final SpecialRandom random;
@@ -61,7 +66,7 @@ class CollectionBenchmarkSampleData {
   }
 
   private Element[] createQueries(Set<Element> elementsInSet, int numQueries) {
-    List<Element> queryList = Lists.newArrayListWithCapacity(numQueries);
+    List<Element> queryList = newArrayListWithCapacity(numQueries);
 
     int numGoodQueries = (int) (numQueries * hitRate + 0.5);
 
@@ -74,8 +79,8 @@ class CollectionBenchmarkSampleData {
       for (int i = 0; i < minCopiesOfEachGoodQuery; i++) {
         queryList.addAll(elementsInSet);
       }
-      List<Element> tmp = Lists.newArrayList(elementsInSet);
-      Collections.shuffle(tmp, random);
+      List<Element> tmp = new ArrayList<>(elementsInSet);
+      shuffle(tmp, random);
       queryList.addAll(tmp.subList(0, extras));
     }
 
@@ -86,12 +91,12 @@ class CollectionBenchmarkSampleData {
         queryList.add(candidate);
       }
     }
-    Collections.shuffle(queryList, random);
+    shuffle(queryList, random);
     return queryList.toArray(new Element[0]);
   }
 
   private Set<Element> createData() {
-    Set<Element> set = Sets.newHashSetWithExpectedSize(size);
+    Set<Element> set = newHashSetWithExpectedSize(size);
     while (set.size() < size) {
       set.add(newElement());
     }
@@ -111,7 +116,7 @@ class CollectionBenchmarkSampleData {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
       return this == obj || (obj instanceof Element && ((Element) obj).hash == hash);
     }
 
@@ -122,7 +127,7 @@ class CollectionBenchmarkSampleData {
 
     @Override
     public int compareTo(Element that) {
-      return Ints.compare(hash, that.hash);
+      return Integer.compare(hash, that.hash);
     }
 
     @Override
@@ -137,7 +142,7 @@ class CollectionBenchmarkSampleData {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public boolean equals(@Nullable Object obj) {
       return slowItDown() != 1 && super.equals(obj);
     }
 
@@ -147,6 +152,7 @@ class CollectionBenchmarkSampleData {
     }
 
     @Override
+    @SuppressWarnings("CompareToZero")
     public int compareTo(Element e) {
       int x = slowItDown();
       return x + super.compareTo(e) - x; // silly attempt to prevent opt

@@ -16,6 +16,7 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Iterables.elementsEqual;
 import static com.google.common.testing.SerializableTester.reserialize;
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertTrue;
@@ -24,7 +25,9 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.testing.SerializableTester;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.Collection;
 import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Variant of {@link SerializableTester} that does not require the reserialized object's class to be
@@ -36,7 +39,8 @@ import java.util.Set;
  * The whole thing is really @GwtIncompatible, but GwtJUnitConvertedTestModule doesn't have a
  * parameter for non-GWT, non-test files, and it didn't seem worth adding one for this unusual case.
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullUnmarked
 final class LenientSerializableTester {
   /*
    * TODO(cpovirk): move this to c.g.c.testing if we allow for c.g.c.annotations dependencies so
@@ -57,6 +61,15 @@ final class LenientSerializableTester {
     Multiset<E> copy = reserialize(original);
     assertEquals(original, copy);
     assertTrue(copy instanceof ImmutableMultiset);
+    return copy;
+  }
+
+  @CanIgnoreReturnValue
+  @GwtIncompatible // SerializableTester
+  static <E> Collection<E> reserializeAndAssertElementsEqual(Collection<E> original) {
+    Collection<E> copy = reserialize(original);
+    assertTrue(elementsEqual(original, copy));
+    assertTrue(copy instanceof ImmutableCollection);
     return copy;
   }
 

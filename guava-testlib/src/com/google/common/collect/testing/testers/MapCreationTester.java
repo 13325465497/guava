@@ -16,23 +16,24 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.getMethod;
 import static com.google.common.collect.testing.features.CollectionSize.ONE;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 import static com.google.common.collect.testing.features.MapFeature.REJECTS_DUPLICATES_AT_CREATION;
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.AbstractMapTester;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map.Entry;
-import org.junit.Ignore;
 
 /**
  * A generic JUnit test which tests creation (typically through a constructor or static factory
@@ -42,8 +43,7 @@ import org.junit.Ignore;
  * @author Chris Povirk
  * @author Kevin Bourrillion
  */
-@GwtCompatible(emulated = true)
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
+@GwtCompatible
 public class MapCreationTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(ALLOWS_NULL_KEYS)
   @CollectionSize.Require(absent = ZERO)
@@ -55,11 +55,7 @@ public class MapCreationTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(absent = ALLOWS_NULL_KEYS)
   @CollectionSize.Require(absent = ZERO)
   public void testCreateWithNullKeyUnsupported() {
-    try {
-      initMapWithNullKey();
-      fail("Creating a map containing a null key should fail");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> initMapWithNullKey());
   }
 
   @MapFeature.Require(ALLOWS_NULL_VALUES)
@@ -72,11 +68,7 @@ public class MapCreationTester<K, V> extends AbstractMapTester<K, V> {
   @MapFeature.Require(absent = ALLOWS_NULL_VALUES)
   @CollectionSize.Require(absent = ZERO)
   public void testCreateWithNullValueUnsupported() {
-    try {
-      initMapWithNullValue();
-      fail("Creating a map containing a null value should fail");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> initMapWithNullValue());
   }
 
   @MapFeature.Require({ALLOWS_NULL_KEYS, ALLOWS_NULL_VALUES})
@@ -104,22 +96,14 @@ public class MapCreationTester<K, V> extends AbstractMapTester<K, V> {
   @CollectionSize.Require(absent = {ZERO, ONE})
   public void testCreateWithDuplicates_nullDuplicatesRejected() {
     Entry<K, V>[] entries = getEntriesMultipleNullKeys();
-    try {
-      resetMap(entries);
-      fail("Should reject duplicate null elements at creation");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> resetMap(entries));
   }
 
   @MapFeature.Require(REJECTS_DUPLICATES_AT_CREATION)
   @CollectionSize.Require(absent = {ZERO, ONE})
   public void testCreateWithDuplicates_nonNullDuplicatesRejected() {
     Entry<K, V>[] entries = getEntriesMultipleNonNullKeys();
-    try {
-      resetMap(entries);
-      fail("Should reject duplicate non-null elements at creation");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> resetMap(entries));
   }
 
   private Entry<K, V>[] getEntriesMultipleNullKeys() {
@@ -137,18 +121,18 @@ public class MapCreationTester<K, V> extends AbstractMapTester<K, V> {
   private void expectFirstRemoved(Entry<K, V>[] entries) {
     resetMap(entries);
 
-    List<Entry<K, V>> expectedWithDuplicateRemoved =
-        Arrays.asList(entries).subList(1, getNumElements());
+    List<Entry<K, V>> expectedWithDuplicateRemoved = asList(entries).subList(1, getNumElements());
     expectContents(expectedWithDuplicateRemoved);
   }
 
   /**
    * Returns the {@link Method} instance for {@link #testCreateWithNullKeyUnsupported()} so that
    * tests can suppress it with {@code FeatureSpecificTestSuiteBuilder.suppressing()} until <a
-   * href="http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5045147">Sun bug 5045147</a> is fixed.
+   * href="https://bugs.openjdk.org/browse/JDK-5045147">JDK-5045147</a> is fixed.
    */
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getCreateWithNullKeyUnsupportedMethod() {
-    return Helpers.getMethod(MapCreationTester.class, "testCreateWithNullKeyUnsupported");
+    return getMethod(MapCreationTester.class, "testCreateWithNullKeyUnsupported");
   }
 }

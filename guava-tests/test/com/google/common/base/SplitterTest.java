@@ -16,10 +16,13 @@
 
 package com.google.common.base;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Splitter.MapSplitter;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.testing.NullPointerTester;
@@ -28,19 +31,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
 
-/** @author Julien Silland */
-@GwtCompatible(emulated = true)
+/**
+ * @author Julien Silland
+ */
+@NullMarked
+@GwtCompatible
 public class SplitterTest extends TestCase {
 
   private static final Splitter COMMA_SPLITTER = Splitter.on(',');
 
+  @SuppressWarnings("nullness") // test of a bogus call
   public void testSplitNullString() {
-    try {
-      COMMA_SPLITTER.split(null);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> COMMA_SPLITTER.split(null));
   }
 
   public void testCharacterSimpleSplit() {
@@ -62,10 +66,17 @@ public class SplitterTest extends TestCase {
     assertThat(letters).containsExactly("a", "b", "c").inOrder();
   }
 
+  public void testCharacterSimpleSplitToStream() {
+    String simple = "a,b,c";
+    List<String> letters = COMMA_SPLITTER.splitToStream(simple).collect(toImmutableList());
+    assertThat(letters).containsExactly("a", "b", "c").inOrder();
+  }
+
   public void testToString() {
-    assertEquals("[]", COMMA_SPLITTER.split("").toString());
-    assertEquals("[a, b, c]", COMMA_SPLITTER.split("a,b,c").toString());
-    assertEquals("[yam, bam, jam, ham]", Splitter.on(", ").split("yam, bam, jam, ham").toString());
+    assertThat(COMMA_SPLITTER.split("").toString()).isEqualTo("[]");
+    assertThat(COMMA_SPLITTER.split("a,b,c").toString()).isEqualTo("[a, b, c]");
+    assertThat(Splitter.on(", ").split("yam, bam, jam, ham").toString())
+        .isEqualTo("[yam, bam, jam, ham]");
   }
 
   public void testCharacterSimpleSplitWithNoDelimiter() {
@@ -152,8 +163,7 @@ public class SplitterTest extends TestCase {
   }
 
   public void testCharacterSplitWithTrim() {
-    String jacksons =
-        "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, " + "ofar(Jemaine), aff(Tito)";
+    String jacksons = "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, ofar(Jemaine), aff(Tito)";
     Iterable<String> family =
         COMMA_SPLITTER
             .trimResults(CharMatcher.anyOf("afro").or(CharMatcher.whitespace()))
@@ -249,11 +259,7 @@ public class SplitterTest extends TestCase {
   }
 
   public void testStringSplitWithEmptyString() {
-    try {
-      Splitter.on("");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Splitter.on(""));
   }
 
   public void testStringSplitOnEmptyString() {
@@ -276,8 +282,7 @@ public class SplitterTest extends TestCase {
   }
 
   public void testStringSplitWithTrim() {
-    String jacksons =
-        "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, " + "ofar(Jemaine), aff(Tito)";
+    String jacksons = "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, ofar(Jemaine), aff(Tito)";
     Iterable<String> family =
         Splitter.on(",")
             .trimResults(CharMatcher.anyOf("afro").or(CharMatcher.whitespace()))
@@ -352,8 +357,8 @@ public class SplitterTest extends TestCase {
     assertThat(letters).containsExactly("a", "b", "c").inOrder();
   }
 
+  @J2ktIncompatible // Kotlin Native's regex is based on Apache Harmony, like old Android
   @GwtIncompatible // java.util.regex.Pattern
-  @AndroidIncompatible // Bug in older versions of Android we test against, since fixed.
   public void testPatternSplitLookBehind() {
     if (!CommonPattern.isPcreLike()) {
       return;
@@ -365,8 +370,8 @@ public class SplitterTest extends TestCase {
     // splits into chunks ending in :
   }
 
+  @J2ktIncompatible // Kotlin Native's regex is based on Apache Harmony, like old Android
   @GwtIncompatible // java.util.regex.Pattern
-  @AndroidIncompatible // Bug in older versions of Android we test against, since fixed.
   public void testPatternSplitWordBoundary() {
     String string = "foo<bar>bletch";
     Iterable<String> words = Splitter.on(Pattern.compile("\\b")).split(string);
@@ -380,7 +385,7 @@ public class SplitterTest extends TestCase {
     assertThat(words).containsExactly("f").inOrder();
   }
 
-  @AndroidIncompatible // Apparently Gingerbread's regex API is buggy.
+  @J2ktIncompatible // Kotlin Native's regex is based on Apache Harmony, like old Android
   @GwtIncompatible // java.util.regex.Pattern
   public void testPatternSplitWordBoundary_singleWordInput() {
     String string = "foo";
@@ -439,17 +444,12 @@ public class SplitterTest extends TestCase {
 
   @GwtIncompatible // java.util.regex.Pattern
   public void testPatternSplitInvalidPattern() {
-    try {
-      Splitter.on(Pattern.compile("a*"));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Splitter.on(Pattern.compile("a*")));
   }
 
   @GwtIncompatible // java.util.regex.Pattern
   public void testPatternSplitWithTrim() {
-    String jacksons =
-        "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, " + "ofar(Jemaine), aff(Tito)";
+    String jacksons = "arfo(Marlon)aorf, (Michael)orfa, afro(Jackie)orfa, ofar(Jemaine), aff(Tito)";
     Iterable<String> family =
         Splitter.on(Pattern.compile(","))
             .trimResults(CharMatcher.anyOf("afro").or(CharMatcher.whitespace()))
@@ -472,13 +472,9 @@ public class SplitterTest extends TestCase {
     assertIteratorIsUnmodifiable(Splitter.on(Pattern.compile(",")).split("a,b").iterator());
   }
 
-  private void assertIteratorIsUnmodifiable(Iterator<?> iterator) {
+  private static void assertIteratorIsUnmodifiable(Iterator<?> iterator) {
     iterator.next();
-    try {
-      iterator.remove();
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> iterator.remove());
   }
 
   public void testSplitterIterableIsLazy_char() {
@@ -489,6 +485,7 @@ public class SplitterTest extends TestCase {
     assertSplitterIterableIsLazy(Splitter.on(","));
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // java.util.regex.Pattern
   @AndroidIncompatible // not clear that j.u.r.Matcher promises to handle mutations during use
   public void testSplitterIterableIsLazy_pattern() {
@@ -502,16 +499,16 @@ public class SplitterTest extends TestCase {
    * This test really pushes the boundaries of what we support. In general the splitter's behaviour
    * is not well defined if the char sequence it's splitting is mutated during iteration.
    */
-  private void assertSplitterIterableIsLazy(Splitter splitter) {
+  private static void assertSplitterIterableIsLazy(Splitter splitter) {
     StringBuilder builder = new StringBuilder();
     Iterator<String> iterator = splitter.split(builder).iterator();
 
     builder.append("A,");
-    assertEquals("A", iterator.next());
+    assertThat(iterator.next()).isEqualTo("A");
     builder.append("B,");
-    assertEquals("B", iterator.next());
+    assertThat(iterator.next()).isEqualTo("B");
     builder.append("C");
-    assertEquals("C", iterator.next());
+    assertThat(iterator.next()).isEqualTo("C");
     assertFalse(iterator.hasNext());
   }
 
@@ -556,19 +553,11 @@ public class SplitterTest extends TestCase {
   }
 
   public void testFixedLengthSplitZeroChunkLen() {
-    try {
-      Splitter.fixedLength(0);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Splitter.fixedLength(0));
   }
 
   public void testFixedLengthSplitNegativeChunkLen() {
-    try {
-      Splitter.fixedLength(-1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Splitter.fixedLength(-1));
   }
 
   public void testLimitLarge() {
@@ -656,13 +645,10 @@ public class SplitterTest extends TestCase {
   }
 
   public void testInvalidZeroLimit() {
-    try {
-      COMMA_SPLITTER.limit(0);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> COMMA_SPLITTER.limit(0));
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // NullPointerTester
   public void testNullPointers() {
     NullPointerTester tester = new NullPointerTester();
@@ -718,7 +704,7 @@ public class SplitterTest extends TestCase {
     assertThat(m.entrySet()).containsExactlyElementsIn(expected.entrySet()).inOrder();
   }
 
-  public void testMapSplitter_CharacterSeparator() {
+  public void testMapSplitter_characterSeparator() {
     // try different delimiters.
     Map<String, String> m =
         Splitter.on(",").withKeyValueSeparator(':').split("boy:tom,girl:tina,cat:kitty,dog:tommy");
@@ -743,19 +729,23 @@ public class SplitterTest extends TestCase {
   }
 
   public void testMapSplitter_emptySeparator() {
-    try {
-      COMMA_SPLITTER.withKeyValueSeparator("");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> COMMA_SPLITTER.withKeyValueSeparator(""));
   }
 
   public void testMapSplitter_malformedEntry() {
-    try {
-      COMMA_SPLITTER.withKeyValueSeparator("=").split("a=1,b,c=2");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> COMMA_SPLITTER.withKeyValueSeparator("=").split("a=1,b,c=2"));
+  }
+
+  /**
+   * Testing the behavior in https://github.com/google/guava/issues/1900 - this behavior may want to
+   * be changed?
+   */
+  public void testMapSplitter_extraValueDelimiter() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> COMMA_SPLITTER.withKeyValueSeparator("=").split("a=1,c=2="));
   }
 
   public void testMapSplitter_orderedResults() {
@@ -775,11 +765,9 @@ public class SplitterTest extends TestCase {
   }
 
   public void testMapSplitter_duplicateKeys() {
-    try {
-      COMMA_SPLITTER.withKeyValueSeparator(":").split("a:1,b:2,a:3");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> COMMA_SPLITTER.withKeyValueSeparator(":").split("a:1,b:2,a:3"));
   }
 
   public void testMapSplitter_varyingTrimLevels() {

@@ -16,29 +16,32 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Tables.immutableCell;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Objects;
 import com.google.common.testing.EqualsTester;
+import java.util.Objects;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Tests {@link SingletonImmutableTable}.
  *
  * @author Gregory Kick
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class SingletonImmutableTableTest extends AbstractImmutableTableTest {
   private final ImmutableTable<Character, Integer, String> testTable =
       new SingletonImmutableTable<>('a', 1, "blah");
 
   public void testHashCode() {
-    assertEquals(Objects.hashCode('a', 1, "blah"), testTable.hashCode());
+    assertEquals(Objects.hash('a', 1, "blah"), testTable.hashCode());
   }
 
   public void testCellSet() {
-    assertEquals(ImmutableSet.of(Tables.immutableCell('a', 1, "blah")), testTable.cellSet());
+    assertEquals(ImmutableSet.of(immutableCell('a', 1, "blah")), testTable.cellSet());
   }
 
   public void testColumn() {
@@ -84,7 +87,7 @@ public class SingletonImmutableTableTest extends AbstractImmutableTableTest {
   }
 
   public void testToString() {
-    assertEquals("{a={1=blah}}", testTable.toString());
+    assertThat(testTable.toString()).isEqualTo("{a={1=blah}}");
   }
 
   public void testContains() {
@@ -110,10 +113,10 @@ public class SingletonImmutableTableTest extends AbstractImmutableTableTest {
   }
 
   public void testGet() {
-    assertEquals("blah", testTable.get('a', 1));
-    assertNull(testTable.get('a', 2));
-    assertNull(testTable.get('A', 1));
-    assertNull(testTable.get('A', 2));
+    assertThat(testTable.get('a', 1)).isEqualTo("blah");
+    assertThat(testTable.get('a', 2)).isNull();
+    assertThat(testTable.get('A', 1)).isNull();
+    assertThat(testTable.get('A', 2)).isNull();
   }
 
   public void testIsEmpty() {

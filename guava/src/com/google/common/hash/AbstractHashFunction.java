@@ -20,6 +20,7 @@ import static com.google.common.base.Preconditions.checkPositionIndexes;
 import com.google.errorprone.annotations.Immutable;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Skeleton implementation of {@link HashFunction} in terms of {@link #newHasher()}.
@@ -29,7 +30,8 @@ import java.nio.charset.Charset;
 @Immutable
 abstract class AbstractHashFunction implements HashFunction {
   @Override
-  public <T> HashCode hashObject(T instance, Funnel<? super T> funnel) {
+  public <T extends @Nullable Object> HashCode hashObject(
+      @ParametricNullness T instance, Funnel<? super T> funnel) {
     return newHasher().putObject(instance, funnel).hash();
   }
 

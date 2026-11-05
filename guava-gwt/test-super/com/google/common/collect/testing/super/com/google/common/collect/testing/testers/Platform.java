@@ -17,27 +17,26 @@
 package com.google.common.collect.testing.testers;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.gwt.core.client.GWT;
 
 /**
  * The emulation source used in GWT.
  *
  * @author Hayward Chan
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
 final class Platform {
 
   // Use fewer steps in the ListIteratorTester in ListListIteratorTester because it's slow in prod
   // mode.
   static int listListIteratorTesterNumIterations() {
     // TODO(hhchan): It's 4 in java.  Figure out why even 3 is too slow in prod mode.
-    return GWT.isProdMode() ? 2 : 4;
+    return 2;
   }
 
   // Use fewer steps in the IteratorTester in CollectionIteratorTester because it's slow in prod
-  // mode..
+  // mode.
   static int collectionIteratorTesterNumIterations() {
-    return GWT.isProdMode() ? 3 : 5;
+    return 3;
   }
 
   // TODO: Consolidate different copies in one single place.

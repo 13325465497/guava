@@ -20,7 +20,7 @@ import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A set multimap which forwards all its method calls to another set multimap. Subclasses should
@@ -35,8 +35,10 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @since 3.0
  */
 @GwtCompatible
-public abstract class ForwardingSetMultimap<K, V> extends ForwardingMultimap<K, V>
-    implements SetMultimap<K, V> {
+public abstract class ForwardingSetMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends ForwardingMultimap<K, V> implements SetMultimap<K, V> {
+  /** Constructor for use by subclasses. */
+  protected ForwardingSetMultimap() {}
 
   @Override
   protected abstract SetMultimap<K, V> delegate();
@@ -47,19 +49,19 @@ public abstract class ForwardingSetMultimap<K, V> extends ForwardingMultimap<K, 
   }
 
   @Override
-  public Set<V> get(@NullableDecl K key) {
+  public Set<V> get(@ParametricNullness K key) {
     return delegate().get(key);
   }
 
   @CanIgnoreReturnValue
   @Override
-  public Set<V> removeAll(@NullableDecl Object key) {
+  public Set<V> removeAll(@Nullable Object key) {
     return delegate().removeAll(key);
   }
 
   @CanIgnoreReturnValue
   @Override
-  public Set<V> replaceValues(K key, Iterable<? extends V> values) {
+  public Set<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values) {
     return delegate().replaceValues(key, values);
   }
 }

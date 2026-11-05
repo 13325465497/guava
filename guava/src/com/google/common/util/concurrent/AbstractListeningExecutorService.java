@@ -14,13 +14,13 @@
 
 package com.google.common.util.concurrent;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.CheckReturnValue;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Callable;
 import java.util.concurrent.RunnableFuture;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Abstract {@link ListeningExecutorService} implementation that creates {@link ListenableFuture}
@@ -33,36 +33,48 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Chris Povirk
  * @since 14.0
  */
-@Beta
-@CanIgnoreReturnValue
+@CheckReturnValue
 @GwtIncompatible
 public abstract class AbstractListeningExecutorService extends AbstractExecutorService
     implements ListeningExecutorService {
+  /** Constructor for use by subclasses. */
+  protected AbstractListeningExecutorService() {}
 
-  /** @since 19.0 (present with return type {@code ListenableFutureTask} since 14.0) */
+  /**
+   * @since 19.0 (present with return type {@code ListenableFutureTask} since 14.0)
+   */
+  @CanIgnoreReturnValue // TODO(kak): consider removing this
   @Override
-  protected final <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
+  protected final <T extends @Nullable Object> RunnableFuture<T> newTaskFor(
+      Runnable runnable, @ParametricNullness T value) {
     return TrustedListenableFutureTask.create(runnable, value);
   }
 
-  /** @since 19.0 (present with return type {@code ListenableFutureTask} since 14.0) */
+  /**
+   * @since 19.0 (present with return type {@code ListenableFutureTask} since 14.0)
+   */
+  @CanIgnoreReturnValue // TODO(kak): consider removing this
   @Override
-  protected final <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
+  protected final <T extends @Nullable Object> RunnableFuture<T> newTaskFor(Callable<T> callable) {
     return TrustedListenableFutureTask.create(callable);
   }
 
+  @CanIgnoreReturnValue // TODO(kak): consider removing this
   @Override
   public ListenableFuture<?> submit(Runnable task) {
     return (ListenableFuture<?>) super.submit(task);
   }
 
+  @CanIgnoreReturnValue // TODO(kak): consider removing this
   @Override
-  public <T> ListenableFuture<T> submit(Runnable task, @Nullable T result) {
+  public <T extends @Nullable Object> ListenableFuture<T> submit(
+      Runnable task, @ParametricNullness T result) {
     return (ListenableFuture<T>) super.submit(task, result);
   }
 
+  @CanIgnoreReturnValue // TODO(kak): consider removing this
   @Override
-  public <T> ListenableFuture<T> submit(Callable<T> task) {
+  public <T extends @Nullable Object> ListenableFuture<T> submit(Callable<T> task) {
     return (ListenableFuture<T>) super.submit(task);
   }
 }

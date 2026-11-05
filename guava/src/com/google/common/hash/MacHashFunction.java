@@ -17,6 +17,7 @@ package com.google.common.hash;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.Immutable;
 import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
@@ -29,6 +30,7 @@ import javax.crypto.Mac;
  *
  * @author Kurt Alfred Kluever
  */
+@J2ktIncompatible
 @Immutable
 final class MacHashFunction extends AbstractHashFunction {
 
@@ -57,7 +59,7 @@ final class MacHashFunction extends AbstractHashFunction {
 
   private static boolean supportsClone(Mac mac) {
     try {
-      mac.clone();
+      Object unused = mac.clone();
       return true;
     } catch (CloneNotSupportedException e) {
       return false;

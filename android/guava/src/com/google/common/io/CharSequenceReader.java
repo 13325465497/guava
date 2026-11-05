@@ -17,11 +17,16 @@ package com.google.common.io;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndexes;
+import static java.lang.Math.min;
+import static java.util.Objects.requireNonNull;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.CharBuffer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link Reader} that reads the characters in a {@link CharSequence}. Like {@code StringReader},
@@ -30,11 +35,14 @@ import java.nio.CharBuffer;
  * @author Colin Decker
  */
 // TODO(cgdecker): make this public? as a type, or a method in CharStreams?
+@J2ktIncompatible
 @GwtIncompatible
 final class CharSequenceReader extends Reader {
 
-  private CharSequence seq;
+  private @Nullable CharSequence seq;
   private int pos;
+
+  @GuardedBy("this")
   private int mark;
 
   /** Creates a new reader wrapping the given character sequence. */
@@ -53,17 +61,31 @@ final class CharSequenceReader extends Reader {
   }
 
   private int remaining() {
+    requireNonNull(seq); // safe as long as we call this only after checkOpen
     return seq.length() - pos;
   }
+
+  /*
+   * To avoid the need to call requireNonNull so much, we could consider more clever approaches,
+   * such as:
+   *
+   * - Make checkOpen return the non-null `seq`. Then callers can assign that to a local variable or
+   *   even back to `this.seq`. However, that may suggest that we're defending against concurrent
+   *   mutation, which is not an actual risk because we use `synchronized`.
+   * - Make `remaining` require a non-null `seq` argument. But this is a bit weird because the
+   *   method, while it would avoid the instance field `seq` would still access the instance field
+   *   `pos`.
+   */
 
   @Override
   public synchronized int read(CharBuffer target) throws IOException {
     checkNotNull(target);
     checkOpen();
+    requireNonNull(seq); // safe because of checkOpen
     if (!hasRemaining()) {
       return -1;
     }
-    int charsToRead = Math.min(target.remaining(), remaining());
+    int charsToRead = min(target.remaining(), remaining());
     for (int i = 0; i < charsToRead; i++) {
       target.put(seq.charAt(pos++));
     }
@@ -73,6 +95,7 @@ final class CharSequenceReader extends Reader {
   @Override
   public synchronized int read() throws IOException {
     checkOpen();
+    requireNonNull(seq); // safe because of checkOpen
     return hasRemaining() ? seq.charAt(pos++) : -1;
   }
 
@@ -80,10 +103,11 @@ final class CharSequenceReader extends Reader {
   public synchronized int read(char[] cbuf, int off, int len) throws IOException {
     checkPositionIndexes(off, off + len, cbuf.length);
     checkOpen();
+    requireNonNull(seq); // safe because of checkOpen
     if (!hasRemaining()) {
       return -1;
     }
-    int charsToRead = Math.min(len, remaining());
+    int charsToRead = min(len, remaining());
     for (int i = 0; i < charsToRead; i++) {
       cbuf[off + i] = seq.charAt(pos++);
     }
@@ -94,7 +118,7 @@ final class CharSequenceReader extends Reader {
   public synchronized long skip(long n) throws IOException {
     checkArgument(n >= 0, "n (%s) may not be negative", n);
     checkOpen();
-    int charsToSkip = (int) Math.min(remaining(), n); // safe because remaining is an int
+    int charsToSkip = (int) min(remaining(), n); // safe because remaining is an int
     pos += charsToSkip;
     return charsToSkip;
   }
@@ -124,7 +148,7 @@ final class CharSequenceReader extends Reader {
   }
 
   @Override
-  public synchronized void close() throws IOException {
+  public synchronized void close() {
     seq = null;
   }
 }

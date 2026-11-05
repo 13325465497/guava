@@ -16,14 +16,19 @@
 
 package com.google.common.collect.testing;
 
+import static com.google.common.collect.testing.Helpers.assertEqualIgnoringOrder;
+import static com.google.common.collect.testing.Helpers.copyToList;
+import static java.util.Arrays.asList;
+import static java.util.Collections.unmodifiableList;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.OverridingMethodsMustInvokeSuper;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import org.junit.Ignore;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base class for testers of classes (including {@link Collection} and {@link java.util.Map Map})
@@ -34,8 +39,8 @@ import org.junit.Ignore;
  * @author George van den Driessche
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
-public abstract class AbstractContainerTester<C, E>
+@NullMarked
+public abstract class AbstractContainerTester<C, E extends @Nullable Object>
     extends AbstractTester<OneSizeTestContainerGenerator<C, E>> {
   protected SampleElements<E> samples;
   protected C container;
@@ -61,6 +66,7 @@ public abstract class AbstractContainerTester<C, E>
    * @see #resetContainer(Object) resetContainer(C)
    * @return the new container instance.
    */
+  @CanIgnoreReturnValue
   protected C resetContainer() {
     return resetContainer(getSubjectGenerator().createTestSubject());
   }
@@ -75,6 +81,7 @@ public abstract class AbstractContainerTester<C, E>
    * @return the new container instance
    * @param newValue the new container instance
    */
+  @CanIgnoreReturnValue
   protected C resetContainer(C newValue) {
     container = newValue;
     return container;
@@ -85,7 +92,7 @@ public abstract class AbstractContainerTester<C, E>
    * @param elements expected contents of {@link #container}
    */
   protected final void expectContents(E... elements) {
-    expectContents(Arrays.asList(elements));
+    expectContents(asList(elements));
   }
 
   /**
@@ -105,7 +112,7 @@ public abstract class AbstractContainerTester<C, E>
    * examining whether the features include KNOWN_ORDER?
    */
   protected void expectContents(Collection<E> expected) {
-    Helpers.assertEqualIgnoringOrder(expected, actualContents());
+    assertEqualIgnoringOrder(expected, actualContents());
   }
 
   protected void expectUnchanged() {
@@ -132,17 +139,17 @@ public abstract class AbstractContainerTester<C, E>
    * @param elements expected additional contents of {@link #container}
    */
   protected final void expectAdded(E... elements) {
-    List<E> expected = Helpers.copyToList(getSampleElements());
-    expected.addAll(Arrays.asList(elements));
+    List<E> expected = copyToList(getSampleElements());
+    expected.addAll(asList(elements));
     expectContents(expected);
   }
 
   protected final void expectAdded(int index, E... elements) {
-    expectAdded(index, Arrays.asList(elements));
+    expectAdded(index, asList(elements));
   }
 
   protected final void expectAdded(int index, Collection<E> elements) {
-    List<E> expected = Helpers.copyToList(getSampleElements());
+    List<E> expected = copyToList(getSampleElements());
     expected.addAll(index, elements);
     expectContents(expected);
   }
@@ -171,7 +178,7 @@ public abstract class AbstractContainerTester<C, E>
     return array;
   }
 
-  public static class ArrayWithDuplicate<E> {
+  public static final class ArrayWithDuplicate<E extends @Nullable Object> {
     public final E[] elements;
     public final E duplicate;
 
@@ -188,7 +195,7 @@ public abstract class AbstractContainerTester<C, E>
     E[] elements = createSamplesArray();
     E duplicate = elements[(elements.length / 2) - 1];
     elements[(elements.length / 2) + 1] = duplicate;
-    return new ArrayWithDuplicate<E>(elements, duplicate);
+    return new ArrayWithDuplicate<>(elements, duplicate);
   }
 
   // Helper methods to improve readability of derived classes
@@ -207,15 +214,15 @@ public abstract class AbstractContainerTester<C, E>
 
   /**
    * Returns the {@linkplain #getSampleElements() sample elements} as ordered by {@link
-   * TestContainerGenerator#order(List)}. Tests should used this method only if they declare
+   * TestContainerGenerator#order(List)}. Tests should use this method only if they declare
    * requirement {@link com.google.common.collect.testing.features.CollectionFeature#KNOWN_ORDER}.
    */
   protected List<E> getOrderedElements() {
-    List<E> list = new ArrayList<E>();
+    List<E> list = new ArrayList<>();
     for (E e : getSubjectGenerator().order(new ArrayList<E>(getSampleElements()))) {
       list.add(e);
     }
-    return Collections.unmodifiableList(list);
+    return unmodifiableList(list);
   }
 
   /**
@@ -226,14 +233,12 @@ public abstract class AbstractContainerTester<C, E>
     return getNumElements() / 2;
   }
 
-  @SuppressWarnings("unchecked")
   protected MinimalCollection<E> createDisjointCollection() {
     return MinimalCollection.of(e3(), e4());
   }
 
-  @SuppressWarnings("unchecked")
   protected MinimalCollection<E> emptyCollection() {
-    return MinimalCollection.<E>of();
+    return MinimalCollection.of();
   }
 
   protected final E e0() {

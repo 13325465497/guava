@@ -18,6 +18,7 @@ package com.google.common.reflect;
 
 import static com.google.common.collect.Maps.immutableEntry;
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -31,12 +32,14 @@ import java.util.Map.Entry;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test of {@link MutableTypeToInstanceMap}.
  *
  * @author Ben Yu
  */
+@NullUnmarked
 public class MutableTypeToInstanceMapTest extends TestCase {
 
   @AndroidIncompatible // problem with suite builders on Android
@@ -50,7 +53,7 @@ public class MutableTypeToInstanceMapTest extends TestCase {
                   // Other tests will verify what real, warning-free usage looks like
                   // but here we have to do some serious fudging
                   @Override
-                  @SuppressWarnings("unchecked")
+                  @SuppressWarnings({"unchecked", "rawtypes"})
                   public Map<TypeToken, Object> create(Object... elements) {
                     MutableTypeToInstanceMap<Object> map = new MutableTypeToInstanceMap<>();
                     for (Object object : elements) {
@@ -76,67 +79,52 @@ public class MutableTypeToInstanceMapTest extends TestCase {
   private TypeToInstanceMap<Object> map;
 
   @Override
-  protected void setUp() throws Exception {
+  protected void setUp() {
     map = new MutableTypeToInstanceMap<>();
   }
 
   public void testPutThrows() {
-    try {
-      map.put(TypeToken.of(Integer.class), new Integer(5));
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> map.put(TypeToken.of(Integer.class), Integer.valueOf(5)));
   }
 
   public void testPutAllThrows() {
-    try {
-      map.putAll(ImmutableMap.of(TypeToken.of(Integer.class), new Integer(5)));
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> map.putAll(ImmutableMap.of(TypeToken.of(Integer.class), Integer.valueOf(5))));
   }
 
   public void testEntrySetMutationThrows() {
     map.putInstance(String.class, "test");
     assertEquals(TypeToken.of(String.class), map.entrySet().iterator().next().getKey());
     assertEquals("test", map.entrySet().iterator().next().getValue());
-    try {
-      map.entrySet().iterator().next().setValue(1);
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class, () -> map.entrySet().iterator().next().setValue(1));
   }
 
   public void testEntrySetToArrayMutationThrows() {
     map.putInstance(String.class, "test");
     @SuppressWarnings("unchecked") // Should get a CCE later if cast is wrong
-    Entry<Object, Object> entry = (Entry<Object, Object>) map.entrySet().toArray()[0];
+    Entry<?, Object> entry = (Entry<?, Object>) map.entrySet().toArray()[0];
     assertEquals(TypeToken.of(String.class), entry.getKey());
     assertEquals("test", entry.getValue());
-    try {
-      entry.setValue(1);
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> entry.setValue(1));
   }
 
   public void testEntrySetToTypedArrayMutationThrows() {
     map.putInstance(String.class, "test");
     @SuppressWarnings("unchecked") // Should get a CCE later if cast is wrong
-    Entry<Object, Object> entry = map.entrySet().toArray(new Entry[0])[0];
+    Entry<?, Object> entry = (Entry<?, Object>) map.entrySet().toArray(new Entry<?, ?>[0])[0];
     assertEquals(TypeToken.of(String.class), entry.getKey());
     assertEquals("test", entry.getValue());
-    try {
-      entry.setValue(1);
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> entry.setValue(1));
   }
 
   public void testPutAndGetInstance() {
-    assertNull(map.putInstance(Integer.class, new Integer(5)));
+    assertThat(map.putInstance(Integer.class, Integer.valueOf(5))).isNull();
 
-    Integer oldValue = map.putInstance(Integer.class, new Integer(7));
+    Integer oldValue = map.putInstance(Integer.class, Integer.valueOf(7));
     assertEquals(5, (int) oldValue);
 
     Integer newValue = map.getInstance(Integer.class);
@@ -147,30 +135,28 @@ public class MutableTypeToInstanceMapTest extends TestCase {
   }
 
   public void testNull() {
-    try {
-      map.putInstance((TypeToken) null, new Integer(1));
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(
+        NullPointerException.class,
+        () -> map.putInstance((TypeToken<Integer>) null, Integer.valueOf(1)));
     map.putInstance(Integer.class, null);
     assertTrue(map.containsKey(TypeToken.of(Integer.class)));
     assertTrue(map.entrySet().contains(immutableEntry(TypeToken.of(Integer.class), null)));
-    assertNull(map.get(TypeToken.of(Integer.class)));
-    assertNull(map.getInstance(Integer.class));
+    assertThat(map.get(TypeToken.of(Integer.class))).isNull();
+    assertThat(map.getInstance(Integer.class)).isNull();
 
     map.putInstance(Long.class, null);
     assertTrue(map.containsKey(TypeToken.of(Long.class)));
     assertTrue(map.entrySet().contains(immutableEntry(TypeToken.of(Long.class), null)));
-    assertNull(map.get(TypeToken.of(Long.class)));
-    assertNull(map.getInstance(Long.class));
+    assertThat(map.get(TypeToken.of(Long.class))).isNull();
+    assertThat(map.getInstance(Long.class)).isNull();
   }
 
   public void testPrimitiveAndWrapper() {
-    assertNull(map.getInstance(int.class));
-    assertNull(map.getInstance(Integer.class));
+    assertThat(map.getInstance(int.class)).isNull();
+    assertThat(map.getInstance(Integer.class)).isNull();
 
-    assertNull(map.putInstance(int.class, 0));
-    assertNull(map.putInstance(Integer.class, 1));
+    assertThat(map.putInstance(int.class, 0)).isNull();
+    assertThat(map.putInstance(Integer.class, 1)).isNull();
     assertEquals(2, map.size());
 
     assertEquals(0, (int) map.getInstance(int.class));
@@ -179,8 +165,8 @@ public class MutableTypeToInstanceMapTest extends TestCase {
     assertEquals(0, (int) map.putInstance(int.class, null));
     assertEquals(1, (int) map.putInstance(Integer.class, null));
 
-    assertNull(map.getInstance(int.class));
-    assertNull(map.getInstance(Integer.class));
+    assertThat(map.getInstance(int.class)).isNull();
+    assertThat(map.getInstance(Integer.class)).isNull();
     assertEquals(2, map.size());
   }
 
@@ -193,7 +179,8 @@ public class MutableTypeToInstanceMapTest extends TestCase {
 
   public void testGenericArrayType() {
     @SuppressWarnings("unchecked") // Trying to test generic array
-    ImmutableList<Integer>[] array = new ImmutableList[] {ImmutableList.of(1)};
+    ImmutableList<Integer>[] array =
+        (ImmutableList<Integer>[]) new ImmutableList<?>[] {ImmutableList.of(1)};
     TypeToken<ImmutableList<Integer>[]> type = new TypeToken<ImmutableList<Integer>[]>() {};
     map.putInstance(type, array);
     assertEquals(1, map.size());
@@ -208,22 +195,16 @@ public class MutableTypeToInstanceMapTest extends TestCase {
   }
 
   public void testGetInstance_withTypeVariable() {
-    try {
-      map.getInstance(this.<Number>anyIterableType());
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> map.getInstance(anyIterableType()));
   }
 
   public void testPutInstance_withTypeVariable() {
-    try {
-      map.putInstance(this.<Integer>anyIterableType(), ImmutableList.of(1));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> map.putInstance(anyIterableType(), ImmutableList.of(1)));
   }
 
-  private <T> TypeToken<Iterable<T>> anyIterableType() {
+  private static <T> TypeToken<Iterable<T>> anyIterableType() {
     return new TypeToken<Iterable<T>>() {};
   }
 }

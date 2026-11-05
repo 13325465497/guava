@@ -18,6 +18,7 @@ package com.google.common.collect;
 
 import static com.google.common.base.Functions.toStringFunction;
 import static com.google.common.collect.Maps.uniqueIndex;
+import static java.util.Arrays.asList;
 
 import com.google.caliper.BeforeExperiment;
 import com.google.caliper.Benchmark;
@@ -28,23 +29,25 @@ import com.google.common.collect.BenchmarkHelpers.MapImpl;
 import com.google.common.collect.BenchmarkHelpers.MapsImplEnum;
 import com.google.common.collect.BenchmarkHelpers.SortedMapImpl;
 import com.google.common.collect.CollectionBenchmarkSampleData.Element;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
+import org.jspecify.annotations.NullUnmarked;
 
 /** Benchmarks for memory consumption of map implementations. */
+@NullUnmarked
 public class MapsMemoryBenchmark {
   static final Map<String, MapsImplEnum> mapEnums =
       uniqueIndex(
-          Iterables.<MapsImplEnum>concat(
-              Arrays.asList(MapImpl.values()),
-              Arrays.asList(SortedMapImpl.values()),
-              Arrays.asList(BiMapImpl.values())),
+          Iterables.concat(
+              asList(MapImpl.values()), asList(SortedMapImpl.values()), asList(BiMapImpl.values())),
           toStringFunction());
 
   @Param({
     "HashMapImpl",
     "LinkedHashMapImpl",
     "ConcurrentHashMapImpl",
+    "CompactHashMapImpl",
+    "CompactLinkedHashMapImpl",
     "ImmutableMapImpl",
     "TreeMapImpl",
     "ImmutableSortedMapImpl",
@@ -75,10 +78,10 @@ public class MapsMemoryBenchmark {
   int elements;
 
   @BeforeExperiment
-  public void prepareContents() throws Exception {
+  public void prepareContents() {
     mapsImpl = mapEnums.get(implName);
     elems = new CollectionBenchmarkSampleData(elements);
-    contents = Maps.newHashMap();
+    contents = new HashMap<>();
     for (Element key : elems.getValuesInSet()) {
       contents.put(key, key);
     }
@@ -87,7 +90,7 @@ public class MapsMemoryBenchmark {
 
   @Benchmark
   @Footprint(exclude = Element.class)
-  public Map<Element, Element> create() throws Exception {
+  public Map<Element, Element> create() {
     return mapsImpl.create(contents);
   }
 

@@ -18,17 +18,22 @@ package com.google.common.util.concurrent;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.util.concurrent.AbstractFuture.TrustedFuture;
+import com.google.common.util.concurrent.SettableAbstractFuture.TrustedAbstractFuture;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link AbstractFuture} that use a {@link TrustedFuture} for {@link
  * AbstractFuture#setFuture} calls.
  */
 @GwtCompatible
-public class TrustedInputFutureTest extends AbstractAbstractFutureTest {
+@NullUnmarked
+public class TrustedInputFutureTest
+    extends AbstractAbstractFutureTest<TrustedAbstractFuture<@Nullable Integer>> {
   @Override
-  AbstractFuture<Integer> newDelegate() {
-    AbstractFuture<Integer> future = new TrustedFuture<Integer>() {};
-    assertTrue(future instanceof TrustedFuture); // sanity check
+  TrustedAbstractFuture<@Nullable Integer> newDelegate() {
+    TrustedAbstractFuture<@Nullable Integer> future = new TrustedAbstractFuture<>();
+    TrustedFuture<@Nullable Integer> unused = future; // sanity check
     return future;
   }
 }

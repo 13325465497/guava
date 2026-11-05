@@ -16,22 +16,26 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.RegularImmutableMap.createHashTableOrThrow;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.annotations.VisibleForTesting;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bimap with zero or more mappings.
  *
  * @author Louis Wasserman
  */
-@GwtCompatible(serializable = true, emulated = true)
+@GwtCompatible
 @SuppressWarnings("serial") // uses writeReplace(), not default serialization
 final class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
   static final RegularImmutableBiMap<Object, Object> EMPTY = new RegularImmutableBiMap<>();
 
-  private final transient Object keyHashTable;
-  @VisibleForTesting final transient Object[] alternatingKeysAndValues;
+  private final transient @Nullable Object keyHashTable;
+  @VisibleForTesting final transient @Nullable Object[] alternatingKeysAndValues;
   private final transient int keyOffset; // 0 for K-to-V, 1 for V-to-K
   private final transient int size;
   private final transient RegularImmutableBiMap<V, K> inverse;
@@ -47,23 +51,21 @@ final class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
   }
 
   /** K-to-V constructor. */
-  RegularImmutableBiMap(Object[] alternatingKeysAndValues, int size) {
+  RegularImmutableBiMap(@Nullable Object[] alternatingKeysAndValues, int size) {
     this.alternatingKeysAndValues = alternatingKeysAndValues;
     this.size = size;
     this.keyOffset = 0;
     int tableSize = (size >= 2) ? ImmutableSet.chooseTableSize(size) : 0;
-    this.keyHashTable =
-        RegularImmutableMap.createHashTable(alternatingKeysAndValues, size, tableSize, 0);
-    Object valueHashTable =
-        RegularImmutableMap.createHashTable(alternatingKeysAndValues, size, tableSize, 1);
+    this.keyHashTable = createHashTableOrThrow(alternatingKeysAndValues, size, tableSize, 0);
+    Object valueHashTable = createHashTableOrThrow(alternatingKeysAndValues, size, tableSize, 1);
     this.inverse =
-        new RegularImmutableBiMap<V, K>(valueHashTable, alternatingKeysAndValues, size, this);
+        new RegularImmutableBiMap<>(valueHashTable, alternatingKeysAndValues, size, this);
   }
 
   /** V-to-K constructor. */
   private RegularImmutableBiMap(
-      Object valueHashTable,
-      Object[] alternatingKeysAndValues,
+      @Nullable Object valueHashTable,
+      @Nullable Object[] alternatingKeysAndValues,
       int size,
       RegularImmutableBiMap<V, K> inverse) {
     this.keyHashTable = valueHashTable;
@@ -85,18 +87,27 @@ final class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
 
   @SuppressWarnings("unchecked")
   @Override
-  public V get(@NullableDecl Object key) {
-    return (V)
+  public @Nullable V get(@Nullable Object key) {
+    Object result =
         RegularImmutableMap.get(keyHashTable, alternatingKeysAndValues, size, keyOffset, key);
+    /*
+     * We can't simply cast the result of `RegularImmutableMap.get` to V because of a bug in our
+     * nullness checker (resulting from https://github.com/jspecify/checker-framework/issues/8).
+     */
+    if (result == null) {
+      return null;
+    } else {
+      return (V) result;
+    }
   }
 
   @Override
-  ImmutableSet<Entry<K, V>> createEntrySet() {
+  public ImmutableSet<Entry<K, V>> entrySet() {
     return new RegularImmutableMap.EntrySet<K, V>(this, alternatingKeysAndValues, keyOffset, size);
   }
 
   @Override
-  ImmutableSet<K> createKeySet() {
+  public ImmutableSet<K> keySet() {
     @SuppressWarnings("unchecked")
     ImmutableList<K> keyList =
         (ImmutableList<K>)
@@ -107,5 +118,14 @@ final class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
   @Override
   boolean isPartialView() {
     return false;
+  }
+
+  // redeclare to help optimizers with b/310253115
+  @SuppressWarnings("RedundantOverride")
+  @Override
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
+    return super.writeReplace();
   }
 }

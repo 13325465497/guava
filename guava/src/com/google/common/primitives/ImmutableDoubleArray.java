@@ -16,24 +16,26 @@ package com.google.common.primitives;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.System.arraycopy;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Preconditions;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.google.errorprone.annotations.CheckReturnValue;
 import com.google.errorprone.annotations.Immutable;
 import java.io.Serializable;
 import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.PrimitiveIterator;
 import java.util.RandomAccess;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.function.DoubleConsumer;
 import java.util.stream.DoubleStream;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable array of {@code double} values, with an API resembling {@link List}.
@@ -85,7 +87,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * @since 22.0
  */
-@Beta
 @GwtCompatible
 @Immutable
 public final class ImmutableDoubleArray implements Serializable {
@@ -141,7 +142,7 @@ public final class ImmutableDoubleArray implements Serializable {
         rest.length <= Integer.MAX_VALUE - 1, "the total number of elements must fit in an int");
     double[] array = new double[rest.length + 1];
     array[0] = first;
-    System.arraycopy(rest, 0, array, 1, rest.length);
+    arraycopy(rest, 0, array, 1, rest.length);
     return new ImmutableDoubleArray(array);
   }
 
@@ -171,7 +172,11 @@ public final class ImmutableDoubleArray implements Serializable {
     return builder().addAll(values).build();
   }
 
-  /** Returns an immutable array containing all the values from {@code stream}, in order. */
+  /**
+   * Returns an immutable array containing all the values from {@code stream}, in order.
+   *
+   * @since 22.0 (but only since 33.4.0 in the Android flavor)
+   */
   public static ImmutableDoubleArray copyOf(DoubleStream stream) {
     // Note this uses very different growth behavior from copyOf(Iterable) and the builder.
     double[] array = stream.toArray();
@@ -209,7 +214,6 @@ public final class ImmutableDoubleArray implements Serializable {
    * A builder for {@link ImmutableDoubleArray} instances; obtained using {@link
    * ImmutableDoubleArray#builder}.
    */
-  @CanIgnoreReturnValue
   public static final class Builder {
     private double[] array;
     private int count = 0; // <= array.length
@@ -222,6 +226,7 @@ public final class ImmutableDoubleArray implements Serializable {
      * Appends {@code value} to the end of the values the built {@link ImmutableDoubleArray} will
      * contain.
      */
+    @CanIgnoreReturnValue
     public Builder add(double value) {
       ensureRoomFor(1);
       array[count] = value;
@@ -233,9 +238,10 @@ public final class ImmutableDoubleArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableDoubleArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(double[] values) {
       ensureRoomFor(values.length);
-      System.arraycopy(values, 0, array, count, values.length);
+      arraycopy(values, 0, array, count, values.length);
       count += values.length;
       return this;
     }
@@ -244,6 +250,7 @@ public final class ImmutableDoubleArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableDoubleArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(Iterable<Double> values) {
       if (values instanceof Collection) {
         return addAll((Collection<Double>) values);
@@ -258,6 +265,7 @@ public final class ImmutableDoubleArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableDoubleArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(Collection<Double> values) {
       ensureRoomFor(values.size());
       for (Double value : values) {
@@ -269,7 +277,10 @@ public final class ImmutableDoubleArray implements Serializable {
     /**
      * Appends all values from {@code stream}, in order, to the end of the values the built {@link
      * ImmutableDoubleArray} will contain.
+     *
+     * @since 22.0 (but only since 33.4.0 in the Android flavor)
      */
+    @CanIgnoreReturnValue
     public Builder addAll(DoubleStream stream) {
       Spliterator.OfDouble spliterator = stream.spliterator();
       long size = spliterator.getExactSizeIfKnown();
@@ -284,9 +295,10 @@ public final class ImmutableDoubleArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableDoubleArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(ImmutableDoubleArray values) {
       ensureRoomFor(values.length());
-      System.arraycopy(values.array, values.start, array, count, values.length());
+      arraycopy(values.array, values.start, array, count, values.length());
       count += values.length();
       return this;
     }
@@ -294,9 +306,7 @@ public final class ImmutableDoubleArray implements Serializable {
     private void ensureRoomFor(int numberToAdd) {
       int newCount = count + numberToAdd; // TODO(kevinb): check overflow now?
       if (newCount > array.length) {
-        double[] newArray = new double[expandedCapacity(array.length, newCount)];
-        System.arraycopy(array, 0, newArray, 0, count);
-        this.array = newArray;
+        array = Arrays.copyOf(array, expandedCapacity(array.length, newCount));
       }
     }
 
@@ -324,7 +334,6 @@ public final class ImmutableDoubleArray implements Serializable {
      * no data is copied as part of this step, but this may occupy more memory than strictly
      * necessary. To copy the data to a right-sized backing array, use {@code .build().trimmed()}.
      */
-    @CheckReturnValue
     public ImmutableDoubleArray build() {
       return count == 0 ? EMPTY : new ImmutableDoubleArray(array, 0, count);
     }
@@ -413,7 +422,11 @@ public final class ImmutableDoubleArray implements Serializable {
     return indexOf(target) >= 0;
   }
 
-  /** Invokes {@code consumer} for each value contained in this array, in order. */
+  /**
+   * Invokes {@code consumer} for each value contained in this array, in order.
+   *
+   * @since 22.0 (but only since 33.4.0 in the Android flavor)
+   */
   public void forEach(DoubleConsumer consumer) {
     checkNotNull(consumer);
     for (int i = start; i < end; i++) {
@@ -421,7 +434,11 @@ public final class ImmutableDoubleArray implements Serializable {
     }
   }
 
-  /** Returns a stream over the values in this array, in order. */
+  /**
+   * Returns a stream over the values in this array, in order.
+   *
+   * @since 22.0 (but only since 33.4.0 in the Android flavor)
+   */
   public DoubleStream stream() {
     return Arrays.stream(array, start, end);
   }
@@ -445,7 +462,11 @@ public final class ImmutableDoubleArray implements Serializable {
         : new ImmutableDoubleArray(array, start + startIndex, start + endIndex);
   }
 
-  private Spliterator.OfDouble spliterator() {
+  /*
+   * We declare this as package-private, rather than private, to avoid generating a synthetic
+   * accessor method (under -target 8) that would lack the Android flavor's @IgnoreJRERequirement.
+   */
+  Spliterator.OfDouble spliterator() {
     return Spliterators.spliterator(array, start, end, Spliterator.IMMUTABLE | Spliterator.ORDERED);
   }
 
@@ -465,7 +486,8 @@ public final class ImmutableDoubleArray implements Serializable {
     return new AsList(this);
   }
 
-  static class AsList extends AbstractList<Double> implements RandomAccess, Serializable {
+  private static final class AsList extends AbstractList<Double>
+      implements RandomAccess, Serializable {
     private final ImmutableDoubleArray parent;
 
     private AsList(ImmutableDoubleArray parent) {
@@ -485,17 +507,17 @@ public final class ImmutableDoubleArray implements Serializable {
     }
 
     @Override
-    public boolean contains(Object target) {
+    public boolean contains(@Nullable Object target) {
       return indexOf(target) >= 0;
     }
 
     @Override
-    public int indexOf(Object target) {
+    public int indexOf(@Nullable Object target) {
       return target instanceof Double ? parent.indexOf((Double) target) : -1;
     }
 
     @Override
-    public int lastIndexOf(Object target) {
+    public int lastIndexOf(@Nullable Object target) {
       return target instanceof Double ? parent.lastIndexOf((Double) target) : -1;
     }
 
@@ -504,10 +526,14 @@ public final class ImmutableDoubleArray implements Serializable {
       return parent.subArray(fromIndex, toIndex).asList();
     }
 
-    // The default List spliterator is not efficiently splittable
     @Override
-    public Spliterator<Double> spliterator() {
+    public Spliterator.OfDouble spliterator() {
       return parent.spliterator();
+    }
+
+    @Override
+    public PrimitiveIterator.OfDouble iterator() {
+      return Spliterators.iterator(spliterator());
     }
 
     @Override
@@ -544,6 +570,8 @@ public final class ImmutableDoubleArray implements Serializable {
     public String toString() {
       return parent.toString();
     }
+
+    @GwtIncompatible @J2ktIncompatible     private static final long serialVersionUID = -4939467387665637038L;
   }
 
   /**
@@ -581,7 +609,7 @@ public final class ImmutableDoubleArray implements Serializable {
     int hash = 1;
     for (int i = start; i < end; i++) {
       hash *= 31;
-      hash += Doubles.hashCode(array[i]);
+      hash += Double.hashCode(array[i]);
     }
     return hash;
   }
@@ -626,4 +654,6 @@ public final class ImmutableDoubleArray implements Serializable {
   Object readResolve() {
     return isEmpty() ? EMPTY : this;
   }
+
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 679347448744984100L;
 }

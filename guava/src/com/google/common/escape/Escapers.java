@@ -16,12 +16,11 @@ package com.google.common.escape;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.HashMap;
 import java.util.Map;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static utility methods pertaining to {@link Escaper} instances.
@@ -30,7 +29,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author David Beaumont
  * @since 15.0
  */
-@Beta
 @GwtCompatible
 public final class Escapers {
   private Escapers() {}
@@ -52,7 +50,7 @@ public final class Escapers {
         }
 
         @Override
-        protected char[] escape(char c) {
+        protected char @Nullable [] escape(char c) {
           // TODO: Fix tests not to call this directly and make it throw an error.
           return null;
         }
@@ -90,12 +88,11 @@ public final class Escapers {
    * @author David Beaumont
    * @since 15.0
    */
-  @Beta
   public static final class Builder {
     private final Map<Character, String> replacementMap = new HashMap<>();
     private char safeMin = Character.MIN_VALUE;
     private char safeMax = Character.MAX_VALUE;
-    private String unsafeReplacement = null;
+    private @Nullable String unsafeReplacement = null;
 
     // The constructor is exposed via the builder() method above.
     private Builder() {}
@@ -151,42 +148,15 @@ public final class Escapers {
     /** Returns a new escaper based on the current state of the builder. */
     public Escaper build() {
       return new ArrayBasedCharEscaper(replacementMap, safeMin, safeMax) {
-        private final char[] replacementChars =
+        final char @Nullable [] replacementChars =
             unsafeReplacement != null ? unsafeReplacement.toCharArray() : null;
 
         @Override
-        protected char[] escapeUnsafe(char c) {
+        protected char @Nullable [] escapeUnsafe(char c) {
           return replacementChars;
         }
       };
     }
-  }
-
-  /**
-   * Returns a {@link UnicodeEscaper} equivalent to the given escaper instance. If the escaper is
-   * already a UnicodeEscaper then it is simply returned, otherwise it is wrapped in a
-   * UnicodeEscaper.
-   *
-   * <p>When a {@link CharEscaper} escaper is wrapped by this method it acquires extra behavior with
-   * respect to the well-formedness of Unicode character sequences and will throw {@link
-   * IllegalArgumentException} when given bad input.
-   *
-   * @param escaper the instance to be wrapped
-   * @return a UnicodeEscaper with the same behavior as the given instance
-   * @throws NullPointerException if escaper is null
-   * @throws IllegalArgumentException if escaper is not a UnicodeEscaper or a CharEscaper
-   */
-  static UnicodeEscaper asUnicodeEscaper(Escaper escaper) {
-    checkNotNull(escaper);
-    if (escaper instanceof UnicodeEscaper) {
-      return (UnicodeEscaper) escaper;
-    } else if (escaper instanceof CharEscaper) {
-      return wrap((CharEscaper) escaper);
-    }
-    // In practice this shouldn't happen because it would be very odd not to
-    // extend either CharEscaper or UnicodeEscaper for non trivial cases.
-    throw new IllegalArgumentException(
-        "Cannot create a UnicodeEscaper from: " + escaper.getClass().getName());
   }
 
   /**
@@ -198,8 +168,8 @@ public final class Escapers {
    * @param c the character to escape if necessary
    * @return the replacement string, or {@code null} if no escaping was needed
    */
-  public static String computeReplacement(CharEscaper escaper, char c) {
-    return stringOrNull(escaper.escape(c));
+  public static @Nullable String computeReplacement(CharEscaper escaper, char c) {
+    return stringOrNull(escaper.escapeInternal(c));
   }
 
   /**
@@ -211,61 +181,11 @@ public final class Escapers {
    * @param cp the Unicode code point to escape if necessary
    * @return the replacement string, or {@code null} if no escaping was needed
    */
-  public static String computeReplacement(UnicodeEscaper escaper, int cp) {
-    return stringOrNull(escaper.escape(cp));
+  public static @Nullable String computeReplacement(UnicodeEscaper escaper, int cp) {
+    return stringOrNull(escaper.escapeInternal(cp));
   }
 
-  private static String stringOrNull(char[] in) {
+  private static @Nullable String stringOrNull(char @Nullable [] in) {
     return (in == null) ? null : new String(in);
-  }
-
-  /** Private helper to wrap a CharEscaper as a UnicodeEscaper. */
-  private static UnicodeEscaper wrap(final CharEscaper escaper) {
-    return new UnicodeEscaper() {
-      @Override
-      protected char[] escape(int cp) {
-        // If a code point maps to a single character, just escape that.
-        if (cp < Character.MIN_SUPPLEMENTARY_CODE_POINT) {
-          return escaper.escape((char) cp);
-        }
-        // Convert the code point to a surrogate pair and escape them both.
-        // Note: This code path is horribly slow and typically allocates 4 new
-        // char[] each time it is invoked. However this avoids any
-        // synchronization issues and makes the escaper thread safe.
-        char[] surrogateChars = new char[2];
-        Character.toChars(cp, surrogateChars, 0);
-        char[] hiChars = escaper.escape(surrogateChars[0]);
-        char[] loChars = escaper.escape(surrogateChars[1]);
-
-        // If either hiChars or lowChars are non-null, the CharEscaper is trying
-        // to escape the characters of a surrogate pair separately. This is
-        // uncommon and applies only to escapers that assume UCS-2 rather than
-        // UTF-16. See: http://en.wikipedia.org/wiki/UTF-16/UCS-2
-        if (hiChars == null && loChars == null) {
-          // We expect this to be the common code path for most escapers.
-          return null;
-        }
-        // Combine the characters and/or escaped sequences into a single array.
-        int hiCount = hiChars != null ? hiChars.length : 1;
-        int loCount = loChars != null ? loChars.length : 1;
-        char[] output = new char[hiCount + loCount];
-        if (hiChars != null) {
-          // TODO: Is this faster than System.arraycopy() for small arrays?
-          for (int n = 0; n < hiChars.length; ++n) {
-            output[n] = hiChars[n];
-          }
-        } else {
-          output[0] = surrogateChars[0];
-        }
-        if (loChars != null) {
-          for (int n = 0; n < loChars.length; ++n) {
-            output[hiCount + n] = loChars[n];
-          }
-        } else {
-          output[hiCount] = surrogateChars[1];
-        }
-        return output;
-      }
-    };
   }
 }

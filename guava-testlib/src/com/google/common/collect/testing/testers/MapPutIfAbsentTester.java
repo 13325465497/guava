@@ -20,13 +20,14 @@ import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_PUT;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.AbstractMapTester;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import java.util.Map;
-import org.junit.Ignore;
+import java.util.Map.Entry;
 
 /**
  * A generic JUnit test which tests {@link Map#putIfAbsent}. Can't be invoked directly; please see
@@ -35,7 +36,6 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MapPutIfAbsentTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(SUPPORTS_PUT)
@@ -57,11 +57,7 @@ public class MapPutIfAbsentTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(absent = SUPPORTS_PUT)
   public void testPutIfAbsent_unsupportedAbsent() {
-    try {
-      getMap().putIfAbsent(k3(), v3());
-      fail("putIfAbsent(notPresent, value) should throw");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> getMap().putIfAbsent(k3(), v3()));
     expectUnchanged();
     expectMissing(e3());
   }
@@ -91,31 +87,23 @@ public class MapPutIfAbsentTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_KEYS)
   public void testPutIfAbsent_nullKeyUnsupported() {
-    try {
-      getMap().putIfAbsent(null, v3());
-      fail("putIfAbsent(null, value) should throw");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> getMap().putIfAbsent(null, v3()));
     expectUnchanged();
     expectNullKeyMissingWhenNullKeysUnsupported(
         "Should not contain null key after unsupported putIfAbsent(null, value)");
   }
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_VALUES)
-  public void testPutIfAbsent_nullValueUnsupported() {
-    try {
-      getMap().putIfAbsent(k3(), null);
-      fail("putIfAbsent(key, null) should throw");
-    } catch (NullPointerException expected) {
-    }
+  public void testPutIfAbsent_nullValueUnsupportedAndKeyAbsent() {
+    assertThrows(NullPointerException.class, () -> getMap().putIfAbsent(k3(), null));
     expectUnchanged();
     expectNullValueMissingWhenNullValuesUnsupported(
-        "Should not contain null value after unsupported put(key, null)");
+        "Should not contain null value after unsupported putIfAbsent(key, null)");
   }
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_VALUES)
   @CollectionSize.Require(absent = ZERO)
-  public void testPutIfAbsent_putWithNullValueUnsupported() {
+  public void testPutIfAbsent_nullValueUnsupportedAndKeyPresent() {
     try {
       getMap().putIfAbsent(k0(), null);
     } catch (NullPointerException tolerated) {
@@ -123,5 +111,26 @@ public class MapPutIfAbsentTester<K, V> extends AbstractMapTester<K, V> {
     expectUnchanged();
     expectNullValueMissingWhenNullValuesUnsupported(
         "Should not contain null after unsupported putIfAbsent(present, null)");
+  }
+
+  @MapFeature.Require({SUPPORTS_PUT, ALLOWS_NULL_VALUES})
+  public void testPut_nullValueSupported() {
+    Entry<K, V> nullValueEntry = entry(k3(), null);
+    assertNull(
+        "putIfAbsent(key, null) should return null",
+        getMap().putIfAbsent(nullValueEntry.getKey(), nullValueEntry.getValue()));
+    expectAdded(nullValueEntry);
+  }
+
+  @MapFeature.Require({SUPPORTS_PUT, ALLOWS_NULL_VALUES})
+  @CollectionSize.Require(absent = ZERO)
+  public void testPutIfAbsent_replacesNullValue() {
+    initMapWithNullValue();
+
+    // putIfAbsent should replace the null value with the new value
+    assertNull(
+        "putIfAbsent(existingKeyWithNullValue, value) should return null",
+        getMap().putIfAbsent(getKeyForNullValue(), v3()));
+    assertEquals("Map should now contain the new value", v3(), getMap().get(getKeyForNullValue()));
   }
 }

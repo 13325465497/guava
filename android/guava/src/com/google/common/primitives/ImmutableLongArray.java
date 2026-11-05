@@ -15,12 +15,14 @@
 package com.google.common.primitives;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.System.arraycopy;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Preconditions;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.google.errorprone.annotations.CheckReturnValue;
 import com.google.errorprone.annotations.Immutable;
 import java.io.Serializable;
 import java.util.AbstractList;
@@ -28,7 +30,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.RandomAccess;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.function.LongConsumer;
+import java.util.stream.LongStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An immutable array of {@code long} values, with an API resembling {@link List}.
@@ -44,6 +50,7 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  *       hunt through classes like {@link Arrays} and {@link Longs} for them.
  *   <li>Supports a copy-free {@link #subArray} view, so methods that accept this type don't need to
  *       add overloads that accept start and end indexes.
+ *   <li>Can be streamed without "breaking the chain": {@code foo.getBarLongs().stream()...}.
  *   <li>Access to all collection-based utilities via {@link #asList} (though at the cost of
  *       allocating garbage).
  * </ul>
@@ -65,6 +72,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * <ul>
  *   <li>Improved memory compactness and locality.
  *   <li>Can be queried without allocating garbage.
+ *   <li>Access to {@code LongStream} features (like {@link LongStream#sum}) using {@code stream()}
+ *       instead of the awkward {@code stream().mapToLong(v -> v)}.
  * </ul>
  *
  * <p>Disadvantages compared to {@code ImmutableList<Long>}:
@@ -77,7 +86,6 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  *
  * @since 22.0
  */
-@Beta
 @GwtCompatible
 @Immutable
 public final class ImmutableLongArray implements Serializable {
@@ -132,7 +140,7 @@ public final class ImmutableLongArray implements Serializable {
         rest.length <= Integer.MAX_VALUE - 1, "the total number of elements must fit in an int");
     long[] array = new long[rest.length + 1];
     array[0] = first;
-    System.arraycopy(rest, 0, array, 1, rest.length);
+    arraycopy(rest, 0, array, 1, rest.length);
     return new ImmutableLongArray(array);
   }
 
@@ -160,6 +168,18 @@ public final class ImmutableLongArray implements Serializable {
       return copyOf((Collection<Long>) values);
     }
     return builder().addAll(values).build();
+  }
+
+  /**
+   * Returns an immutable array containing all the values from {@code stream}, in order.
+   *
+   * @since 33.4.0 (but since 22.0 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using streams.
+  public static ImmutableLongArray copyOf(LongStream stream) {
+    // Note this uses very different growth behavior from copyOf(Iterable) and the builder.
+    long[] array = stream.toArray();
+    return (array.length == 0) ? EMPTY : new ImmutableLongArray(array);
   }
 
   /**
@@ -193,7 +213,6 @@ public final class ImmutableLongArray implements Serializable {
    * A builder for {@link ImmutableLongArray} instances; obtained using {@link
    * ImmutableLongArray#builder}.
    */
-  @CanIgnoreReturnValue
   public static final class Builder {
     private long[] array;
     private int count = 0; // <= array.length
@@ -206,6 +225,7 @@ public final class ImmutableLongArray implements Serializable {
      * Appends {@code value} to the end of the values the built {@link ImmutableLongArray} will
      * contain.
      */
+    @CanIgnoreReturnValue
     public Builder add(long value) {
       ensureRoomFor(1);
       array[count] = value;
@@ -217,9 +237,10 @@ public final class ImmutableLongArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableLongArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(long[] values) {
       ensureRoomFor(values.length);
-      System.arraycopy(values, 0, array, count, values.length);
+      arraycopy(values, 0, array, count, values.length);
       count += values.length;
       return this;
     }
@@ -228,6 +249,7 @@ public final class ImmutableLongArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableLongArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(Iterable<Long> values) {
       if (values instanceof Collection) {
         return addAll((Collection<Long>) values);
@@ -242,6 +264,7 @@ public final class ImmutableLongArray implements Serializable {
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableLongArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(Collection<Long> values) {
       ensureRoomFor(values.size());
       for (Long value : values) {
@@ -251,12 +274,31 @@ public final class ImmutableLongArray implements Serializable {
     }
 
     /**
+     * Appends all values from {@code stream}, in order, to the end of the values the built {@link
+     * ImmutableLongArray} will contain.
+     *
+     * @since 33.4.0 (but since 22.0 in the JRE flavor)
+     */
+    @IgnoreJRERequirement // Users will use this only if they're already using streams.
+    @CanIgnoreReturnValue
+    public Builder addAll(LongStream stream) {
+      Spliterator.OfLong spliterator = stream.spliterator();
+      long size = spliterator.getExactSizeIfKnown();
+      if (size > 0) { // known *and* nonempty
+        ensureRoomFor(Ints.saturatedCast(size));
+      }
+      spliterator.forEachRemaining((LongConsumer) this::add);
+      return this;
+    }
+
+    /**
      * Appends {@code values}, in order, to the end of the values the built {@link
      * ImmutableLongArray} will contain.
      */
+    @CanIgnoreReturnValue
     public Builder addAll(ImmutableLongArray values) {
       ensureRoomFor(values.length());
-      System.arraycopy(values.array, values.start, array, count, values.length());
+      arraycopy(values.array, values.start, array, count, values.length());
       count += values.length();
       return this;
     }
@@ -264,9 +306,7 @@ public final class ImmutableLongArray implements Serializable {
     private void ensureRoomFor(int numberToAdd) {
       int newCount = count + numberToAdd; // TODO(kevinb): check overflow now?
       if (newCount > array.length) {
-        long[] newArray = new long[expandedCapacity(array.length, newCount)];
-        System.arraycopy(array, 0, newArray, 0, count);
-        this.array = newArray;
+        array = Arrays.copyOf(array, expandedCapacity(array.length, newCount));
       }
     }
 
@@ -294,7 +334,6 @@ public final class ImmutableLongArray implements Serializable {
      * no data is copied as part of this step, but this may occupy more memory than strictly
      * necessary. To copy the data to a right-sized backing array, use {@code .build().trimmed()}.
      */
-    @CheckReturnValue
     public ImmutableLongArray build() {
       return count == 0 ? EMPTY : new ImmutableLongArray(array, 0, count);
     }
@@ -381,6 +420,30 @@ public final class ImmutableLongArray implements Serializable {
     return indexOf(target) >= 0;
   }
 
+  /**
+   * Invokes {@code consumer} for each value contained in this array, in order.
+   *
+   * @since 33.4.0 (but since 22.0 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // We rely on users not to call this without library desugaring.
+  public void forEach(LongConsumer consumer) {
+    checkNotNull(consumer);
+    for (int i = start; i < end; i++) {
+      consumer.accept(array[i]);
+    }
+  }
+
+  /**
+   * Returns a stream over the values in this array, in order.
+   *
+   * @since 33.4.0 (but since 22.0 in the JRE flavor)
+   */
+  // If users use this when they shouldn't, we hope that NewApi will catch subsequent stream calls
+  @IgnoreJRERequirement
+  public LongStream stream() {
+    return Arrays.stream(array, start, end);
+  }
+
   /** Returns a new, mutable copy of this array's values, as a primitive {@code long[]}. */
   public long[] toArray() {
     return Arrays.copyOfRange(array, start, end);
@@ -400,6 +463,15 @@ public final class ImmutableLongArray implements Serializable {
         : new ImmutableLongArray(array, start + startIndex, start + endIndex);
   }
 
+  @IgnoreJRERequirement // used only from APIs that use streams
+  /*
+   * We declare this as package-private, rather than private, to avoid generating a synthetic
+   * accessor method (under -target 8) that would lack the Android flavor's @IgnoreJRERequirement.
+   */
+  Spliterator.OfLong spliterator() {
+    return Spliterators.spliterator(array, start, end, Spliterator.IMMUTABLE | Spliterator.ORDERED);
+  }
+
   /**
    * Returns an immutable <i>view</i> of this array's values as a {@code List}; note that {@code
    * long} values are boxed into {@link Long} instances on demand, which can be very expensive. The
@@ -416,14 +488,15 @@ public final class ImmutableLongArray implements Serializable {
     return new AsList(this);
   }
 
-  static class AsList extends AbstractList<Long> implements RandomAccess, Serializable {
+  private static final class AsList extends AbstractList<Long>
+      implements RandomAccess, Serializable {
     private final ImmutableLongArray parent;
 
     private AsList(ImmutableLongArray parent) {
       this.parent = parent;
     }
 
-    // inherit: isEmpty, containsAll, toArray x2, iterator, listIterator, mutations
+    // inherit: isEmpty, containsAll, toArray x2, iterator, listIterator, stream, forEach, mutations
 
     @Override
     public int size() {
@@ -436,17 +509,17 @@ public final class ImmutableLongArray implements Serializable {
     }
 
     @Override
-    public boolean contains(Object target) {
+    public boolean contains(@Nullable Object target) {
       return indexOf(target) >= 0;
     }
 
     @Override
-    public int indexOf(Object target) {
+    public int indexOf(@Nullable Object target) {
       return target instanceof Long ? parent.indexOf((Long) target) : -1;
     }
 
     @Override
-    public int lastIndexOf(Object target) {
+    public int lastIndexOf(@Nullable Object target) {
       return target instanceof Long ? parent.lastIndexOf((Long) target) : -1;
     }
 
@@ -455,8 +528,18 @@ public final class ImmutableLongArray implements Serializable {
       return parent.subArray(fromIndex, toIndex).asList();
     }
 
+    /*
+     * This is an override that is not directly visible to callers, so NewApi will catch calls to
+     * Collection.spliterator() where necessary.
+     */
+    @IgnoreJRERequirement
     @Override
-    public boolean equals(@NullableDecl Object object) {
+    public Spliterator.OfLong spliterator() {
+      return parent.spliterator();
+    }
+
+    @Override
+    public boolean equals(@Nullable Object object) {
       if (object instanceof AsList) {
         AsList that = (AsList) object;
         return this.parent.equals(that.parent);
@@ -489,6 +572,8 @@ public final class ImmutableLongArray implements Serializable {
     public String toString() {
       return parent.toString();
     }
+
+    @GwtIncompatible @J2ktIncompatible     private static final long serialVersionUID = 3355900623165613301L;
   }
 
   /**
@@ -496,7 +581,7 @@ public final class ImmutableLongArray implements Serializable {
    * values as this one, in the same order.
    */
   @Override
-  public boolean equals(@NullableDecl Object object) {
+  public boolean equals(@Nullable Object object) {
     if (object == this) {
       return true;
     }
@@ -521,7 +606,7 @@ public final class ImmutableLongArray implements Serializable {
     int hash = 1;
     for (int i = start; i < end; i++) {
       hash *= 31;
-      hash += Longs.hashCode(array[i]);
+      hash += Long.hashCode(array[i]);
     }
     return hash;
   }
@@ -566,4 +651,6 @@ public final class ImmutableLongArray implements Serializable {
   Object readResolve() {
     return isEmpty() ? EMPTY : this;
   }
+
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 6402900342693743567L;
 }

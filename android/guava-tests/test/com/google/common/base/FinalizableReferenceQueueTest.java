@@ -16,39 +16,57 @@
 
 package com.google.common.base;
 
+import static com.google.common.collect.Sets.newConcurrentHashSet;
+import static com.google.common.truth.Truth.assertThat;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.internal.Finalizer;
 import com.google.common.testing.GcFinalization;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.lang.ref.Cleaner;
+import java.lang.ref.Cleaner.Cleanable;
+import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.Arrays;
-import java.util.Collections;
-import junit.framework.TestCase;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
+import org.junit.After;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 /**
  * Unit test for {@link FinalizableReferenceQueue}.
  *
  * @author Bob Lee
  */
-public class FinalizableReferenceQueueTest extends TestCase {
+@J2ktIncompatible
+@GwtIncompatible
+@RunWith(JUnit4.class)
+@NullUnmarked
+public class FinalizableReferenceQueueTest {
 
-  private FinalizableReferenceQueue frq;
+  private @Nullable FinalizableReferenceQueue frq;
 
-  @Override
-  protected void tearDown() throws Exception {
+  @After
+  public void tearDown() {
     frq = null;
   }
 
+  @Test
   public void testFinalizeReferentCalled() {
-    final MockReference reference = new MockReference(frq = new FinalizableReferenceQueue());
+    frq = new FinalizableReferenceQueue();
+    MockReference reference = new MockReference(frq);
 
-    GcFinalization.awaitDone(
-        new GcFinalization.FinalizationPredicate() {
-          public boolean isDone() {
-            return reference.finalizeReferentCalled;
-          }
-        });
+    GcFinalization.awaitDone(() -> reference.finalizeReferentCalled);
   }
 
   static class MockReference extends FinalizableWeakReference<Object> {
@@ -71,13 +89,14 @@ public class FinalizableReferenceQueueTest extends TestCase {
    */
   private WeakReference<ReferenceQueue<Object>> queueReference;
 
+  @Test
   public void testThatFinalizerStops() {
     weaklyReferenceQueue();
     GcFinalization.awaitClear(queueReference);
   }
 
   /** If we don't keep a strong reference to the reference object, it won't be enqueued. */
-  FinalizableWeakReference<Object> reference;
+  @Nullable FinalizableWeakReference<Object> reference;
 
   /** Create the FRQ in a method that goes out of scope so that we're sure it will be reclaimed. */
   private void weaklyReferenceQueue() {
@@ -99,7 +118,8 @@ public class FinalizableReferenceQueueTest extends TestCase {
         };
   }
 
-  @AndroidIncompatible // no concept of separate ClassLoaders
+  @AndroidIncompatible
+  @Test
   public void testDecoupledLoader() {
     FinalizableReferenceQueue.DecoupledLoader decoupledLoader =
         new FinalizableReferenceQueue.DecoupledLoader() {
@@ -111,10 +131,10 @@ public class FinalizableReferenceQueueTest extends TestCase {
 
     Class<?> finalizerCopy = decoupledLoader.loadFinalizer();
 
-    assertNotNull(finalizerCopy);
-    assertNotSame(Finalizer.class, finalizerCopy);
+    assertThat(finalizerCopy).isNotNull();
+    assertThat(finalizerCopy).isNotEqualTo(Finalizer.class);
 
-    assertNotNull(FinalizableReferenceQueue.getStartFinalizer(finalizerCopy));
+    assertThat(FinalizableReferenceQueue.getStartFinalizer(finalizerCopy)).isNotNull();
   }
 
   static class DecoupledClassLoader extends URLClassLoader {
@@ -139,14 +159,122 @@ public class FinalizableReferenceQueueTest extends TestCase {
     }
   }
 
-  @AndroidIncompatible // TODO(cpovirk): How significant is this failure?
+  @AndroidIncompatible
+  @Test
   public void testGetFinalizerUrl() {
-    assertNotNull(getClass().getResource("internal/Finalizer.class"));
+    assertThat(getClass().getResource("internal/Finalizer.class")).isNotNull();
   }
 
-  public void testFinalizeClassHasNoNestedClasses() throws Exception {
+  @Test
+  public void testFinalizeClassHasNoNestedClasses() {
     // Ensure that the Finalizer class has no nested classes.
-    // See https://code.google.com/p/guava-libraries/issues/detail?id=1505
-    assertEquals(Collections.emptyList(), Arrays.asList(Finalizer.class.getDeclaredClasses()));
+    // See https://github.com/google/guava/issues/1505
+    assertThat(Finalizer.class.getDeclaredClasses()).isEmpty();
+  }
+
+  static class MyServerExampleWithFrq implements Closeable {
+    private static final FinalizableReferenceQueue frq = new FinalizableReferenceQueue();
+
+    private static final Set<Reference<?>> references = newConcurrentHashSet();
+
+    private final ServerSocket serverSocket;
+
+    private MyServerExampleWithFrq() throws IOException {
+      this.serverSocket = new ServerSocket(0);
+    }
+
+    static MyServerExampleWithFrq create(AtomicBoolean finalizeReferentRan) throws IOException {
+      MyServerExampleWithFrq myServer = new MyServerExampleWithFrq();
+      ServerSocket serverSocket = myServer.serverSocket;
+      Reference<?> reference =
+          new FinalizablePhantomReference<MyServerExampleWithFrq>(myServer, frq) {
+            @Override
+            public void finalizeReferent() {
+              references.remove(this);
+              if (!serverSocket.isClosed()) {
+                try {
+                  serverSocket.close();
+                  finalizeReferentRan.set(true);
+                } catch (IOException e) {
+                  throw new UncheckedIOException(e);
+                }
+              }
+            }
+          };
+      references.add(reference);
+      return myServer;
+    }
+
+    @Override
+    public void close() throws IOException {
+      serverSocket.close();
+    }
+  }
+
+  private static ServerSocket makeMyServerExampleWithFrq(AtomicBoolean finalizeReferentRan)
+      throws IOException {
+    MyServerExampleWithFrq myServer = MyServerExampleWithFrq.create(finalizeReferentRan);
+    assertThat(myServer.serverSocket.isClosed()).isFalse();
+    return myServer.serverSocket;
+  }
+
+  @Test
+  public void testMyServerExampleWithFrq() throws Exception {
+    AtomicBoolean finalizeReferentRan = new AtomicBoolean(false);
+    ServerSocket serverSocket = makeMyServerExampleWithFrq(finalizeReferentRan);
+    GcFinalization.awaitDone(finalizeReferentRan::get);
+    assertThat(serverSocket.isClosed()).isTrue();
+  }
+
+  @SuppressWarnings("Java8ApiChecker")
+  static class MyServerExampleWithCleaner implements AutoCloseable {
+    private static final Cleaner cleaner = Cleaner.create();
+
+    private static Runnable closeServerSocketRunnable(
+        ServerSocket serverSocket, AtomicBoolean cleanerRan) {
+      return () -> {
+        try {
+          serverSocket.close();
+          cleanerRan.set(true);
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      };
+    }
+
+    private final ServerSocket serverSocket;
+    private final Cleanable cleanable;
+
+    MyServerExampleWithCleaner(AtomicBoolean cleanerRan) throws IOException {
+      this.serverSocket = new ServerSocket(0);
+      this.cleanable = cleaner.register(this, closeServerSocketRunnable(serverSocket, cleanerRan));
+    }
+
+    @Override
+    public void close() {
+      cleanable.clean();
+    }
+  }
+
+  @SuppressWarnings("Java8ApiChecker")
+  private static ServerSocket makeMyServerExampleWithCleaner(AtomicBoolean cleanerRan)
+      throws IOException {
+    MyServerExampleWithCleaner myServer = new MyServerExampleWithCleaner(cleanerRan);
+    assertThat(myServer.serverSocket.isClosed()).isFalse();
+    return myServer.serverSocket;
+  }
+
+  @SuppressWarnings("Java8ApiChecker")
+  @Test
+  public void testMyServerExampleWithCleaner() throws Exception {
+    try {
+      Class.forName("java.lang.ref.Cleaner");
+    } catch (ClassNotFoundException beforeJava9) {
+      return;
+    }
+    AtomicBoolean cleanerRan = new AtomicBoolean(false);
+    ServerSocket serverSocket = makeMyServerExampleWithCleaner(cleanerRan);
+    GcFinalization.awaitDone(cleanerRan::get);
+    assertThat(serverSocket.isClosed()).isTrue();
   }
 }

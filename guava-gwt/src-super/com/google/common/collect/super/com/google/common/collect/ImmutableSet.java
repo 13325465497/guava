@@ -18,7 +18,8 @@ package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import com.google.common.annotations.Beta;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.concurrent.LazyInit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -26,6 +27,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collector;
+import jsinterop.annotations.JsMethod;
+import org.jspecify.annotations.Nullable;
 
 /**
  * GWT emulated version of {@link com.google.common.collect.ImmutableSet}. For the unsorted sets,
@@ -41,7 +44,6 @@ import java.util.stream.Collector;
 public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements Set<E> {
   ImmutableSet() {}
 
-  @Beta
   public static <E> Collector<E, ?, ImmutableSet<E>> toImmutableSet() {
     return CollectCollectors.toImmutableSet();
   }
@@ -52,8 +54,8 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
     return (ImmutableSet<E>) RegularImmutableSet.EMPTY;
   }
 
-  public static <E> ImmutableSet<E> of(E element) {
-    return new SingletonImmutableSet<E>(element);
+  public static <E> ImmutableSet<E> of(E e1) {
+    return new SingletonImmutableSet<E>(e1);
   }
 
   @SuppressWarnings("unchecked")
@@ -85,6 +87,13 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
     return copyOf(all.iterator());
   }
 
+  /** ImmutableSet.of API that is friendly to use from JavaScript. */
+  @JsMethod(name = "of")
+  static <E> ImmutableSet<E> jsOf(E... elements) {
+    return copyOf(elements);
+  }
+
+  @JsMethod
   public static <E> ImmutableSet<E> copyOf(E[] elements) {
     checkNotNull(elements);
     switch (elements.length) {
@@ -117,8 +126,7 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
     }
     E first = elements.next();
     if (!elements.hasNext()) {
-      // TODO: Remove "ImmutableSet.<E>" when eclipse bug is fixed.
-      return ImmutableSet.<E>of(first);
+      return of(first);
     }
 
     Set<E> delegate = Sets.newLinkedHashSet();
@@ -162,7 +170,7 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
   }
 
   @Override
-  public boolean equals(Object obj) {
+  public boolean equals(@Nullable Object obj) {
     return Sets.equalsImpl(this, obj);
   }
 
@@ -176,27 +184,22 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
   @Override
   public abstract UnmodifiableIterator<E> iterator();
 
-  abstract static class Indexed<E> extends ImmutableSet<E> {
-    abstract E get(int index);
+  abstract static class CachingAsList<E> extends ImmutableSet<E> {
+    @LazyInit private transient ImmutableList<E> asList;
 
     @Override
-    public UnmodifiableIterator<E> iterator() {
-      return asList().iterator();
+    public ImmutableList<E> asList() {
+      ImmutableList<E> result = asList;
+      if (result == null) {
+        return asList = createAsList();
+      } else {
+        return result;
+      }
     }
 
     @Override
     ImmutableList<E> createAsList() {
-      return new ImmutableAsList<E>() {
-        @Override
-        public E get(int index) {
-          return Indexed.this.get(index);
-        }
-
-        @Override
-        Indexed<E> delegateCollection() {
-          return Indexed.this;
-        }
-      };
+      return new RegularImmutableAsList<E>(this, toArray());
     }
   }
 
@@ -220,12 +223,14 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
       this.contents = Lists.newArrayListWithCapacity(initialCapacity);
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> add(E element) {
       contents.add(checkNotNull(element));
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> add(E... elements) {
       checkNotNull(elements); // for GWT
@@ -234,6 +239,7 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> addAll(Iterable<? extends E> elements) {
       if (elements instanceof Collection) {
@@ -244,12 +250,14 @@ public abstract class ImmutableSet<E> extends ImmutableCollection<E> implements 
       return this;
     }
 
+    @CanIgnoreReturnValue
     @Override
     public Builder<E> addAll(Iterator<? extends E> elements) {
       super.addAll(elements);
       return this;
     }
 
+    @CanIgnoreReturnValue
     Builder<E> combine(Builder<E> builder) {
       contents.addAll(builder.contents);
       return this;

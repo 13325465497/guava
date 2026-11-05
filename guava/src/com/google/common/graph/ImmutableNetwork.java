@@ -17,13 +17,13 @@
 package com.google.common.graph;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Maps.asMap;
 
-import com.google.common.annotations.Beta;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
+import com.google.errorprone.annotations.InlineMe;
 import java.util.Map;
 
 /**
@@ -43,10 +43,9 @@ import java.util.Map;
  * @param <E> Edge parameter type
  * @since 20.0
  */
-@Beta
 @Immutable(containerOf = {"N", "E"})
-@SuppressWarnings("Immutable") // Extends ConfigurableNetwork but uses ImmutableMaps.
-public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
+@SuppressWarnings("Immutable") // Extends StandardNetwork but uses ImmutableMaps.
+public final class ImmutableNetwork<N, E> extends StandardNetwork<N, E> {
 
   private ImmutableNetwork(Network<N, E> network) {
     super(
@@ -65,6 +64,9 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
    *
    * @deprecated no need to use this
    */
+  @InlineMe(
+      replacement = "checkNotNull(network)",
+      staticImports = "com.google.common.base.Preconditions.checkNotNull")
   @Deprecated
   public static <N, E> ImmutableNetwork<N, E> copyOf(ImmutableNetwork<N, E> network) {
     return checkNotNull(network);
@@ -72,7 +74,7 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
 
   @Override
   public ImmutableGraph<N> asGraph() {
-    return new ImmutableGraph<N>(super.asGraph()); // safe because the view is effectively immutable
+    return new ImmutableGraph<>(super.asGraph()); // safe because the view is effectively immutable
   }
 
   private static <N, E> Map<N, NetworkConnections<N, E>> getNodeConnections(Network<N, E> network) {
@@ -83,7 +85,7 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
     for (N node : network.nodes()) {
       nodeConnections.put(node, connectionsOf(network, node));
     }
-    return nodeConnections.build();
+    return nodeConnections.buildOrThrow();
   }
 
   private static <N, E> Map<E, N> getEdgeToReferenceNode(Network<N, E> network) {
@@ -94,58 +96,42 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
     for (E edge : network.edges()) {
       edgeToReferenceNode.put(edge, network.incidentNodes(edge).nodeU());
     }
-    return edgeToReferenceNode.build();
+    return edgeToReferenceNode.buildOrThrow();
   }
 
   private static <N, E> NetworkConnections<N, E> connectionsOf(Network<N, E> network, N node) {
     if (network.isDirected()) {
-      Map<E, N> inEdgeMap = Maps.asMap(network.inEdges(node), sourceNodeFn(network));
-      Map<E, N> outEdgeMap = Maps.asMap(network.outEdges(node), targetNodeFn(network));
+      Map<E, N> inEdgeMap = asMap(network.inEdges(node), sourceNodeFn(network));
+      Map<E, N> outEdgeMap = asMap(network.outEdges(node), targetNodeFn(network));
       int selfLoopCount = network.edgesConnecting(node, node).size();
       return network.allowsParallelEdges()
           ? DirectedMultiNetworkConnections.ofImmutable(inEdgeMap, outEdgeMap, selfLoopCount)
           : DirectedNetworkConnections.ofImmutable(inEdgeMap, outEdgeMap, selfLoopCount);
     } else {
-      Map<E, N> incidentEdgeMap =
-          Maps.asMap(network.incidentEdges(node), adjacentNodeFn(network, node));
+      Map<E, N> incidentEdgeMap = asMap(network.incidentEdges(node), adjacentNodeFn(network, node));
       return network.allowsParallelEdges()
           ? UndirectedMultiNetworkConnections.ofImmutable(incidentEdgeMap)
           : UndirectedNetworkConnections.ofImmutable(incidentEdgeMap);
     }
   }
 
-  private static <N, E> Function<E, N> sourceNodeFn(final Network<N, E> network) {
-    return new Function<E, N>() {
-      @Override
-      public N apply(E edge) {
-        return network.incidentNodes(edge).source();
-      }
-    };
+  private static <N, E> Function<E, N> sourceNodeFn(Network<N, E> network) {
+    return (E edge) -> network.incidentNodes(edge).source();
   }
 
-  private static <N, E> Function<E, N> targetNodeFn(final Network<N, E> network) {
-    return new Function<E, N>() {
-      @Override
-      public N apply(E edge) {
-        return network.incidentNodes(edge).target();
-      }
-    };
+  private static <N, E> Function<E, N> targetNodeFn(Network<N, E> network) {
+    return (E edge) -> network.incidentNodes(edge).target();
   }
 
-  private static <N, E> Function<E, N> adjacentNodeFn(final Network<N, E> network, final N node) {
-    return new Function<E, N>() {
-      @Override
-      public N apply(E edge) {
-        return network.incidentNodes(edge).adjacentNode(node);
-      }
-    };
+  private static <N, E> Function<E, N> adjacentNodeFn(Network<N, E> network, N node) {
+    return (E edge) -> network.incidentNodes(edge).adjacentNode(node);
   }
 
   /**
    * A builder for creating {@link ImmutableNetwork} instances, especially {@code static final}
    * networks. Example:
    *
-   * <pre>{@code
+   * {@snippet :
    * static final ImmutableNetwork<City, Train> TRAIN_NETWORK =
    *     NetworkBuilder.undirected()
    *         .allowsParallelEdges(true)
@@ -156,7 +142,7 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
    *         .addEdge(LONDON, BRUSSELS, Eurostar.trainNumber("4444"))
    *         .addNode(REYKJAVIK)
    *         .build();
-   * }</pre>
+   * }
    *
    * <p>Builder instances can be reused; it is safe to call {@link #build} multiple times to build
    * multiple networks in series. Each new network contains all the elements of the ones created
@@ -164,7 +150,7 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
    *
    * @since 28.0
    */
-  public static class Builder<N, E> {
+  public static final class Builder<N, E> {
 
     private final MutableNetwork<N, E> mutableNetwork;
 
@@ -248,7 +234,7 @@ public final class ImmutableNetwork<N, E> extends ConfigurableNetwork<N, E> {
      * Builder}.
      */
     public ImmutableNetwork<N, E> build() {
-      return ImmutableNetwork.copyOf(mutableNetwork);
+      return copyOf(mutableNetwork);
     }
   }
 }

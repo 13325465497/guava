@@ -16,38 +16,46 @@
 
 package com.google.common.primitives;
 
-import com.google.common.collect.ImmutableSet;
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
+import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import java.util.Set;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Primitives}.
  *
  * @author Kevin Bourrillion
  */
+@GwtCompatible
+@NullUnmarked
 public class PrimitivesTest extends TestCase {
   public void testIsWrapperType() {
-    assertTrue(Primitives.isWrapperType(Void.class));
-    assertFalse(Primitives.isWrapperType(void.class));
+    assertThat(Primitives.isWrapperType(Void.class)).isTrue();
+    assertThat(Primitives.isWrapperType(void.class)).isFalse();
   }
 
   public void testWrap() {
-    assertSame(Integer.class, Primitives.wrap(int.class));
-    assertSame(Integer.class, Primitives.wrap(Integer.class));
-    assertSame(String.class, Primitives.wrap(String.class));
+    assertThat(Primitives.wrap(int.class)).isEqualTo(Integer.class);
+    assertThat(Primitives.wrap(Integer.class)).isEqualTo(Integer.class);
+    assertThat(Primitives.wrap(String.class)).isEqualTo(String.class);
   }
 
   public void testUnwrap() {
-    assertSame(int.class, Primitives.unwrap(Integer.class));
-    assertSame(int.class, Primitives.unwrap(int.class));
-    assertSame(String.class, Primitives.unwrap(String.class));
+    assertThat(Primitives.unwrap(Integer.class)).isEqualTo(int.class);
+    assertThat(Primitives.unwrap(int.class)).isEqualTo(int.class);
+    assertThat(Primitives.unwrap(String.class)).isEqualTo(String.class);
   }
 
   public void testAllPrimitiveTypes() {
     Set<Class<?>> primitives = Primitives.allPrimitiveTypes();
-    assertEquals(
-        ImmutableSet.<Object>of(
+    assertThat(primitives)
+        .containsExactly(
             boolean.class,
             byte.class,
             char.class,
@@ -56,20 +64,15 @@ public class PrimitivesTest extends TestCase {
             int.class,
             long.class,
             short.class,
-            void.class),
-        primitives);
+            void.class);
 
-    try {
-      primitives.remove(boolean.class);
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> primitives.remove(boolean.class));
   }
 
   public void testAllWrapperTypes() {
     Set<Class<?>> wrappers = Primitives.allWrapperTypes();
-    assertEquals(
-        ImmutableSet.<Object>of(
+    assertThat(wrappers)
+        .containsExactly(
             Boolean.class,
             Byte.class,
             Character.class,
@@ -78,16 +81,13 @@ public class PrimitivesTest extends TestCase {
             Integer.class,
             Long.class,
             Short.class,
-            Void.class),
-        wrappers);
+            Void.class);
 
-    try {
-      wrappers.remove(Boolean.class);
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> wrappers.remove(Boolean.class));
   }
 
+  @GwtIncompatible
+  @J2ktIncompatible
   public void testNullPointerExceptions() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicStaticMethods(Primitives.class);

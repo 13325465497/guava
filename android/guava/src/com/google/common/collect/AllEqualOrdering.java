@@ -16,28 +16,33 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Lists.newArrayList;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.List;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An ordering that treats all references as equals, even nulls.
  *
  * @author Emily Soldal
  */
-@GwtCompatible(serializable = true)
-final class AllEqualOrdering extends Ordering<Object> implements Serializable {
+@GwtCompatible
+final class AllEqualOrdering extends Ordering<@Nullable Object> implements Serializable {
   static final AllEqualOrdering INSTANCE = new AllEqualOrdering();
 
   @Override
-  public int compare(@NullableDecl Object left, @NullableDecl Object right) {
+  @SuppressWarnings("UnusedVariable") // intentionally weird Comparator
+  public int compare(@Nullable Object left, @Nullable Object right) {
     return 0;
   }
 
   @Override
-  public <E> List<E> sortedCopy(Iterable<E> iterable) {
-    return Lists.newArrayList(iterable);
+  public <E extends @Nullable Object> List<E> sortedCopy(Iterable<E> iterable) {
+    return newArrayList(iterable);
   }
 
   @Override
@@ -47,7 +52,7 @@ final class AllEqualOrdering extends Ordering<Object> implements Serializable {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <S> Ordering<S> reverse() {
+  public <S extends @Nullable Object> Ordering<S> reverse() {
     return (Ordering<S>) this;
   }
 
@@ -60,5 +65,5 @@ final class AllEqualOrdering extends Ordering<Object> implements Serializable {
     return "Ordering.allEqual()";
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

@@ -22,6 +22,7 @@ import static com.google.common.collect.testing.features.CollectionFeature.FAILS
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_REMOVE;
 import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.AbstractCollectionTester;
@@ -30,7 +31,6 @@ import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
-import org.junit.Ignore;
 
 /**
  * A generic JUnit test which tests {@code remove} operations on a collection. Can't be invoked
@@ -38,9 +38,7 @@ import org.junit.Ignore;
  *
  * @author George van den Driessche
  */
-@SuppressWarnings("unchecked") // too many "unchecked generic array creations"
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class CollectionRemoveTester<E> extends AbstractCollectionTester<E> {
   @CollectionFeature.Require(SUPPORTS_REMOVE)
   @CollectionSize.Require(absent = ZERO)
@@ -57,14 +55,9 @@ public class CollectionRemoveTester<E> extends AbstractCollectionTester<E> {
   @CollectionFeature.Require({SUPPORTS_REMOVE, FAILS_FAST_ON_CONCURRENT_MODIFICATION})
   @CollectionSize.Require(SEVERAL)
   public void testRemovePresentConcurrentWithIteration() {
-    try {
-      Iterator<E> iterator = collection.iterator();
-      assertTrue(collection.remove(e0()));
-      iterator.next();
-      fail("Expected ConcurrentModificationException");
-    } catch (ConcurrentModificationException expected) {
-      // success
-    }
+    Iterator<E> iterator = collection.iterator();
+    assertTrue(collection.remove(e0()));
+    assertThrows(ConcurrentModificationException.class, iterator::next);
   }
 
   @CollectionFeature.Require(SUPPORTS_REMOVE)
@@ -90,11 +83,7 @@ public class CollectionRemoveTester<E> extends AbstractCollectionTester<E> {
   @CollectionFeature.Require(absent = SUPPORTS_REMOVE)
   @CollectionSize.Require(absent = ZERO)
   public void testRemove_unsupported() {
-    try {
-      collection.remove(e0());
-      fail("remove(present) should throw UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> collection.remove(e0()));
     expectUnchanged();
     assertTrue("remove(present) should not remove the element", collection.contains(e0()));
   }
@@ -133,11 +122,7 @@ public class CollectionRemoveTester<E> extends AbstractCollectionTester<E> {
   public void testIteratorRemove_unsupported() {
     Iterator<E> iterator = collection.iterator();
     iterator.next();
-    try {
-      iterator.remove();
-      fail("iterator.remove() should throw UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, iterator::remove);
     expectUnchanged();
     assertTrue(collection.contains(e0()));
   }

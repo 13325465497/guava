@@ -16,22 +16,23 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Iterators.emptyIterator;
+import static com.google.common.truth.Truth.assertThat;
 import static java.lang.reflect.Modifier.STATIC;
-import static org.mockito.Mockito.anyObject;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import com.google.common.base.Function;
+import com.google.common.collect.ForwardingMap.SimpleForwardingMap;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
-import com.google.common.reflect.AbstractInvocationHandler;
 import com.google.common.reflect.Parameter;
-import com.google.common.reflect.Reflection;
 import com.google.common.reflect.TypeToken;
 import com.google.common.testing.ArbitraryInstances;
 import com.google.common.testing.EqualsTester;
@@ -40,13 +41,20 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
+import java.util.function.Predicate;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link ForwardingMap}.
@@ -54,26 +62,20 @@ import junit.framework.TestSuite;
  * @author Hayward Chan
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class ForwardingMapTest extends TestCase {
-  static class StandardImplForwardingMap<K, V> extends ForwardingMap<K, V> {
-    private final Map<K, V> backingMap;
-
+  static class StandardImplForwardingMap<K, V> extends SimpleForwardingMap<K, V> {
     StandardImplForwardingMap(Map<K, V> backingMap) {
-      this.backingMap = backingMap;
+      super(backingMap);
     }
 
     @Override
-    protected Map<K, V> delegate() {
-      return backingMap;
-    }
-
-    @Override
-    public boolean containsKey(Object key) {
+    public boolean containsKey(@Nullable Object key) {
       return standardContainsKey(key);
     }
 
     @Override
-    public boolean containsValue(Object value) {
+    public boolean containsValue(@Nullable Object value) {
       return standardContainsValue(value);
     }
 
@@ -83,12 +85,12 @@ public class ForwardingMapTest extends TestCase {
     }
 
     @Override
-    public V remove(Object object) {
+    public @Nullable V remove(@Nullable Object object) {
       return standardRemove(object);
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
       return standardEquals(object);
     }
 
@@ -133,6 +135,7 @@ public class ForwardingMapTest extends TestCase {
     }
   }
 
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
 
@@ -143,7 +146,7 @@ public class ForwardingMapTest extends TestCase {
 
                   @Override
                   protected Map<String, String> create(Entry<String, String>[] entries) {
-                    Map<String, String> map = Maps.newLinkedHashMap();
+                    Map<String, String> map = new LinkedHashMap<>();
                     for (Entry<String, String> entry : entries) {
                       map.put(entry.getKey(), entry.getValue());
                     }
@@ -170,7 +173,7 @@ public class ForwardingMapTest extends TestCase {
                     for (Entry<String, String> entry : entries) {
                       builder.put(entry.getKey(), entry.getValue());
                     }
-                    return new StandardImplForwardingMap<>(builder.build());
+                    return new StandardImplForwardingMap<>(builder.buildOrThrow());
                   }
                 })
             .named("ForwardingMap[ImmutableMap] with standard implementations")
@@ -208,21 +211,16 @@ public class ForwardingMapTest extends TestCase {
 
   public void testStandardEntrySet() throws InvocationTargetException {
     @SuppressWarnings("unchecked")
-    final Map<String, Boolean> map = mock(Map.class);
+    Map<String, Boolean> map = mock(Map.class);
 
     Map<String, Boolean> forward =
-        new ForwardingMap<String, Boolean>() {
-          @Override
-          protected Map<String, Boolean> delegate() {
-            return map;
-          }
-
+        new SimpleForwardingMap<String, Boolean>(map) {
           @Override
           public Set<Entry<String, Boolean>> entrySet() {
             return new StandardEntrySet() {
               @Override
               public Iterator<Entry<String, Boolean>> iterator() {
-                return Iterators.emptyIterator();
+                return emptyIterator();
               }
             };
           }
@@ -231,25 +229,20 @@ public class ForwardingMapTest extends TestCase {
 
     // These are the methods specified by StandardEntrySet
     verify(map, atLeast(0)).clear();
-    verify(map, atLeast(0)).containsKey(anyObject());
-    verify(map, atLeast(0)).get(anyObject());
+    verify(map, atLeast(0)).containsKey(any());
+    verify(map, atLeast(0)).get(any());
     verify(map, atLeast(0)).isEmpty();
-    verify(map, atLeast(0)).remove(anyObject());
+    verify(map, atLeast(0)).remove(any());
     verify(map, atLeast(0)).size();
     verifyNoMoreInteractions(map);
   }
 
   public void testStandardKeySet() throws InvocationTargetException {
     @SuppressWarnings("unchecked")
-    final Map<String, Boolean> map = mock(Map.class);
+    Map<String, Boolean> map = mock(Map.class);
 
     Map<String, Boolean> forward =
-        new ForwardingMap<String, Boolean>() {
-          @Override
-          protected Map<String, Boolean> delegate() {
-            return map;
-          }
-
+        new SimpleForwardingMap<String, Boolean>(map) {
           @Override
           public Set<String> keySet() {
             return new StandardKeySet();
@@ -259,9 +252,9 @@ public class ForwardingMapTest extends TestCase {
 
     // These are the methods specified by StandardKeySet
     verify(map, atLeast(0)).clear();
-    verify(map, atLeast(0)).containsKey(anyObject());
+    verify(map, atLeast(0)).containsKey(any());
     verify(map, atLeast(0)).isEmpty();
-    verify(map, atLeast(0)).remove(anyObject());
+    verify(map, atLeast(0)).remove(any());
     verify(map, atLeast(0)).size();
     verify(map, atLeast(0)).entrySet();
     verifyNoMoreInteractions(map);
@@ -269,15 +262,10 @@ public class ForwardingMapTest extends TestCase {
 
   public void testStandardValues() throws InvocationTargetException {
     @SuppressWarnings("unchecked")
-    final Map<String, Boolean> map = mock(Map.class);
+    Map<String, Boolean> map = mock(Map.class);
 
     Map<String, Boolean> forward =
-        new ForwardingMap<String, Boolean>() {
-          @Override
-          protected Map<String, Boolean> delegate() {
-            return map;
-          }
-
+        new SimpleForwardingMap<String, Boolean>(map) {
           @Override
           public Collection<Boolean> values() {
             return new StandardValues();
@@ -287,40 +275,40 @@ public class ForwardingMapTest extends TestCase {
 
     // These are the methods specified by StandardValues
     verify(map, atLeast(0)).clear();
-    verify(map, atLeast(0)).containsValue(anyObject());
+    verify(map, atLeast(0)).containsValue(any());
     verify(map, atLeast(0)).isEmpty();
     verify(map, atLeast(0)).size();
     verify(map, atLeast(0)).entrySet();
     verifyNoMoreInteractions(map);
   }
 
-  public void testToStringWithNullKeys() throws Exception {
-    Map<String, String> hashmap = Maps.newHashMap();
+  public void testToStringWithNullKeys() {
+    Map<String, String> hashmap = new HashMap<>();
     hashmap.put("foo", "bar");
     hashmap.put(null, "baz");
 
     StandardImplForwardingMap<String, String> forwardingMap =
-        new StandardImplForwardingMap<>(Maps.<String, String>newHashMap());
+        new StandardImplForwardingMap<>(new HashMap<>());
     forwardingMap.put("foo", "bar");
     forwardingMap.put(null, "baz");
 
-    assertEquals(hashmap.toString(), forwardingMap.toString());
+    assertThat(forwardingMap.toString()).isEqualTo(hashmap.toString());
   }
 
-  public void testToStringWithNullValues() throws Exception {
-    Map<String, String> hashmap = Maps.newHashMap();
+  public void testToStringWithNullValues() {
+    Map<String, String> hashmap = new HashMap<>();
     hashmap.put("foo", "bar");
     hashmap.put("baz", null);
 
     StandardImplForwardingMap<String, String> forwardingMap =
-        new StandardImplForwardingMap<>(Maps.<String, String>newHashMap());
+        new StandardImplForwardingMap<>(new HashMap<>());
     forwardingMap.put("foo", "bar");
     forwardingMap.put("baz", null);
 
-    assertEquals(hashmap.toString(), forwardingMap.toString());
+    assertThat(forwardingMap.toString()).isEqualTo(hashmap.toString());
   }
 
-  private static <K, V> Map<K, V> wrap(final Map<K, V> delegate) {
+  private static <K, V> Map<K, V> wrap(Map<K, V> delegate) {
     return new ForwardingMap<K, V>() {
       @Override
       protected Map<K, V> delegate() {
@@ -329,38 +317,25 @@ public class ForwardingMapTest extends TestCase {
     };
   }
 
-  private static final ImmutableMap<String, String> JUF_METHODS =
-      ImmutableMap.of(
-          "java.util.function.Predicate", "test",
-          "java.util.function.Consumer", "accept",
-          "java.util.function.IntFunction", "apply");
-
-  private static Object getDefaultValue(final TypeToken<?> type) {
+  private static @Nullable Object getDefaultValue(TypeToken<?> type) {
     Class<?> rawType = type.getRawType();
     Object defaultValue = ArbitraryInstances.get(rawType);
     if (defaultValue != null) {
       return defaultValue;
     }
 
-    final String typeName = rawType.getCanonicalName();
-    if (JUF_METHODS.containsKey(typeName)) {
-      // Generally, methods that accept java.util.function.* instances
-      // don't like to get null values.  We generate them dynamically
-      // using Proxy so that we can have Java 7 compliant code.
-      return Reflection.newProxy(
-          rawType,
-          new AbstractInvocationHandler() {
-            @Override
-            public Object handleInvocation(Object proxy, Method method, Object[] args) {
-              // Crude, but acceptable until we can use Java 8.  Other
-              // methods have default implementations, and it is hard to
-              // distinguish.
-              if (method.getName().equals(JUF_METHODS.get(typeName))) {
-                return getDefaultValue(type.method(method).getReturnType());
-              }
-              throw new IllegalStateException("Unexpected " + method + " invoked on " + proxy);
-            }
-          });
+    // TODO(cpovirk): Support these types in ArbitraryInstances itself?
+    if (rawType.equals(Predicate.class)) {
+      return (Predicate<Object>) v -> (boolean) getDefaultValue(TypeToken.of(boolean.class));
+    } else if (rawType.equals(IntFunction.class)) {
+      try {
+        Method method = IntFunction.class.getMethod("apply", int.class);
+        return (IntFunction<Object>) v -> getDefaultValue(type.method(method).getReturnType());
+      } catch (NoSuchMethodException e) {
+        throw newLinkageError(e);
+      }
+    } else if (rawType.equals(Consumer.class)) {
+      return (Consumer<Object>) v -> {};
     } else {
       return null;
     }
@@ -391,5 +366,9 @@ public class ForwardingMapTest extends TestCase {
         throw new InvocationTargetException(cause, method + " with args: " + Arrays.toString(args));
       }
     }
+  }
+
+  private static LinkageError newLinkageError(Throwable cause) {
+    return new LinkageError(cause.toString(), cause);
   }
 }

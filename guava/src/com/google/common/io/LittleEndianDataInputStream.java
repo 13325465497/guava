@@ -14,12 +14,15 @@
 
 package com.google.common.io;
 
-import com.google.common.annotations.Beta;
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
 import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -38,7 +41,7 @@ import java.io.InputStream;
  * @author Keith Bottner
  * @since 8.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 public final class LittleEndianDataInputStream extends FilterInputStream implements DataInput {
 
@@ -51,9 +54,14 @@ public final class LittleEndianDataInputStream extends FilterInputStream impleme
     super(Preconditions.checkNotNull(in));
   }
 
+  private InputStream in() {
+    return requireNonNull(in); // guaranteed safe by the constructor
+  }
+
   /** This method will throw an {@link UnsupportedOperationException}. */
   @CanIgnoreReturnValue // to skip a line
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public String readLine() {
     throw new UnsupportedOperationException("readLine is not supported");
   }
@@ -68,16 +76,23 @@ public final class LittleEndianDataInputStream extends FilterInputStream impleme
     ByteStreams.readFully(this, b, off, len);
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>{@link LittleEndianDataInputStream} ignores negative values of {@code n} (returning zero).
+   * Otherwise, it skips the full requested number of bytes unless it reaches end of file or throws
+   * an exception.
+   */
   @Override
   public int skipBytes(int n) throws IOException {
-    return (int) in.skip(n);
+    return (int) ByteStreams.skipUpTo(in(), n);
   }
 
   @CanIgnoreReturnValue // to skip a byte
   @Override
   public int readUnsignedByte() throws IOException {
-    int b1 = in.read();
-    if (0 > b1) {
+    int b1 = in().read();
+    if (b1 < 0) {
       throw new EOFException();
     }
 
@@ -174,7 +189,7 @@ public final class LittleEndianDataInputStream extends FilterInputStream impleme
   @CanIgnoreReturnValue // to skip a field
   @Override
   public String readUTF() throws IOException {
-    return new DataInputStream(in).readUTF();
+    return new DataInputStream(in()).readUTF();
   }
 
   /**
@@ -225,10 +240,10 @@ public final class LittleEndianDataInputStream extends FilterInputStream impleme
    * @throws IOException if an error is encountered while reading
    * @throws EOFException if the end of file (EOF) is encountered.
    */
-  private byte readAndCheckByte() throws IOException, EOFException {
-    int b1 = in.read();
+  private byte readAndCheckByte() throws IOException {
+    int b1 = in().read();
 
-    if (-1 == b1) {
+    if (b1 == -1) {
       throw new EOFException();
     }
 

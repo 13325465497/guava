@@ -17,25 +17,28 @@ package com.google.common.util.concurrent;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Platform.restoreInterruptIfIsInterruptedException;
 import static com.google.common.util.concurrent.Service.State.FAILED;
 import static com.google.common.util.concurrent.Service.State.NEW;
 import static com.google.common.util.concurrent.Service.State.RUNNING;
 import static com.google.common.util.concurrent.Service.State.STARTING;
 import static com.google.common.util.concurrent.Service.State.STOPPING;
 import static com.google.common.util.concurrent.Service.State.TERMINATED;
+import static java.util.Objects.requireNonNull;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.util.concurrent.Monitor.Guard;
-import com.google.common.util.concurrent.Service.State; // javadoc needs this
+import com.google.common.util.concurrent.Service.State;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.ForOverride;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.google.j2objc.annotations.WeakOuter;
+import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base class for implementing services that can handle {@link #doStart} and {@link #doStop}
@@ -47,8 +50,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Luke Sandberg
  * @since 1.0
  */
-@Beta
 @GwtIncompatible
+@J2ktIncompatible
 public abstract class AbstractService implements Service {
   private static final ListenerCallQueue.Event<Listener> STARTING_EVENT =
       new ListenerCallQueue.Event<Listener>() {
@@ -88,7 +91,7 @@ public abstract class AbstractService implements Service {
   private static final ListenerCallQueue.Event<Listener> TERMINATED_FROM_STOPPING_EVENT =
       terminatedEvent(STOPPING);
 
-  private static ListenerCallQueue.Event<Listener> terminatedEvent(final State from) {
+  private static ListenerCallQueue.Event<Listener> terminatedEvent(State from) {
     return new ListenerCallQueue.Event<Listener>() {
       @Override
       public void call(Listener listener) {
@@ -102,7 +105,7 @@ public abstract class AbstractService implements Service {
     };
   }
 
-  private static ListenerCallQueue.Event<Listener> stoppingEvent(final State from) {
+  private static ListenerCallQueue.Event<Listener> stoppingEvent(State from) {
     return new ListenerCallQueue.Event<Listener>() {
       @Override
       public void call(Listener listener) {
@@ -170,7 +173,7 @@ public abstract class AbstractService implements Service {
 
     @Override
     public boolean isSatisfied() {
-      return state().isTerminal();
+      return state().compareTo(TERMINATED) >= 0;
     }
   }
 
@@ -216,7 +219,7 @@ public abstract class AbstractService implements Service {
    *
    * <p>If {@link #stopAsync} is called on a {@link State#STARTING} service, this method is not
    * invoked immediately. Instead, it will be deferred until after the service is {@link
-   * State#RUNNING}. Services that need to cancel startup work can override {#link #doCancelStart}.
+   * State#RUNNING}. Services that need to cancel startup work can override {@link #doCancelStart}.
    */
   @ForOverride
   protected abstract void doStop();
@@ -247,6 +250,7 @@ public abstract class AbstractService implements Service {
         enqueueStartingEvent();
         doStart();
       } catch (Throwable startupFailure) {
+        restoreInterruptIfIsInterruptedException(startupFailure);
         notifyFailed(startupFailure);
       } finally {
         monitor.leave();
@@ -286,6 +290,7 @@ public abstract class AbstractService implements Service {
             throw new AssertionError("isStoppable is incorrectly implemented, saw: " + previous);
         }
       } catch (Throwable shutdownFailure) {
+        restoreInterruptIfIsInterruptedException(shutdownFailure);
         notifyFailed(shutdownFailure);
       } finally {
         monitor.leave();
@@ -305,6 +310,14 @@ public abstract class AbstractService implements Service {
     }
   }
 
+  /**
+   * @since 28.0
+   */
+  @Override
+  public final void awaitRunning(Duration timeout) throws TimeoutException {
+    Service.super.awaitRunning(timeout);
+  }
+
   @Override
   public final void awaitRunning(long timeout, TimeUnit unit) throws TimeoutException {
     if (monitor.enterWhenUninterruptibly(hasReachedRunning, timeout, unit)) {
@@ -314,7 +327,7 @@ public abstract class AbstractService implements Service {
         monitor.leave();
       }
     } else {
-      // It is possible due to races the we are currently in the expected state even though we
+      // It is possible due to races that we are currently in the expected state even though we
       // timed out. e.g. if we weren't event able to grab the lock within the timeout we would never
       // even check the guard. I don't think we care too much about this use case but it could lead
       // to a confusing error message.
@@ -332,6 +345,14 @@ public abstract class AbstractService implements Service {
     }
   }
 
+  /**
+   * @since 28.0
+   */
+  @Override
+  public final void awaitTerminated(Duration timeout) throws TimeoutException {
+    Service.super.awaitTerminated(timeout);
+  }
+
   @Override
   public final void awaitTerminated(long timeout, TimeUnit unit) throws TimeoutException {
     if (monitor.enterWhenUninterruptibly(isStopped, timeout, unit)) {
@@ -341,7 +362,7 @@ public abstract class AbstractService implements Service {
         monitor.leave();
       }
     } else {
-      // It is possible due to races the we are currently in the expected state even though we
+      // It is possible due to races that we are currently in the expected state even though we
       // timed out. e.g. if we weren't event able to grab the lock within the timeout we would never
       // even check the guard. I don't think we care too much about this use case but it could lead
       // to a confusing error message.
@@ -475,13 +496,17 @@ public abstract class AbstractService implements Service {
     return snapshot.externalState();
   }
 
-  /** @since 14.0 */
+  /**
+   * @since 14.0
+   */
   @Override
   public final Throwable failureCause() {
     return snapshot.failureCause();
   }
 
-  /** @since 13.0 */
+  /**
+   * @since 13.0
+   */
   @Override
   public final void addListener(Listener listener, Executor executor) {
     listeners.addListener(listener, executor);
@@ -510,7 +535,7 @@ public abstract class AbstractService implements Service {
     listeners.enqueue(RUNNING_EVENT);
   }
 
-  private void enqueueStoppingEvent(final State from) {
+  private void enqueueStoppingEvent(State from) {
     if (from == State.STARTING) {
       listeners.enqueue(STOPPING_FROM_STARTING_EVENT);
     } else if (from == State.RUNNING) {
@@ -520,7 +545,7 @@ public abstract class AbstractService implements Service {
     }
   }
 
-  private void enqueueTerminatedEvent(final State from) {
+  private void enqueueTerminatedEvent(State from) {
     switch (from) {
       case NEW:
         listeners.enqueue(TERMINATED_FROM_NEW_EVENT);
@@ -540,7 +565,7 @@ public abstract class AbstractService implements Service {
     }
   }
 
-  private void enqueueFailedEvent(final State from, final Throwable cause) {
+  private void enqueueFailedEvent(State from, Throwable cause) {
     // can't memoize this one due to the exception
     listeners.enqueue(
         new ListenerCallQueue.Event<Listener>() {
@@ -588,7 +613,7 @@ public abstract class AbstractService implements Service {
           "shutdownWhenStartupFinishes can only be set if state is STARTING. Got %s instead.",
           internalState);
       checkArgument(
-          !(failure != null ^ internalState == FAILED),
+          (failure != null) == (internalState == FAILED),
           "A failure cause should be set if and only if the state is failed.  Got %s and %s "
               + "instead.",
           internalState,
@@ -598,7 +623,9 @@ public abstract class AbstractService implements Service {
       this.failure = failure;
     }
 
-    /** @see Service#state() */
+    /**
+     * @see Service#state()
+     */
     State externalState() {
       if (shutdownWhenStartupFinishes && state == STARTING) {
         return STOPPING;
@@ -607,13 +634,16 @@ public abstract class AbstractService implements Service {
       }
     }
 
-    /** @see Service#failureCause() */
+    /**
+     * @see Service#failureCause()
+     */
     Throwable failureCause() {
       checkState(
           state == FAILED,
           "failureCause() is only valid if the service has failed, service is %s",
           state);
-      return failure;
+      // requireNonNull is safe because the constructor requires a non-null cause with state=FAILED.
+      return requireNonNull(failure);
     }
   }
 }

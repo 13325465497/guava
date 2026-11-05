@@ -16,13 +16,21 @@
 
 package com.google.common.base;
 
+import static com.google.common.truth.Truth.assertThat;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Defaults}.
  *
  * @author Jige Yu
  */
+@J2ktIncompatible
+@GwtIncompatible
+@NullUnmarked
 public class DefaultsTest extends TestCase {
   public void testGetDefaultValue() {
     assertEquals(false, Defaults.defaultValue(boolean.class).booleanValue());
@@ -31,9 +39,9 @@ public class DefaultsTest extends TestCase {
     assertEquals(0, Defaults.defaultValue(short.class).shortValue());
     assertEquals(0, Defaults.defaultValue(int.class).intValue());
     assertEquals(0, Defaults.defaultValue(long.class).longValue());
-    assertEquals(0.0f, Defaults.defaultValue(float.class).floatValue());
-    assertEquals(0.0d, Defaults.defaultValue(double.class).doubleValue());
-    assertNull(Defaults.defaultValue(void.class));
-    assertNull(Defaults.defaultValue(String.class));
+    assertThat(Defaults.defaultValue(float.class).floatValue()).isEqualTo(0.0f);
+    assertThat(Defaults.defaultValue(double.class).doubleValue()).isEqualTo(0.0d);
+    assertThat(Defaults.defaultValue(void.class)).isNull();
+    assertThat(Defaults.defaultValue(String.class)).isNull();
   }
 }

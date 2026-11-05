@@ -16,6 +16,8 @@ package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link RegularImmutableAsList}.
@@ -23,6 +25,7 @@ import junit.framework.TestCase;
  * @author Louis Wasserman
  */
 @GwtCompatible
+@NullMarked
 public class RegularImmutableAsListTest extends TestCase {
   /**
    * RegularImmutableAsList should assume its input is null-free without checking, because it only
@@ -30,7 +33,8 @@ public class RegularImmutableAsListTest extends TestCase {
    */
   public void testDoesntCheckForNull() {
     ImmutableSet<Integer> set = ImmutableSet.of(1, 2, 3);
-    new RegularImmutableAsList<Integer>(set, new Object[] {null, null, null});
+    ImmutableList<Integer> unused =
+        new RegularImmutableAsList<Integer>(set, new @Nullable Object[] {null, null, null});
     // shouldn't throw!
   }
 }

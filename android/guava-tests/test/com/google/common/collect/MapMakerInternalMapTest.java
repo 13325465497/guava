@@ -17,6 +17,7 @@
 package com.google.common.collect;
 
 import static com.google.common.collect.MapMakerInternalMap.DRAIN_THRESHOLD;
+import static com.google.common.testing.SerializableTester.reserialize;
 import static com.google.common.truth.Truth.assertThat;
 
 import com.google.common.base.Equivalence;
@@ -26,12 +27,21 @@ import com.google.common.collect.MapMakerInternalMap.Strength;
 import com.google.common.collect.MapMakerInternalMap.WeakValueEntry;
 import com.google.common.collect.MapMakerInternalMap.WeakValueReference;
 import com.google.common.testing.NullPointerTester;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.lang.ref.Reference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
-/** @author Charles Fry */
+/**
+ * @author Charles Fry
+ */
 @SuppressWarnings("deprecation") // many tests of deprecated methods
+@NullUnmarked
 public class MapMakerInternalMapTest extends TestCase {
 
   static final int SMALL_MAX_SIZE = DRAIN_THRESHOLD * 5;
@@ -53,10 +63,10 @@ public class MapMakerInternalMapTest extends TestCase {
   public void testDefaults() {
     MapMakerInternalMap<Object, Object, ?, ?> map = makeMap(createMapMaker());
 
-    assertSame(Strength.STRONG, map.keyStrength());
-    assertSame(Strength.STRONG, map.valueStrength());
-    assertSame(map.keyStrength().defaultEquivalence(), map.keyEquivalence);
-    assertSame(map.valueStrength().defaultEquivalence(), map.valueEquivalence());
+    assertThat(map.keyStrength()).isEqualTo(Strength.STRONG);
+    assertThat(map.valueStrength()).isEqualTo(Strength.STRONG);
+    assertThat(map.keyEquivalence).isEqualTo(map.keyStrength().defaultEquivalence());
+    assertThat(map.valueEquivalence()).isEqualTo(map.valueStrength().defaultEquivalence());
 
     assertThat(map.entryHelper)
         .isInstanceOf(MapMakerInternalMap.StrongKeyStrongValueEntry.Helper.class);
@@ -85,12 +95,12 @@ public class MapMakerInternalMapTest extends TestCase {
 
     MapMakerInternalMap<Object, Object, ?, ?> map =
         makeMap(createMapMaker().keyEquivalence(testEquivalence));
-    assertSame(testEquivalence, map.keyEquivalence);
-    assertSame(map.valueStrength().defaultEquivalence(), map.valueEquivalence());
+    assertThat(map.keyEquivalence).isEqualTo(testEquivalence);
+    assertThat(map.valueEquivalence()).isEqualTo(map.valueStrength().defaultEquivalence());
   }
 
   public void testSetConcurrencyLevel() {
-    // round up to nearest power of two
+    // round up to the nearest power of two
 
     checkConcurrencyLevel(1, 1);
     checkConcurrencyLevel(2, 2);
@@ -109,7 +119,7 @@ public class MapMakerInternalMapTest extends TestCase {
   }
 
   public void testSetInitialCapacity() {
-    // share capacity over each segment, then round up to nearest power of two
+    // share capacity over each segment, then round up to the nearest power of two
 
     checkInitialCapacity(1, 0, 1);
     checkInitialCapacity(1, 1, 1);
@@ -152,42 +162,6 @@ public class MapMakerInternalMapTest extends TestCase {
     }
   }
 
-  public void testSetMaximumSize() {
-    // vary maximumSize wrt concurrencyLevel
-
-    for (int maxSize = 1; maxSize < 8; maxSize++) {
-      checkMaximumSize(1, 8, maxSize);
-      checkMaximumSize(2, 8, maxSize);
-      checkMaximumSize(4, 8, maxSize);
-      checkMaximumSize(8, 8, maxSize);
-    }
-
-    checkMaximumSize(1, 8, Integer.MAX_VALUE);
-    checkMaximumSize(2, 8, Integer.MAX_VALUE);
-    checkMaximumSize(4, 8, Integer.MAX_VALUE);
-    checkMaximumSize(8, 8, Integer.MAX_VALUE);
-
-    // vary initial capacity wrt maximumSize
-
-    for (int capacity = 0; capacity < 8; capacity++) {
-      checkMaximumSize(1, capacity, 4);
-      checkMaximumSize(2, capacity, 4);
-      checkMaximumSize(4, capacity, 4);
-      checkMaximumSize(8, capacity, 4);
-    }
-  }
-
-  private static void checkMaximumSize(int concurrencyLevel, int initialCapacity, int maxSize) {
-    MapMakerInternalMap<Object, Object, ?, ?> map =
-        makeMap(
-            createMapMaker().concurrencyLevel(concurrencyLevel).initialCapacity(initialCapacity));
-    int totalCapacity = 0;
-    for (int i = 0; i < map.segments.length; i++) {
-      totalCapacity += map.segments[i].maxSegmentSize;
-    }
-    assertTrue("totalCapcity=" + totalCapacity + ", maxSize=" + maxSize, totalCapacity <= maxSize);
-  }
-
   public void testSetWeakKeys() {
     MapMakerInternalMap<Object, Object, ?, ?> map = makeMap(createMapMaker().weakKeys());
     checkStrength(map, Strength.WEAK, Strength.STRONG);
@@ -204,10 +178,10 @@ public class MapMakerInternalMapTest extends TestCase {
 
   private static void checkStrength(
       MapMakerInternalMap<Object, Object, ?, ?> map, Strength keyStrength, Strength valueStrength) {
-    assertSame(keyStrength, map.keyStrength());
-    assertSame(valueStrength, map.valueStrength());
-    assertSame(keyStrength.defaultEquivalence(), map.keyEquivalence);
-    assertSame(valueStrength.defaultEquivalence(), map.valueEquivalence());
+    assertThat(map.keyStrength()).isEqualTo(keyStrength);
+    assertThat(map.valueStrength()).isEqualTo(valueStrength);
+    assertThat(map.keyEquivalence).isEqualTo(keyStrength.defaultEquivalence());
+    assertThat(map.valueEquivalence()).isEqualTo(valueStrength.defaultEquivalence());
   }
 
   // Segment core tests
@@ -223,13 +197,13 @@ public class MapMakerInternalMapTest extends TestCase {
       InternalEntry<Object, Object, ?> entryOne = segment.newEntryForTesting(keyOne, hashOne, null);
       WeakValueReference<Object, Object, ?> valueRefOne =
           segment.newWeakValueReferenceForTesting(entryOne, valueOne);
-      assertSame(valueOne, valueRefOne.get());
+      assertThat(valueRefOne.get()).isEqualTo(valueOne);
       segment.setWeakValueReferenceForTesting(entryOne, valueRefOne);
 
-      assertSame(keyOne, entryOne.getKey());
+      assertThat(entryOne.getKey()).isEqualTo(keyOne);
       assertEquals(hashOne, entryOne.getHash());
-      assertNull(entryOne.getNext());
-      assertSame(valueRefOne, segment.getWeakValueReferenceForTesting(entryOne));
+      assertThat(entryOne.getNext()).isNull();
+      assertThat(segment.getWeakValueReferenceForTesting(entryOne)).isEqualTo(valueRefOne);
 
       Object keyTwo = new Object();
       Object valueTwo = new Object();
@@ -239,13 +213,13 @@ public class MapMakerInternalMapTest extends TestCase {
           segment.newEntryForTesting(keyTwo, hashTwo, entryOne);
       WeakValueReference<Object, Object, ?> valueRefTwo =
           segment.newWeakValueReferenceForTesting(entryTwo, valueTwo);
-      assertSame(valueTwo, valueRefTwo.get());
+      assertThat(valueRefTwo.get()).isEqualTo(valueTwo);
       segment.setWeakValueReferenceForTesting(entryTwo, valueRefTwo);
 
-      assertSame(keyTwo, entryTwo.getKey());
+      assertThat(entryTwo.getKey()).isEqualTo(keyTwo);
       assertEquals(hashTwo, entryTwo.getHash());
-      assertSame(entryOne, entryTwo.getNext());
-      assertSame(valueRefTwo, segment.getWeakValueReferenceForTesting(entryTwo));
+      assertThat(entryTwo.getNext()).isEqualTo(entryOne);
+      assertThat(segment.getWeakValueReferenceForTesting(entryTwo)).isEqualTo(valueRefTwo);
     }
   }
 
@@ -267,16 +241,16 @@ public class MapMakerInternalMapTest extends TestCase {
       segment.setValueForTesting(entryTwo, valueTwo);
 
       InternalEntry<Object, Object, ?> copyOne = segment.copyForTesting(entryOne, null);
-      assertSame(keyOne, entryOne.getKey());
+      assertThat(entryOne.getKey()).isEqualTo(keyOne);
       assertEquals(hashOne, entryOne.getHash());
-      assertNull(entryOne.getNext());
-      assertSame(valueOne, copyOne.getValue());
+      assertThat(entryOne.getNext()).isNull();
+      assertThat(copyOne.getValue()).isEqualTo(valueOne);
 
       InternalEntry<Object, Object, ?> copyTwo = segment.copyForTesting(entryTwo, copyOne);
-      assertSame(keyTwo, copyTwo.getKey());
+      assertThat(copyTwo.getKey()).isEqualTo(keyTwo);
       assertEquals(hashTwo, copyTwo.getHash());
-      assertSame(copyOne, copyTwo.getNext());
-      assertSame(valueTwo, copyTwo.getValue());
+      assertThat(copyTwo.getNext()).isEqualTo(copyOne);
+      assertThat(copyTwo.getValue()).isEqualTo(valueTwo);
     }
   }
 
@@ -295,21 +269,21 @@ public class MapMakerInternalMapTest extends TestCase {
     InternalEntry<Object, Object, ?> entry = segment.newEntryForTesting(key, hash, null);
     segment.setValueForTesting(entry, value);
 
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
 
     // count == 0
     segment.setTableEntryForTesting(index, entry);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
     assertFalse(segment.containsKey(key, hash));
     assertFalse(segment.containsValue(value));
 
     // count == 1
-    segment.count++;
-    assertSame(value, segment.get(key, hash));
+    incrementCount(segment);
+    assertThat(segment.get(key, hash)).isEqualTo(value);
     assertTrue(segment.containsKey(key, hash));
     assertTrue(segment.containsValue(value));
     // don't see absent values now that count > 0
-    assertNull(segment.get(new Object(), hash));
+    assertThat(segment.get(new Object(), hash)).isNull();
 
     // null key
     InternalEntry<Object, Object, ?> nullEntry = segment.newEntryForTesting(null, hash, entry);
@@ -319,7 +293,7 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.setWeakValueReferenceForTesting(nullEntry, nullValueRef);
     segment.setTableEntryForTesting(index, nullEntry);
     // skip the null key
-    assertSame(value, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(value);
     assertTrue(segment.containsKey(key, hash));
     assertTrue(segment.containsValue(value));
     assertFalse(segment.containsValue(nullValue));
@@ -332,7 +306,7 @@ public class MapMakerInternalMapTest extends TestCase {
         segment.newWeakValueReferenceForTesting(dummyEntry, dummyValue);
     segment.setWeakValueReferenceForTesting(dummyEntry, dummyValueRef);
     segment.setTableEntryForTesting(index, dummyEntry);
-    assertSame(value, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(value);
     assertTrue(segment.containsKey(key, hash));
     assertTrue(segment.containsValue(value));
     assertTrue(segment.containsValue(dummyValue));
@@ -344,7 +318,7 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.setWeakValueReferenceForTesting(dummyEntry, dummyValueRef);
     segment.setTableEntryForTesting(index, dummyEntry);
     // returns the most recent entry
-    assertSame(dummyValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(dummyValue);
     assertTrue(segment.containsKey(key, hash));
     assertTrue(segment.containsValue(value));
     assertTrue(segment.containsValue(dummyValue));
@@ -374,24 +348,24 @@ public class MapMakerInternalMapTest extends TestCase {
 
     // same value
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     assertTrue(segment.replace(key, hash, oldValue, newValue));
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
 
     // different value
     assertFalse(segment.replace(key, hash, oldValue, newValue));
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
 
     // cleared
     segment.setWeakValueReferenceForTesting(entry, oldValueRef);
     oldValueRef.clear();
     assertFalse(segment.replace(key, hash, oldValue, newValue));
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentReplace() {
@@ -413,24 +387,24 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.setWeakValueReferenceForTesting(entry, oldValueRef);
 
     // no entry
-    assertNull(segment.replace(key, hash, newValue));
+    assertThat(segment.replace(key, hash, newValue)).isNull();
     assertEquals(0, segment.count);
 
     // same key
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertSame(oldValue, segment.replace(key, hash, newValue));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
+    assertThat(segment.replace(key, hash, newValue)).isEqualTo(oldValue);
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
 
     // cleared
     segment.setWeakValueReferenceForTesting(entry, oldValueRef);
     oldValueRef.clear();
-    assertNull(segment.replace(key, hash, newValue));
+    assertThat(segment.replace(key, hash, newValue)).isNull();
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentPut() {
@@ -446,24 +420,24 @@ public class MapMakerInternalMapTest extends TestCase {
 
     // no entry
     assertEquals(0, segment.count);
-    assertNull(segment.put(key, hash, oldValue, false));
+    assertThat(segment.put(key, hash, oldValue, false)).isNull();
     assertEquals(1, segment.count);
 
     // same key
-    assertSame(oldValue, segment.put(key, hash, newValue, false));
+    assertThat(segment.put(key, hash, newValue, false)).isEqualTo(oldValue);
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
 
     // cleared
     InternalEntry<Object, Object, ?> entry = segment.getEntry(key, hash);
     WeakValueReference<Object, Object, ?> oldValueRef =
         segment.newWeakValueReferenceForTesting(entry, oldValue);
     segment.setWeakValueReferenceForTesting(entry, oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     oldValueRef.clear();
-    assertNull(segment.put(key, hash, newValue, false));
+    assertThat(segment.put(key, hash, newValue, false)).isNull();
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
   }
 
   public void testSegmentPutIfAbsent() {
@@ -479,24 +453,24 @@ public class MapMakerInternalMapTest extends TestCase {
 
     // no entry
     assertEquals(0, segment.count);
-    assertNull(segment.put(key, hash, oldValue, true));
+    assertThat(segment.put(key, hash, oldValue, true)).isNull();
     assertEquals(1, segment.count);
 
     // same key
-    assertSame(oldValue, segment.put(key, hash, newValue, true));
+    assertThat(segment.put(key, hash, newValue, true)).isEqualTo(oldValue);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
 
     // cleared
     InternalEntry<Object, Object, ?> entry = segment.getEntry(key, hash);
     WeakValueReference<Object, Object, ?> oldValueRef =
         segment.newWeakValueReferenceForTesting(entry, oldValue);
     segment.setWeakValueReferenceForTesting(entry, oldValueRef);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     oldValueRef.clear();
-    assertNull(segment.put(key, hash, newValue, true));
+    assertThat(segment.put(key, hash, newValue, true)).isNull();
     assertEquals(1, segment.count);
-    assertSame(newValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(newValue);
   }
 
   public void testSegmentPut_expand() {
@@ -510,8 +484,8 @@ public class MapMakerInternalMapTest extends TestCase {
       Object key = new Object();
       Object value = new Object();
       int hash = map.hash(key);
-      assertNull(segment.put(key, hash, value, false));
-      assertTrue(segment.table.length() > i);
+      assertThat(segment.put(key, hash, value, false)).isNull();
+      assertThat(segment.table.length()).isGreaterThan(i);
     }
   }
 
@@ -533,27 +507,27 @@ public class MapMakerInternalMapTest extends TestCase {
 
     // no entry
     assertEquals(0, segment.count);
-    assertNull(segment.remove(key, hash));
+    assertThat(segment.remove(key, hash)).isNull();
     assertEquals(0, segment.count);
 
     // same key
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
-    assertSame(oldValue, segment.remove(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
+    assertThat(segment.remove(key, hash)).isEqualTo(oldValue);
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
 
     // cleared
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     oldValueRef.clear();
-    assertNull(segment.remove(key, hash));
+    assertThat(segment.remove(key, hash)).isNull();
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
   }
 
   public void testSegmentRemoveValue() {
@@ -575,35 +549,36 @@ public class MapMakerInternalMapTest extends TestCase {
 
     // no entry
     assertEquals(0, segment.count);
-    assertNull(segment.remove(key, hash));
+    assertThat(segment.remove(key, hash)).isNull();
     assertEquals(0, segment.count);
 
     // same value
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     assertTrue(segment.remove(key, hash, oldValue));
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
 
     // different value
     segment.setTableEntryForTesting(index, entry);
-    segment.count++;
+    incrementCount(segment);
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     assertFalse(segment.remove(key, hash, newValue));
     assertEquals(1, segment.count);
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
 
     // cleared
-    assertSame(oldValue, segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isEqualTo(oldValue);
     oldValueRef.clear();
     assertFalse(segment.remove(key, hash, oldValue));
     assertEquals(0, segment.count);
-    assertNull(segment.get(key, hash));
+    assertThat(segment.get(key, hash)).isNull();
   }
 
+  @SuppressWarnings("GuardedBy")
   public void testExpand() {
     MapMakerInternalMap<Object, Object, ?, ?> map =
         makeMap(createMapMaker().concurrencyLevel(1).initialCapacity(1));
@@ -629,6 +604,8 @@ public class MapMakerInternalMapTest extends TestCase {
 
     for (int i = 1; i <= originalCount * 2; i *= 2) {
       if (i > 1) {
+        // TODO(b/145386688): This access should be guarded by 'segment', which is not currently
+        // held
         segment.expand();
       }
       assertEquals(i, segment.table.length());
@@ -662,31 +639,32 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.setValueForTesting(entryThree, valueThree);
 
     // alone
-    assertNull(segment.removeFromChainForTesting(entryOne, entryOne));
+    assertThat(segment.removeFromChainForTesting(entryOne, entryOne)).isNull();
 
     // head
-    assertSame(entryOne, segment.removeFromChainForTesting(entryTwo, entryTwo));
+    assertThat(segment.removeFromChainForTesting(entryTwo, entryTwo)).isEqualTo(entryOne);
 
     // middle
     InternalEntry<Object, Object, ?> newFirst =
         segment.removeFromChainForTesting(entryThree, entryTwo);
-    assertSame(keyThree, newFirst.getKey());
-    assertSame(valueThree, newFirst.getValue());
+    assertThat(newFirst.getKey()).isEqualTo(keyThree);
+    assertThat(newFirst.getValue()).isEqualTo(valueThree);
     assertEquals(hashThree, newFirst.getHash());
-    assertSame(entryOne, newFirst.getNext());
+    assertThat(newFirst.getNext()).isEqualTo(entryOne);
 
     // tail (remaining entries are copied in reverse order)
     newFirst = segment.removeFromChainForTesting(entryThree, entryOne);
-    assertSame(keyTwo, newFirst.getKey());
-    assertSame(valueTwo, newFirst.getValue());
+    assertThat(newFirst.getKey()).isEqualTo(keyTwo);
+    assertThat(newFirst.getValue()).isEqualTo(valueTwo);
     assertEquals(hashTwo, newFirst.getHash());
     newFirst = newFirst.getNext();
-    assertSame(keyThree, newFirst.getKey());
-    assertSame(valueThree, newFirst.getValue());
+    assertThat(newFirst.getKey()).isEqualTo(keyThree);
+    assertThat(newFirst.getValue()).isEqualTo(valueThree);
     assertEquals(hashThree, newFirst.getHash());
-    assertNull(newFirst.getNext());
+    assertThat(newFirst.getNext()).isNull();
   }
 
+  @SuppressWarnings("GuardedBy")
   public void testExpand_cleanup() {
     MapMakerInternalMap<Object, Object, ?, ?> map =
         makeMap(createMapMaker().concurrencyLevel(1).initialCapacity(1));
@@ -719,13 +697,15 @@ public class MapMakerInternalMapTest extends TestCase {
 
     for (int i = 1; i <= originalCount * 2; i *= 2) {
       if (i > 1) {
+        // TODO(b/145386688): This access should be guarded by 'segment', which is not currently
+        // held
         segment.expand();
       }
       assertEquals(i, segment.table.length());
       assertEquals(liveCount, countLiveEntries(map));
       // expansion cleanup is sloppy, with a goal of avoiding unnecessary copies
-      assertTrue(segment.count >= liveCount);
-      assertTrue(segment.count <= originalCount);
+      assertThat(segment.count).isAtLeast(liveCount);
+      assertThat(segment.count).isAtMost(originalCount);
       assertEquals(originalMap, ImmutableMap.copyOf(map));
     }
   }
@@ -762,10 +742,10 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.readCount.incrementAndGet();
     segment.count = 1;
 
-    assertSame(entry, table.get(0));
+    assertThat(table.get(0)).isEqualTo(entry);
 
     segment.clear();
-    assertNull(table.get(0));
+    assertThat(table.get(0)).isNull();
     assertEquals(0, segment.readCount.get());
     assertEquals(0, segment.count);
   }
@@ -790,7 +770,7 @@ public class MapMakerInternalMapTest extends TestCase {
     segment.count = 1;
     assertTrue(segment.removeTableEntryForTesting(entry));
     assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(table.get(0)).isNull();
   }
 
   public void testClearValue() {
@@ -815,7 +795,7 @@ public class MapMakerInternalMapTest extends TestCase {
     assertTrue(segment.clearValueForTesting(key, hash, valueRef));
     // no notification sent with clearValue
     assertEquals(0, segment.count);
-    assertNull(table.get(0));
+    assertThat(table.get(0)).isNull();
 
     // clear wrong value reference
     segment.setTableEntryForTesting(0, entry);
@@ -845,15 +825,15 @@ public class MapMakerInternalMapTest extends TestCase {
         InternalEntry<Object, Object, ?> entry = segment.getEntry(keyOne, hashOne);
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) entry;
+        Reference<Object> reference = (Reference<Object>) entry;
         reference.enqueue();
 
         map.put(keyTwo, valueTwo);
         assertFalse(map.containsKey(keyOne));
         assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
+        assertThat(map.get(keyOne)).isNull();
         assertEquals(1, map.size());
-        assertNull(segment.getKeyReferenceQueueForTesting().poll());
+        assertThat(segment.getKeyReferenceQueueForTesting().poll()).isNull();
       }
     }
   }
@@ -871,21 +851,20 @@ public class MapMakerInternalMapTest extends TestCase {
         Object valueTwo = new Object();
 
         map.put(keyOne, valueOne);
-        @SuppressWarnings("unchecked")
         WeakValueEntry<Object, Object, ?> entry =
             (WeakValueEntry<Object, Object, ?>) segment.getEntry(keyOne, hashOne);
         WeakValueReference<Object, Object, ?> valueReference = entry.getValueReference();
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) valueReference;
+        Reference<Object> reference = (Reference<Object>) valueReference;
         reference.enqueue();
 
         map.put(keyTwo, valueTwo);
         assertFalse(map.containsKey(keyOne));
         assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
+        assertThat(map.get(keyOne)).isNull();
         assertEquals(1, map.size());
-        assertNull(segment.getValueReferenceQueueForTesting().poll());
+        assertThat(segment.getValueReferenceQueueForTesting().poll()).isNull();
       }
     }
   }
@@ -905,7 +884,7 @@ public class MapMakerInternalMapTest extends TestCase {
         InternalEntry<Object, Object, ?> entry = segment.getEntry(keyOne, hashOne);
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) entry;
+        Reference<Object> reference = (Reference<Object>) entry;
         reference.enqueue();
 
         for (int i = 0; i < SMALL_MAX_SIZE; i++) {
@@ -913,9 +892,9 @@ public class MapMakerInternalMapTest extends TestCase {
         }
         assertFalse(map.containsKey(keyOne));
         assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
+        assertThat(map.get(keyOne)).isNull();
         assertEquals(0, map.size());
-        assertNull(segment.getKeyReferenceQueueForTesting().poll());
+        assertThat(segment.getKeyReferenceQueueForTesting().poll()).isNull();
       }
     }
   }
@@ -932,13 +911,12 @@ public class MapMakerInternalMapTest extends TestCase {
         Object keyTwo = new Object();
 
         map.put(keyOne, valueOne);
-        @SuppressWarnings("unchecked")
         WeakValueEntry<Object, Object, ?> entry =
             (WeakValueEntry<Object, Object, ?>) segment.getEntry(keyOne, hashOne);
         WeakValueReference<Object, Object, ?> valueReference = entry.getValueReference();
 
         @SuppressWarnings("unchecked")
-        Reference<Object> reference = (Reference) valueReference;
+        Reference<Object> reference = (Reference<Object>) valueReference;
         reference.enqueue();
 
         for (int i = 0; i < SMALL_MAX_SIZE; i++) {
@@ -946,9 +924,9 @@ public class MapMakerInternalMapTest extends TestCase {
         }
         assertFalse(map.containsKey(keyOne));
         assertFalse(map.containsValue(valueOne));
-        assertNull(map.get(keyOne));
+        assertThat(map.get(keyOne)).isNull();
         assertEquals(0, map.size());
-        assertNull(segment.getValueReferenceQueueForTesting().poll());
+        assertThat(segment.getValueReferenceQueueForTesting().poll()).isNull();
       }
     }
   }
@@ -964,8 +942,42 @@ public class MapMakerInternalMapTest extends TestCase {
         createMapMaker().weakValues(), createMapMaker().weakKeys().weakValues());
   }
 
-  public void testNullParameters() throws Exception {
+  public void testNullParameters() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicInstanceMethods(makeMap(createMapMaker()));
+  }
+
+  public void testDeserializeWithHugeSize() throws Exception {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(makeMap(createMapMaker()));
+    }
+    try (ObjectInputStream ois =
+        new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray())) {
+          @Override
+          public int readInt() throws IOException {
+            int unused = super.readInt();
+            return Integer.MAX_VALUE;
+          }
+        }) {
+      MapMakerInternalMap<?, ?, ?, ?> deserialized =
+          (MapMakerInternalMap<?, ?, ?, ?>) ois.readObject();
+      assertThat(deserialized).isEmpty();
+      assertThat(deserialized.segments[0].table.length()).isEqualTo(64);
+    }
+  }
+
+  public void testDeserializeWithHugeConcurrencyLevel() {
+    MapMakerInternalMap<?, ?, ?, ?> map =
+        makeMap(createMapMaker().concurrencyLevel(Integer.MAX_VALUE));
+    assertThat(map.segments).hasLength(65536);
+    MapMakerInternalMap<?, ?, ?, ?> deserialized = reserialize(map);
+    assertThat(deserialized.segments).hasLength(1024);
+  }
+
+  // Our tests are generally (always?) updating the count from only one thread.
+  @SuppressWarnings("NonAtomicVolatileUpdate")
+  private static void incrementCount(Segment<?, ?, ?, ?> segment) {
+    segment.count++;
   }
 }

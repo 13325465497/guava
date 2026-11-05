@@ -16,6 +16,7 @@ package com.google.common.hash;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -28,7 +29,7 @@ import java.nio.ByteOrder;
  * @author Dimitris Andreou
  */
 // TODO(kevinb): this class still needs some design-and-document-for-inheritance love
-@CanIgnoreReturnValue
+@J2ktIncompatible
 abstract class AbstractStreamingHasher extends AbstractHasher {
   /** Buffer via which we pass data to the hash algorithm (the implementor) */
   private final ByteBuffer buffer;
@@ -80,22 +81,24 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
    * <p>This implementation simply pads with zeros and delegates to {@link #process(ByteBuffer)}.
    */
   protected void processRemaining(ByteBuffer bb) {
-    bb.position(bb.limit()); // move at the end
-    bb.limit(chunkSize + 7); // get ready to pad with longs
+    Java8Compatibility.position(bb, bb.limit()); // move at the end
+    Java8Compatibility.limit(bb, chunkSize + 7); // get ready to pad with longs
     while (bb.position() < chunkSize) {
       bb.putLong(0);
     }
-    bb.limit(chunkSize);
-    bb.flip();
+    Java8Compatibility.limit(bb, chunkSize);
+    Java8Compatibility.flip(bb);
     process(bb);
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putBytes(byte[] bytes, int off, int len) {
     return putBytesInternal(ByteBuffer.wrap(bytes, off, len).order(ByteOrder.LITTLE_ENDIAN));
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putBytes(ByteBuffer readBuffer) {
     ByteOrder order = readBuffer.order();
     try {
@@ -106,6 +109,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
     }
   }
 
+  @CanIgnoreReturnValue
   private Hasher putBytesInternal(ByteBuffer readBuffer) {
     // If we have room for all of it, this is easy
     if (readBuffer.remaining() <= buffer.remaining()) {
@@ -142,6 +146,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
    */
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putByte(byte b) {
     buffer.put(b);
     munchIfFull();
@@ -149,6 +154,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putShort(short s) {
     buffer.putShort(s);
     munchIfFull();
@@ -156,6 +162,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putChar(char c) {
     buffer.putChar(c);
     munchIfFull();
@@ -163,6 +170,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putInt(int i) {
     buffer.putInt(i);
     munchIfFull();
@@ -170,6 +178,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   }
 
   @Override
+  @CanIgnoreReturnValue
   public final Hasher putLong(long l) {
     buffer.putLong(l);
     munchIfFull();
@@ -179,10 +188,10 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   @Override
   public final HashCode hash() {
     munch();
-    buffer.flip();
+    Java8Compatibility.flip(buffer);
     if (buffer.remaining() > 0) {
       processRemaining(buffer);
-      buffer.position(buffer.limit());
+      Java8Compatibility.position(buffer, buffer.limit());
     }
     return makeHash();
   }
@@ -203,7 +212,7 @@ abstract class AbstractStreamingHasher extends AbstractHasher {
   }
 
   private void munch() {
-    buffer.flip();
+    Java8Compatibility.flip(buffer);
     while (buffer.remaining() >= chunkSize) {
       // we could limit the buffer to ensure process() does not read more than
       // chunkSize number of bytes, but we trust the implementations

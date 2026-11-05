@@ -16,19 +16,23 @@
 
 package com.google.common.collect.testing.testers;
 
+import static com.google.common.collect.testing.Helpers.getMethod;
+import static com.google.common.collect.testing.Helpers.mapEntry;
 import static com.google.common.collect.testing.features.CollectionFeature.SUPPORTS_ITERATOR_REMOVE;
 import static com.google.common.collect.testing.features.CollectionSize.ONE;
+import static com.google.common.collect.testing.features.CollectionSize.SEVERAL;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEY_QUERIES;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUE_QUERIES;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_PUT;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.AbstractMapTester;
-import com.google.common.collect.testing.Helpers;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
@@ -36,7 +40,6 @@ import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.junit.Ignore;
 
 /**
  * Tests {@link java.util.Map#entrySet}.
@@ -46,7 +49,6 @@ import org.junit.Ignore;
  * @param <V> The value type of the map implementation under test.
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
   private enum IncomparableType {
     INSTANCE;
@@ -54,7 +56,7 @@ public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
 
   @CollectionSize.Require(ONE)
   @CollectionFeature.Require(SUPPORTS_ITERATOR_REMOVE)
-  public void testEntrySetIteratorRemove() {
+  public void testIteratorRemoveOnly() {
     Set<Entry<K, V>> entrySet = getMap().entrySet();
     Iterator<Entry<K, V>> entryItr = entrySet.iterator();
     assertEquals(e0(), entryItr.next());
@@ -63,9 +65,33 @@ public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
     assertFalse(entrySet.contains(e0()));
   }
 
+  @CollectionSize.Require(SEVERAL)
+  @CollectionFeature.Require(SUPPORTS_ITERATOR_REMOVE)
+  public void testIteratorRemoveMultiple() {
+    Iterator<Entry<K, V>> entryItr = getMap().entrySet().iterator();
+    while (entryItr.hasNext()) {
+      entryItr.next();
+      entryItr.remove();
+    }
+    assertTrue(getMap().isEmpty());
+  }
+
+  @CollectionSize.Require(absent = ZERO)
+  @CollectionFeature.Require(SUPPORTS_ITERATOR_REMOVE)
+  @MapFeature.Require(SUPPORTS_PUT)
+  public void testIteratorSetValueAndRemove() {
+    Iterator<Entry<K, V>> entryItr = getMap().entrySet().iterator();
+    while (entryItr.hasNext()) {
+      Entry<K, V> entry = entryItr.next();
+      entry.setValue(e3().getValue());
+      entryItr.remove();
+    }
+    assertTrue(getMap().isEmpty());
+  }
+
   public void testContainsEntryWithIncomparableKey() {
     try {
-      assertFalse(getMap().entrySet().contains(Helpers.mapEntry(IncomparableType.INSTANCE, v0())));
+      assertFalse(getMap().entrySet().contains(mapEntry(IncomparableType.INSTANCE, v0())));
     } catch (ClassCastException acceptable) {
       // allowed by the spec
     }
@@ -73,7 +99,7 @@ public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
 
   public void testContainsEntryWithIncomparableValue() {
     try {
-      assertFalse(getMap().entrySet().contains(Helpers.mapEntry(k0(), IncomparableType.INSTANCE)));
+      assertFalse(getMap().entrySet().contains(mapEntry(k0(), IncomparableType.INSTANCE)));
     } catch (ClassCastException acceptable) {
       // allowed by the spec
     }
@@ -81,26 +107,26 @@ public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
 
   @MapFeature.Require(ALLOWS_NULL_KEY_QUERIES)
   public void testContainsEntryWithNullKeyAbsent() {
-    assertFalse(getMap().entrySet().contains(Helpers.mapEntry(null, v0())));
+    assertFalse(getMap().entrySet().contains(mapEntry(null, v0())));
   }
 
   @CollectionSize.Require(absent = ZERO)
   @MapFeature.Require(ALLOWS_NULL_KEYS)
   public void testContainsEntryWithNullKeyPresent() {
     initMapWithNullKey();
-    assertTrue(getMap().entrySet().contains(Helpers.mapEntry(null, getValueForNullKey())));
+    assertTrue(getMap().entrySet().contains(mapEntry(null, getValueForNullKey())));
   }
 
   @MapFeature.Require(ALLOWS_NULL_VALUE_QUERIES)
   public void testContainsEntryWithNullValueAbsent() {
-    assertFalse(getMap().entrySet().contains(Helpers.mapEntry(k0(), null)));
+    assertFalse(getMap().entrySet().contains(mapEntry(k0(), null)));
   }
 
   @CollectionSize.Require(absent = ZERO)
   @MapFeature.Require(ALLOWS_NULL_VALUES)
   public void testContainsEntryWithNullValuePresent() {
     initMapWithNullValue();
-    assertTrue(getMap().entrySet().contains(Helpers.mapEntry(getKeyForNullValue(), null)));
+    assertTrue(getMap().entrySet().contains(mapEntry(getKeyForNullValue(), null)));
   }
 
   @MapFeature.Require(SUPPORTS_PUT)
@@ -124,45 +150,52 @@ public class MapEntrySetTester<K, V> extends AbstractMapTester<K, V> {
         break;
       }
     }
-    expectReplacement(entry(k0(), (V) null));
+    expectReplacement(entry(k0(), null));
   }
 
   @MapFeature.Require(value = SUPPORTS_PUT, absent = ALLOWS_NULL_VALUES)
   @CollectionSize.Require(absent = ZERO)
   public void testSetValueWithNullValuesAbsent() {
     for (Entry<K, V> entry : getMap().entrySet()) {
-      try {
-        entry.setValue(null);
-        fail("Expected NullPointerException");
-      } catch (NullPointerException exception) {
-        break;
-      }
+      assertThrows(NullPointerException.class, () -> entry.setValue(null));
+      break;
     }
     expectUnchanged();
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getContainsEntryWithIncomparableKeyMethod() {
-    return Helpers.getMethod(MapEntrySetTester.class, "testContainsEntryWithIncomparableKey");
+    return getMethod(MapEntrySetTester.class, "testContainsEntryWithIncomparableKey");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getContainsEntryWithIncomparableValueMethod() {
-    return Helpers.getMethod(MapEntrySetTester.class, "testContainsEntryWithIncomparableValue");
+    return getMethod(MapEntrySetTester.class, "testContainsEntryWithIncomparableValue");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getSetValueMethod() {
-    return Helpers.getMethod(MapEntrySetTester.class, "testSetValue");
+    return getMethod(MapEntrySetTester.class, "testSetValue");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getSetValueWithNullValuesPresentMethod() {
-    return Helpers.getMethod(MapEntrySetTester.class, "testSetValueWithNullValuesPresent");
+    return getMethod(MapEntrySetTester.class, "testSetValueWithNullValuesPresent");
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // reflection
   public static Method getSetValueWithNullValuesAbsentMethod() {
-    return Helpers.getMethod(MapEntrySetTester.class, "testSetValueWithNullValuesAbsent");
+    return getMethod(MapEntrySetTester.class, "testSetValueWithNullValuesAbsent");
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // reflection
+  public static Method getIteratorSetValueAndRemove() {
+    return getMethod(MapEntrySetTester.class, "testIteratorSetValueAndRemove");
   }
 }

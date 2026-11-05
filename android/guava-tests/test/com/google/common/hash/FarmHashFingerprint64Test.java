@@ -16,13 +16,15 @@
 
 package com.google.common.hash;
 
-import static com.google.common.base.Charsets.ISO_8859_1;
-import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.base.Strings.repeat;
+import static com.google.common.hash.Hashing.farmHashFingerprint64;
 import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
 
-import com.google.common.base.Strings;
-import java.util.Arrays;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for FarmHashFingerprint64.
@@ -30,21 +32,23 @@ import junit.framework.TestCase;
  * @author Kyle Maddison
  * @author Geoff Pike
  */
+@NullUnmarked
 public class FarmHashFingerprint64Test extends TestCase {
 
-  private static final HashFunction HASH_FN = Hashing.farmHashFingerprint64();
+  private static final HashFunction HASH_FN = farmHashFingerprint64();
 
   // If this test fails, all bets are off
+  @SuppressWarnings("InlineMeInliner") // String.repeat unavailable under Java 8
   public void testReallySimpleFingerprints() {
     assertEquals(8581389452482819506L, fingerprint("test".getBytes(UTF_8)));
     // 32 characters long
-    assertEquals(-4196240717365766262L, fingerprint(Strings.repeat("test", 8).getBytes(UTF_8)));
+    assertEquals(-4196240717365766262L, fingerprint(repeat("test", 8).getBytes(UTF_8)));
     // 256 characters long
-    assertEquals(3500507768004279527L, fingerprint(Strings.repeat("test", 64).getBytes(UTF_8)));
+    assertEquals(3500507768004279527L, fingerprint(repeat("test", 64).getBytes(UTF_8)));
   }
 
   public void testStringsConsistency() {
-    for (String s : Arrays.asList("", "some", "test", "strings", "to", "try")) {
+    for (String s : asList("", "some", "test", "strings", "to", "try")) {
       assertEquals(HASH_FN.newHasher().putUnencodedChars(s).hash(), HASH_FN.hashUnencodedChars(s));
     }
   }
@@ -91,7 +95,7 @@ public class FarmHashFingerprint64Test extends TestCase {
         .putBoolean(false)
         .putBoolean(false)
         .putBoolean(false);
-    final long hashCode = hasher.hash().asLong();
+    long hashCode = hasher.hash().asLong();
 
     hasher = HASH_FN.newHasher();
     hasher

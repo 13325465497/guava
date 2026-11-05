@@ -16,17 +16,19 @@
 
 package com.google.common.io;
 
-import static com.google.common.base.Charsets.UTF_8;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * A char source for testing that has configurable options.
  *
  * @author Colin Decker
  */
+@NullUnmarked
 public class TestCharSource extends CharSource implements TestStreamSupplier {
 
   private final TestByteSource byteSource;

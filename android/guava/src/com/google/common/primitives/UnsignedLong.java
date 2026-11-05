@@ -18,10 +18,11 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import java.io.Serializable;
 import java.math.BigInteger;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A wrapper class for unsigned {@code long} values, supporting arithmetic operations.
@@ -37,13 +38,18 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Colin Evans
  * @since 11.0
  */
-@GwtCompatible(serializable = true)
-public final class UnsignedLong extends Number implements Comparable<UnsignedLong>, Serializable {
+@GwtCompatible
+public final class UnsignedLong extends Number implements Comparable<UnsignedLong> {
 
   private static final long UNSIGNED_MASK = 0x7fffffffffffffffL;
 
+  /** An {@code UnsignedLong} constant holding the value 0. */
   public static final UnsignedLong ZERO = new UnsignedLong(0);
+
+  /** An {@code UnsignedLong} constant holding the value 1. */
   public static final UnsignedLong ONE = new UnsignedLong(1);
+
+  /** An {@code UnsignedLong} constant holding the maximum value, 2^64 - 1. */
   public static final UnsignedLong MAX_VALUE = new UnsignedLong(-1L);
 
   private final long value;
@@ -195,12 +201,12 @@ public final class UnsignedLong extends Number implements Comparable<UnsignedLon
    */
   @Override
   public float floatValue() {
-    @SuppressWarnings("cast")
-    float fValue = (float) (value & UNSIGNED_MASK);
-    if (value < 0) {
-      fValue += 0x1.0p63f;
+    if (value >= 0) {
+      return (float) value;
     }
-    return fValue;
+    // The top bit is set, which means that the float value is going to come from the top 24 bits.
+    // So we can ignore the bottom 8, except for rounding. See doubleValue() for more.
+    return (float) ((value >>> 1) | (value & 1)) * 2f;
   }
 
   /**
@@ -209,12 +215,15 @@ public final class UnsignedLong extends Number implements Comparable<UnsignedLon
    */
   @Override
   public double doubleValue() {
-    @SuppressWarnings("cast")
-    double dValue = (double) (value & UNSIGNED_MASK);
-    if (value < 0) {
-      dValue += 0x1.0p63;
+    if (value >= 0) {
+      return (double) value;
     }
-    return dValue;
+    // The top bit is set, which means that the double value is going to come from the top 53 bits.
+    // So we can ignore the bottom 11, except for rounding. We can unsigned-shift right 1, aka
+    // unsigned-divide by 2, and convert that. Then we'll get exactly half of the desired double
+    // value. But in the specific case where the bottom two bits of the original number are 01, we
+    // want to replace that with 1 in the shifted value for correct rounding.
+    return (double) ((value >>> 1) | (value & 1)) * 2.0;
   }
 
   /** Returns the value of this {@code UnsignedLong} as a {@link BigInteger}. */
@@ -234,11 +243,11 @@ public final class UnsignedLong extends Number implements Comparable<UnsignedLon
 
   @Override
   public int hashCode() {
-    return Longs.hashCode(value);
+    return Long.hashCode(value);
   }
 
   @Override
-  public boolean equals(@NullableDecl Object obj) {
+  public boolean equals(@Nullable Object obj) {
     if (obj instanceof UnsignedLong) {
       UnsignedLong other = (UnsignedLong) obj;
       return value == other.value;
@@ -260,4 +269,6 @@ public final class UnsignedLong extends Number implements Comparable<UnsignedLon
   public String toString(int radix) {
     return UnsignedLongs.toString(value, radix);
   }
+
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 389107927943716141L;
 }

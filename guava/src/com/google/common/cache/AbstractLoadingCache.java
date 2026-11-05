@@ -15,35 +15,37 @@
 package com.google.common.cache;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 /**
- * This class provides a skeletal implementation of the {@code Cache} interface to minimize the
- * effort required to implement this interface.
+ * This class provides a skeletal implementation of the {@code LoadingCache} interface to minimize
+ * the effort required to implement this interface.
  *
- * <p>To implement a cache, the programmer needs only to extend this class and provide an
+ * <p>To implement a loading cache, the programmer needs only to extend this class and provide an
  * implementation for the {@link #get(Object)} and {@link #getIfPresent} methods. {@link
- * #getUnchecked}, {@link #get(Object, Callable)}, and {@link #getAll} are implemented in terms of
- * {@code get}; {@link #getAllPresent} is implemented in terms of {@code getIfPresent}; {@link
- * #putAll} is implemented in terms of {@link #put}, {@link #invalidateAll(Iterable)} is implemented
- * in terms of {@link #invalidate}. The method {@link #cleanUp} is a no-op. All other methods throw
- * an {@link UnsupportedOperationException}.
+ * #getUnchecked} and {@link #getAll} are implemented in terms of {@code get}; {@link #apply} is
+ * implemented in terms of {@code getUnchecked}. The method {@link #refresh} throws an {@link
+ * UnsupportedOperationException}; for the methods inherited from {@link AbstractCache}, see that
+ * class's documentation.
  *
  * @author Charles Fry
  * @since 11.0
  */
 @GwtIncompatible
+@J2ktIncompatible // Compiles fine, but hidden for safety because the tests have not been ported
 public abstract class AbstractLoadingCache<K, V> extends AbstractCache<K, V>
     implements LoadingCache<K, V> {
 
   /** Constructor for use by subclasses. */
   protected AbstractLoadingCache() {}
 
+  @CanIgnoreReturnValue // TODO(b/27479612): consider removing this?
   @Override
   public V getUnchecked(K key) {
     try {
@@ -55,7 +57,7 @@ public abstract class AbstractLoadingCache<K, V> extends AbstractCache<K, V>
 
   @Override
   public ImmutableMap<K, V> getAll(Iterable<? extends K> keys) throws ExecutionException {
-    Map<K, V> result = Maps.newLinkedHashMap();
+    Map<K, V> result = new LinkedHashMap<>();
     for (K key : keys) {
       if (!result.containsKey(key)) {
         result.put(key, get(key));

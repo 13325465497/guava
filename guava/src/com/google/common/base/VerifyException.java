@@ -15,7 +15,9 @@
 package com.google.common.base;
 
 import com.google.common.annotations.GwtCompatible;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Exception thrown upon the failure of a <a
@@ -53,4 +55,6 @@ public class VerifyException extends RuntimeException {
   public VerifyException(@Nullable String message, @Nullable Throwable cause) {
     super(message, cause);
   }
+
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = -5555829855959801639L;
 }

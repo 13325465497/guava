@@ -20,12 +20,14 @@ import com.google.common.base.Function;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.ForwardingWrapperTester;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests {@link ForwardingTable}.
  *
  * @author Gregory Kick
  */
+@NullUnmarked
 public class ForwardingTableTest extends TestCase {
 
   @SuppressWarnings("rawtypes")
@@ -33,10 +35,10 @@ public class ForwardingTableTest extends TestCase {
     new ForwardingWrapperTester()
         .testForwarding(
             Table.class,
-            new Function<Table, Table>() {
+            new Function<Table, Table<?, ?, ?>>() {
               @Override
-              public Table apply(Table delegate) {
-                return wrap(delegate);
+              public Table<?, ?, ?> apply(Table delegate) {
+                return wrap((Table<?, ?, ?>) delegate);
               }
             });
   }
@@ -50,7 +52,7 @@ public class ForwardingTableTest extends TestCase {
         .testEquals();
   }
 
-  private static <R, C, V> Table<R, C, V> wrap(final Table<R, C, V> delegate) {
+  private static <R, C, V> Table<R, C, V> wrap(Table<R, C, V> delegate) {
     return new ForwardingTable<R, C, V>() {
       @Override
       protected Table<R, C, V> delegate() {

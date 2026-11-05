@@ -15,6 +15,7 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.util.Collections.sort;
 
 import com.google.caliper.BeforeExperiment;
 import com.google.caliper.Benchmark;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Provides supporting data for performance notes in the documentation of {@link
@@ -33,6 +35,7 @@ import java.util.TreeSet;
  * suggestions.
  *
  */
+@NullUnmarked
 public class SortedCopyBenchmark {
   @Param({"1", "10", "1000", "1000000"})
   int size; // logarithmic triangular
@@ -45,13 +48,13 @@ public class SortedCopyBenchmark {
     SORTED {
       @Override
       void arrange(List<Integer> list) {
-        Collections.sort(list);
+        sort(list);
       }
     },
     ALMOST_SORTED {
       @Override
       void arrange(List<Integer> list) {
-        Collections.sort(list);
+        sort(list);
         if (list.size() > 1) {
           int i = (list.size() - 1) / 2;
           Collections.swap(list, i, i + 1);
@@ -89,13 +92,13 @@ public class SortedCopyBenchmark {
     if (mutable) {
       for (int i = 0; i < reps; i++) {
         List<Integer> copy = new ArrayList<>(input);
-        Collections.sort(copy);
+        sort(copy);
         dummy += copy.get(0);
       }
     } else {
       for (int i = 0; i < reps; i++) {
         List<Integer> copy = new ArrayList<>(input);
-        Collections.sort(copy);
+        sort(copy);
         dummy += ImmutableList.copyOf(copy).get(0);
       }
     }

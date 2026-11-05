@@ -13,28 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.google.common.collect;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.truth.Truth.assertThat;
+import static java.lang.Math.max;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
+import com.google.common.testing.EqualsTester;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.Map;
 import java.util.Map.Entry;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@code CompactHashMap}.
  *
  * @author Louis Wasserman
  */
+@NullUnmarked
 public class CompactHashMapTest extends TestCase {
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -73,7 +87,7 @@ public class CompactHashMapTest extends TestCase {
     assertThat(map.values).hasLength(10);
     assertEquals(10, map.size());
     for (int i = 0; i < 10; i++) {
-      assertEquals(Integer.toString(i), map.get(i));
+      assertThat(map.get(i)).isEqualTo(Integer.toString(i));
     }
   }
 
@@ -95,13 +109,13 @@ public class CompactHashMapTest extends TestCase {
 
     map.put(1, "1");
     assertThat(map.needsAllocArrays()).isFalse();
-    assertThat(map.entries).hasLength(CompactHashMap.DEFAULT_SIZE);
-    assertThat(map.keys).hasLength(CompactHashMap.DEFAULT_SIZE);
-    assertThat(map.values).hasLength(CompactHashMap.DEFAULT_SIZE);
+    assertThat(map.entries).hasLength(CompactHashing.DEFAULT_SIZE);
+    assertThat(map.keys).hasLength(CompactHashing.DEFAULT_SIZE);
+    assertThat(map.values).hasLength(CompactHashing.DEFAULT_SIZE);
   }
 
   public void testAllocArraysExpectedSize() {
-    for (int i = 0; i <= CompactHashMap.DEFAULT_SIZE; i++) {
+    for (int i = 0; i <= CompactHashing.DEFAULT_SIZE; i++) {
       CompactHashMap<Integer, String> map = CompactHashMap.createWithExpectedSize(i);
       assertThat(map.needsAllocArrays()).isTrue();
       assertThat(map.entries).isNull();
@@ -110,10 +124,57 @@ public class CompactHashMapTest extends TestCase {
 
       map.put(1, "1");
       assertThat(map.needsAllocArrays()).isFalse();
-      int expectedSize = Math.max(1, i);
+      int expectedSize = max(1, i);
       assertThat(map.entries).hasLength(expectedSize);
       assertThat(map.keys).hasLength(expectedSize);
       assertThat(map.values).hasLength(expectedSize);
+    }
+  }
+
+  public void testEquals() {
+    /*
+     * We get extensive testing of `equals` through the generated suite. Here, we mostly just need
+     * something to prevent `PackageSanityTest` from running its automated equality checking, which
+     * would call `createWithExpectedSize(1)` and `createWithExpectedSize(2)` and expect the results
+     * to be non-equal. The test here also provides some very basic coverage for environments under
+     * which we don't run the suite, like Android.
+     *
+     * (Perhaps `PackageSanityTest` should be made to automatically skip its testing on collection
+     * classes.)
+     */
+
+    Map<Integer, String> map1 = CompactHashMap.create();
+    map1.put(1, "one");
+    map1.put(2, "two");
+
+    Map<Integer, String> map2 = CompactHashMap.create();
+    map2.put(2, "two");
+    map2.put(1, "one");
+
+    new EqualsTester()
+        .addEqualityGroup(CompactHashMap.create(), ImmutableMap.of())
+        .addEqualityGroup(map1, map2)
+        .testEquals();
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // java.io.ObjectInputStream
+  public void testDeserializeWithHugeSize() throws Exception {
+    CompactHashMap<Integer, String> map = CompactHashMap.create();
+    map.put(1, "1");
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(map);
+    }
+    try (ObjectInputStream ois =
+        new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray())) {
+          @Override
+          public int readInt() throws IOException {
+            int unused = super.readInt();
+            return Integer.MAX_VALUE;
+          }
+        }) {
+      assertThrows(IOException.class, ois::readObject);
     }
   }
 }

@@ -16,11 +16,15 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth.assertWithMessage;
+import static java.util.Collections.singleton;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.Equivalence;
 import com.google.common.collect.ImmutableSet.Builder;
 import com.google.common.collect.testing.ListTestSuiteBuilder;
@@ -38,18 +42,16 @@ import com.google.common.collect.testing.google.SetGenerators.ImmutableSetUnsize
 import com.google.common.collect.testing.google.SetGenerators.ImmutableSetWithBadHashesGenerator;
 import com.google.common.testing.CollectorTester;
 import com.google.common.testing.EqualsTester;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.stream.Collector;
 import junit.framework.Test;
 import junit.framework.TestSuite;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link ImmutableSet}.
@@ -58,10 +60,13 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @author Jared Levy
  * @author Nick Kralevich
  */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class ImmutableSetTest extends AbstractImmutableSetTest {
 
+  @J2ktIncompatible
   @GwtIncompatible // suite
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
 
@@ -168,79 +173,79 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of() {
+  <E extends Comparable<? super E>> Set<E> of() {
     return ImmutableSet.of();
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(E e) {
+  <E extends Comparable<? super E>> Set<E> of(E e) {
     return ImmutableSet.of(e);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(E e1, E e2) {
+  <E extends Comparable<? super E>> Set<E> of(E e1, E e2) {
     return ImmutableSet.of(e1, e2);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3) {
+  <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3) {
     return ImmutableSet.of(e1, e2, e3);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3, E e4) {
+  <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3, E e4) {
     return ImmutableSet.of(e1, e2, e3, e4);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3, E e4, E e5) {
+  <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3, E e4, E e5) {
     return ImmutableSet.of(e1, e2, e3, e4, e5);
   }
 
-  @SuppressWarnings("unchecked")
   @Override
-  protected <E extends Comparable<? super E>> Set<E> of(
-      E e1, E e2, E e3, E e4, E e5, E e6, E... rest) {
+  <E extends Comparable<? super E>> Set<E> of(E e1, E e2, E e3, E e4, E e5, E e6, E... rest) {
     return ImmutableSet.of(e1, e2, e3, e4, e5, e6, rest);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> copyOf(E[] elements) {
+  <E extends Comparable<? super E>> Set<E> copyOf(E[] elements) {
     return ImmutableSet.copyOf(elements);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> copyOf(Collection<? extends E> elements) {
+  <E extends Comparable<? super E>> Set<E> copyOf(Collection<? extends E> elements) {
     return ImmutableSet.copyOf(elements);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> copyOf(Iterable<? extends E> elements) {
+  <E extends Comparable<? super E>> Set<E> copyOf(Iterable<? extends E> elements) {
     return ImmutableSet.copyOf(elements);
   }
 
   @Override
-  protected <E extends Comparable<? super E>> Set<E> copyOf(Iterator<? extends E> elements) {
+  <E extends Comparable<? super E>> Set<E> copyOf(Iterator<? extends E> elements) {
     return ImmutableSet.copyOf(elements);
   }
 
   public void testCreation_allDuplicates() {
-    ImmutableSet<String> set = ImmutableSet.copyOf(Lists.newArrayList("a", "a"));
+    ImmutableSet<String> set = ImmutableSet.copyOf(newArrayList("a", "a"));
     assertTrue(set instanceof SingletonImmutableSet);
-    assertEquals(Lists.newArrayList("a"), Lists.newArrayList(set));
+    assertEquals(newArrayList("a"), new ArrayList<>(set));
   }
 
   public void testCreation_oneDuplicate() {
     // now we'll get the varargs overload
+    @SuppressWarnings("DistinctVarargsChecker") // deliberately testing deduplication
     ImmutableSet<String> set =
         ImmutableSet.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "a");
     assertEquals(
-        Lists.newArrayList("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m"),
-        Lists.newArrayList(set));
+        newArrayList("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m"),
+        new ArrayList<>(set));
   }
 
   public void testCreation_manyDuplicates() {
     // now we'll get the varargs overload
+    @SuppressWarnings("DistinctVarargsChecker") // deliberately testing deduplication
     ImmutableSet<String> set =
         ImmutableSet.of("a", "b", "c", "c", "c", "c", "b", "b", "a", "a", "c", "c", "c", "a");
     assertThat(set).containsExactly("a", "b", "c").inOrder();
@@ -248,8 +253,8 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
 
   public void testCreation_arrayOfArray() {
     String[] array = new String[] {"a"};
-    Set<String[]> set = ImmutableSet.<String[]>of(array);
-    assertEquals(Collections.singleton(array), set);
+    Set<String[]> set = ImmutableSet.of(array);
+    assertEquals(singleton(array), set);
   }
 
   @GwtIncompatible // ImmutableSet.chooseTableSize
@@ -265,11 +270,7 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
     assertEquals(1 << 30, ImmutableSet.chooseTableSize((1 << 30) - 1));
 
     // Now we've gone too far
-    try {
-      ImmutableSet.chooseTableSize(1 << 30);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> ImmutableSet.chooseTableSize(1 << 30));
   }
 
   @GwtIncompatible // RegularImmutableSet.table not in emulation
@@ -283,7 +284,7 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
   }
 
   @GwtIncompatible // RegularImmutableSet.table not in emulation
-  private void verifyTableSize(int inputSize, int setSize, int tableSize) {
+  private static void verifyTableSize(int inputSize, int setSize, int tableSize) {
     Builder<Integer> builder = ImmutableSet.builder();
     for (int i = 0; i < inputSize; i++) {
       builder.add(i % setSize);
@@ -299,11 +300,11 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
   public void testCopyOf_copiesImmutableSortedSet() {
     ImmutableSortedSet<String> sortedSet = ImmutableSortedSet.of("a");
     ImmutableSet<String> copy = ImmutableSet.copyOf(sortedSet);
-    assertNotSame(sortedSet, copy);
+    assertThat(copy).isNotSameInstanceAs(sortedSet);
   }
 
   public void testToImmutableSet() {
-    Collector<String, ?, ImmutableSet<String>> collector = ImmutableSet.toImmutableSet();
+    Collector<String, ?, ImmutableSet<String>> collector = toImmutableSet();
     Equivalence<ImmutableSet<String>> equivalence =
         Equivalence.equals().onResultOf(ImmutableSet::asList);
     CollectorTester.of(collector, equivalence)
@@ -326,17 +327,16 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
       }
 
       @Override
-      public boolean equals(Object obj) {
+      public boolean equals(@Nullable Object obj) {
         return obj instanceof TypeWithDuplicates && ((TypeWithDuplicates) obj).a == a;
       }
 
-      public boolean fullEquals(TypeWithDuplicates other) {
+      boolean fullEquals(@Nullable TypeWithDuplicates other) {
         return other != null && a == other.a && b == other.b;
       }
     }
 
-    Collector<TypeWithDuplicates, ?, ImmutableSet<TypeWithDuplicates>> collector =
-        ImmutableSet.toImmutableSet();
+    Collector<TypeWithDuplicates, ?, ImmutableSet<TypeWithDuplicates>> collector = toImmutableSet();
     BiPredicate<ImmutableSet<TypeWithDuplicates>, ImmutableSet<TypeWithDuplicates>> equivalence =
         (set1, set2) -> {
           if (!set1.equals(set2)) {
@@ -357,11 +357,6 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
         .expectCollects(ImmutableSet.of(a, b1, c), a, b1, c, b2);
   }
 
-  @GwtIncompatible // GWT is single threaded
-  public void testCopyOf_threadSafe() {
-    verifyThreadSafe();
-  }
-
   @Override
   <E extends Comparable<E>> Builder<E> builder() {
     return ImmutableSet.builder();
@@ -372,6 +367,7 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
     return LAST_COLOR_ADDED;
   }
 
+  @SuppressWarnings("DistinctVarargsChecker") // deliberately testing deduplication
   public void testEquals() {
     new EqualsTester()
         .addEqualityGroup(ImmutableSet.of(), ImmutableSet.of())
@@ -381,205 +377,16 @@ public class ImmutableSetTest extends AbstractImmutableSetTest {
   }
 
   /**
-   * A Comparable wrapper around a String which executes callbacks on calls to hashCode, equals, and
-   * compareTo.
+   * The maximum allowed probability of falsely detecting a hash flooding attack if the input is
+   * randomly generated.
    */
-  private static class CountsHashCodeAndEquals implements Comparable<CountsHashCodeAndEquals> {
-    private final String delegateString;
-    private final Runnable onHashCode;
-    private final Runnable onEquals;
-    private final Runnable onCompareTo;
+  private static final double HASH_FLOODING_FPP = 0.001;
 
-    CountsHashCodeAndEquals(
-        String delegateString, Runnable onHashCode, Runnable onEquals, Runnable onCompareTo) {
-      this.delegateString = delegateString;
-      this.onHashCode = onHashCode;
-      this.onEquals = onEquals;
-      this.onCompareTo = onCompareTo;
-    }
-
-    @Override
-    public int hashCode() {
-      onHashCode.run();
-      return delegateString.hashCode();
-    }
-
-    @Override
-    public boolean equals(@Nullable Object other) {
-      onEquals.run();
-      return other instanceof CountsHashCodeAndEquals
-          && delegateString.equals(((CountsHashCodeAndEquals) other).delegateString);
-    }
-
-    @Override
-    public int compareTo(CountsHashCodeAndEquals o) {
-      onCompareTo.run();
-      return delegateString.compareTo(o.delegateString);
-    }
-  }
-
-  /** A holder of counters for calls to hashCode, equals, and compareTo. */
-  private static final class CallsCounter {
-    long hashCode;
-    long equals;
-    long compareTo;
-
-    long total() {
-      return hashCode + equals + compareTo;
-    }
-
-    void zero() {
-      hashCode = 0;
-      equals = 0;
-      compareTo = 0;
-    }
-  }
-
-  /** All the ways to construct an ImmutableSet. */
-  enum ConstructionPathway {
-    OF {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        Object o1 = list.get(0);
-        Object o2 = list.get(1);
-        Object o3 = list.get(2);
-        Object o4 = list.get(3);
-        Object o5 = list.get(4);
-        Object o6 = list.get(5);
-        Object[] rest = list.subList(6, list.size()).toArray();
-        return ImmutableSet.of(o1, o2, o3, o4, o5, o6, rest);
-      }
-    },
-    COPY_OF_ARRAY {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        return ImmutableSet.copyOf(list.toArray());
-      }
-    },
-    COPY_OF_LIST {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        return ImmutableSet.copyOf(list);
-      }
-    },
-    BUILDER_ADD_ONE_BY_ONE {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        ImmutableSet.Builder<Object> builder = ImmutableSet.builder();
-        for (Object o : list) {
-          builder.add(o);
-        }
-        return builder.build();
-      }
-    },
-    BUILDER_ADD_ARRAY {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        ImmutableSet.Builder<Object> builder = ImmutableSet.builder();
-        builder.add(list.toArray());
-        return builder.build();
-      }
-    },
-    BUILDER_ADD_LIST {
-      @Override
-      ImmutableSet<?> create(List<?> list) {
-        ImmutableSet.Builder<Object> builder = ImmutableSet.builder();
-        builder.addAll(list);
-        return builder.build();
-      }
-    };
-
-    @CanIgnoreReturnValue
-    abstract ImmutableSet<?> create(List<?> list);
-  }
-
-  /**
-   * Returns a list of objects with the same hash code, of size 2^power, counting calls to equals,
-   * hashCode, and compareTo in counter.
-   */
-  static List<CountsHashCodeAndEquals> createAdversarialInput(int power, CallsCounter counter) {
-    String str1 = "Aa";
-    String str2 = "BB";
-    assertEquals(str1.hashCode(), str2.hashCode());
-    List<String> haveSameHashes2 = Arrays.asList(str1, str2);
-    List<CountsHashCodeAndEquals> result =
-        Lists.newArrayList(
-            Lists.transform(
-                Lists.cartesianProduct(Collections.nCopies(power, haveSameHashes2)),
-                strs ->
-                    new CountsHashCodeAndEquals(
-                        String.join("", strs),
-                        () -> counter.hashCode++,
-                        () -> counter.equals++,
-                        () -> counter.compareTo++)));
-    assertEquals(
-        result.get(0).delegateString.hashCode(),
-        result.get(result.size() - 1).delegateString.hashCode());
-    return result;
-  }
-
-  @GwtIncompatible
-  public void testResistsHashFloodingInConstruction() {
-    CallsCounter smallCounter = new CallsCounter();
-    List<CountsHashCodeAndEquals> haveSameHashesSmall = createAdversarialInput(10, smallCounter);
-    int smallSize = haveSameHashesSmall.size();
-
-    CallsCounter largeCounter = new CallsCounter();
-    List<CountsHashCodeAndEquals> haveSameHashesLarge = createAdversarialInput(15, largeCounter);
-    int largeSize = haveSameHashesLarge.size();
-
-    for (ConstructionPathway pathway : ConstructionPathway.values()) {
-      smallCounter.zero();
-      pathway.create(haveSameHashesSmall);
-
-      largeCounter.zero();
-      pathway.create(haveSameHashesLarge);
-
-      double ratio = (double) largeCounter.total() / smallCounter.total();
-
-      assertWithMessage(
-              "ratio of equals/hashCode/compareTo operations to build an ImmutableSet via pathway "
-                  + "%s of size %s versus size %s",
-              pathway, haveSameHashesLarge.size(), haveSameHashesSmall.size())
-          .that(ratio)
-          .isAtMost(2.0 * (largeSize * Math.log(largeSize)) / (smallSize * Math.log(smallSize)));
-      // We allow up to 2x wobble in the constant factors.
-    }
-  }
-
-  @GwtIncompatible
-  public void testResistsHashFloodingOnContains() {
-    CallsCounter smallCounter = new CallsCounter();
-    List<CountsHashCodeAndEquals> haveSameHashesSmall = createAdversarialInput(10, smallCounter);
-    ImmutableSet<?> smallSet = ConstructionPathway.COPY_OF_LIST.create(haveSameHashesSmall);
-    long worstCaseOpsSmall = worstCaseQueryOperations(smallSet, smallCounter);
-
-    CallsCounter largeCounter = new CallsCounter();
-    List<CountsHashCodeAndEquals> haveSameHashesLarge = createAdversarialInput(15, largeCounter);
-    ImmutableSet<?> largeSet = ConstructionPathway.COPY_OF_LIST.create(haveSameHashesLarge);
-    long worstCaseOpsLarge = worstCaseQueryOperations(largeSet, largeCounter);
-
-    double ratio = (double) worstCaseOpsLarge / worstCaseOpsSmall;
-    int smallSize = haveSameHashesSmall.size();
-    int largeSize = haveSameHashesLarge.size();
-
-    assertWithMessage(
-            "ratio of equals/hashCode/compareTo operations to worst-case query an ImmutableSet "
-                + "of size %s versus size %s",
-            haveSameHashesLarge.size(), haveSameHashesSmall.size())
-        .that(ratio)
-        .isAtMost(2 * Math.log(largeSize) / Math.log(smallSize));
-    // We allow up to 2x wobble in the constant factors.
-  }
-
-  private static long worstCaseQueryOperations(Set<?> set, CallsCounter counter) {
-    long worstCalls = 0;
-    for (Object k : set) {
-      counter.zero();
-      if (set.contains(k)) {
-        worstCalls = Math.max(worstCalls, counter.total());
-      }
-    }
-    return worstCalls;
+  public void testReuseBuilderReducingHashTableSizeWithPowerOfTwoTotalElements() {
+    ImmutableSet.Builder<Object> builder = ImmutableSet.builderWithExpectedSize(6);
+    builder.add(0);
+    ImmutableSet<Object> unused = builder.build();
+    ImmutableSet<Object> subject = builder.add(1).add(2).add(3).build();
+    assertFalse(subject.contains(4));
   }
 }

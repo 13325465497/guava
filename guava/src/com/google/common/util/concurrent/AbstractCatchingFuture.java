@@ -17,46 +17,55 @@ package com.google.common.util.concurrent;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.util.concurrent.Futures.getDone;
 import static com.google.common.util.concurrent.MoreExecutors.rejectionPropagatingExecutor;
+import static com.google.common.util.concurrent.NullnessCasts.uncheckedCastNullableTToT;
 import static com.google.common.util.concurrent.Platform.isInstanceOfThrowableClass;
+import static com.google.common.util.concurrent.Platform.restoreInterruptIfIsInterruptedException;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Function;
+import com.google.common.util.concurrent.internal.InternalFutureFailureAccess;
+import com.google.common.util.concurrent.internal.InternalFutures;
 import com.google.errorprone.annotations.ForOverride;
+import com.google.errorprone.annotations.concurrent.LazyInit;
+import com.google.j2objc.annotations.RetainedLocalRef;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /** Implementations of {@code Futures.catching*}. */
 @GwtCompatible
-abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
+// Whenever both tests are cheap and functional, it's faster to use &, | instead of &&, ||
+@SuppressWarnings("ShortCircuitBoolean")
+abstract class AbstractCatchingFuture<
+        V extends @Nullable Object, X extends Throwable, F, T extends @Nullable Object>
     extends FluentFuture.TrustedFuture<V> implements Runnable {
-  static <V, X extends Throwable> ListenableFuture<V> create(
+  static <V extends @Nullable Object, X extends Throwable> ListenableFuture<V> create(
       ListenableFuture<? extends V> input,
       Class<X> exceptionType,
       Function<? super X, ? extends V> fallback,
       Executor executor) {
-    CatchingFuture<V, X> future = new CatchingFuture<>(input, exceptionType, fallback);
-    input.addListener(future, rejectionPropagatingExecutor(executor, future));
-    return future;
+    CatchingFuture<V, X> output = new CatchingFuture<>(input, exceptionType, fallback);
+    input.addListener(output, rejectionPropagatingExecutor(executor, output));
+    return output;
   }
 
-  static <X extends Throwable, V> ListenableFuture<V> create(
+  static <X extends Throwable, V extends @Nullable Object> ListenableFuture<V> createAsync(
       ListenableFuture<? extends V> input,
       Class<X> exceptionType,
       AsyncFunction<? super X, ? extends V> fallback,
       Executor executor) {
-    AsyncCatchingFuture<V, X> future = new AsyncCatchingFuture<>(input, exceptionType, fallback);
-    input.addListener(future, rejectionPropagatingExecutor(executor, future));
-    return future;
+    AsyncCatchingFuture<V, X> output = new AsyncCatchingFuture<>(input, exceptionType, fallback);
+    input.addListener(output, rejectionPropagatingExecutor(executor, output));
+    return output;
   }
 
   /*
    * In certain circumstances, this field might theoretically not be visible to an afterDone() call
    * triggered by cancel(). For details, see the comments on the fields of TimeoutFuture.
    */
-  @Nullable ListenableFuture<? extends V> inputFuture;
-  @Nullable Class<X> exceptionType;
-  @Nullable F fallback;
+  @LazyInit @Nullable ListenableFuture<? extends V> inputFuture;
+  @LazyInit @Nullable Class<X> exceptionType;
+  @LazyInit @Nullable F fallback;
 
   AbstractCatchingFuture(
       ListenableFuture<? extends V> inputFuture, Class<X> exceptionType, F fallback) {
@@ -66,14 +75,14 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
   }
 
   @Override
+  @SuppressWarnings("nullness") // TODO(b/147136275): Remove once our checker understands & and |.
   public final void run() {
-    ListenableFuture<? extends V> localInputFuture = inputFuture;
-    Class<X> localExceptionType = exceptionType;
-    F localFallback = fallback;
-    if (localInputFuture == null
-        | localExceptionType == null
-        | localFallback == null
-        | isCancelled()) {
+    @RetainedLocalRef ListenableFuture<? extends V> localInputFuture = inputFuture;
+    @RetainedLocalRef Class<X> localExceptionType = exceptionType;
+    @RetainedLocalRef F localFallback = fallback;
+    if ((localInputFuture == null | localExceptionType == null | localFallback == null)
+        // This check, unlike all the others, is a volatile read
+        || isCancelled()) {
       return;
     }
     inputFuture = null;
@@ -82,15 +91,35 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
     V sourceResult = null;
     Throwable throwable = null;
     try {
-      sourceResult = getDone(localInputFuture);
+      if (localInputFuture instanceof InternalFutureFailureAccess) {
+        throwable =
+            InternalFutures.tryInternalFastPathGetFailure(
+                (InternalFutureFailureAccess) localInputFuture);
+      }
+      if (throwable == null) {
+        sourceResult = getDone(localInputFuture);
+      }
     } catch (ExecutionException e) {
-      throwable = checkNotNull(e.getCause());
-    } catch (Throwable e) { // this includes cancellation exception
-      throwable = e;
+      throwable = e.getCause();
+      if (throwable == null) {
+        throwable =
+            new NullPointerException(
+                "Future type "
+                    + localInputFuture.getClass()
+                    + " threw "
+                    + e.getClass()
+                    + " without a cause");
+      }
+    } catch (Throwable t) { // this includes CancellationException and sneaky checked exception
+      throwable = t;
     }
 
     if (throwable == null) {
-      set(sourceResult);
+      /*
+       * The cast is safe: There was no exception, so the assignment from getDone must have
+       * succeeded.
+       */
+      set(uncheckedCastNullableTToT(sourceResult));
       return;
     }
 
@@ -100,12 +129,15 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
       return;
     }
 
-    @SuppressWarnings("unchecked") // verified safe by isInstanceOfThrowableClass
+    // The cast was verified as safe by isInstanceOfThrowableClass.
+    // We can't use localExceptionType.cast(throwable) because it wouldn't work under GWT, etc.
+    @SuppressWarnings("unchecked")
     X castThrowable = (X) throwable;
     T fallbackResult;
     try {
       fallbackResult = doFallback(localFallback, castThrowable);
     } catch (Throwable t) {
+      restoreInterruptIfIsInterruptedException(t);
       setException(t);
       return;
     } finally {
@@ -116,11 +148,29 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
     setResult(fallbackResult);
   }
 
+  /** Template method for subtypes to actually run the fallback. */
+  @ForOverride
+  @ParametricNullness
+  abstract T doFallback(F fallback, X throwable) throws Exception;
+
+  /** Template method for subtypes to actually set the result. */
+  @ForOverride
+  abstract void setResult(@ParametricNullness T result);
+
   @Override
-  protected String pendingToString() {
-    ListenableFuture<? extends V> localInputFuture = inputFuture;
-    Class<X> localExceptionType = exceptionType;
-    F localFallback = fallback;
+  protected final void afterDone() {
+    @RetainedLocalRef ListenableFuture<? extends V> localInputFuture = inputFuture;
+    maybePropagateCancellationTo(localInputFuture);
+    this.inputFuture = null;
+    this.exceptionType = null;
+    this.fallback = null;
+  }
+
+  @Override
+  protected @Nullable String pendingToString() {
+    @RetainedLocalRef ListenableFuture<? extends V> localInputFuture = inputFuture;
+    @RetainedLocalRef Class<X> localExceptionType = exceptionType;
+    @RetainedLocalRef F localFallback = fallback;
     String superString = super.pendingToString();
     String resultString = "";
     if (localInputFuture != null) {
@@ -139,27 +189,11 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
     return null;
   }
 
-  /** Template method for subtypes to actually run the fallback. */
-  @ForOverride
-  abstract @Nullable T doFallback(F fallback, X throwable) throws Exception;
-
-  /** Template method for subtypes to actually set the result. */
-  @ForOverride
-  abstract void setResult(@Nullable T result);
-
-  @Override
-  protected final void afterDone() {
-    maybePropagateCancellationTo(inputFuture);
-    this.inputFuture = null;
-    this.exceptionType = null;
-    this.fallback = null;
-  }
-
   /**
    * An {@link AbstractCatchingFuture} that delegates to an {@link AsyncFunction} and {@link
    * #setFuture(ListenableFuture)}.
    */
-  private static final class AsyncCatchingFuture<V, X extends Throwable>
+  private static final class AsyncCatchingFuture<V extends @Nullable Object, X extends Throwable>
       extends AbstractCatchingFuture<
           V, X, AsyncFunction<? super X, ? extends V>, ListenableFuture<? extends V>> {
     AsyncCatchingFuture(
@@ -172,13 +206,13 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
     @Override
     ListenableFuture<? extends V> doFallback(
         AsyncFunction<? super X, ? extends V> fallback, X cause) throws Exception {
-      ListenableFuture<? extends V> replacement = fallback.apply(cause);
+      ListenableFuture<? extends V> output = fallback.apply(cause);
       checkNotNull(
-          replacement,
+          output,
           "AsyncFunction.apply returned null instead of a Future. "
               + "Did you mean to return immediateFuture(null)? %s",
           fallback);
-      return replacement;
+      return output;
     }
 
     @Override
@@ -191,7 +225,7 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
    * An {@link AbstractCatchingFuture} that delegates to a {@link Function} and {@link
    * #set(Object)}.
    */
-  private static final class CatchingFuture<V, X extends Throwable>
+  private static final class CatchingFuture<V extends @Nullable Object, X extends Throwable>
       extends AbstractCatchingFuture<V, X, Function<? super X, ? extends V>, V> {
     CatchingFuture(
         ListenableFuture<? extends V> input,
@@ -201,13 +235,13 @@ abstract class AbstractCatchingFuture<V, X extends Throwable, F, T>
     }
 
     @Override
-    @Nullable
-    V doFallback(Function<? super X, ? extends V> fallback, X cause) throws Exception {
+    @ParametricNullness
+    V doFallback(Function<? super X, ? extends V> fallback, X cause) {
       return fallback.apply(cause);
     }
 
     @Override
-    void setResult(@Nullable V result) {
+    void setResult(@ParametricNullness V result) {
       set(result);
     }
   }

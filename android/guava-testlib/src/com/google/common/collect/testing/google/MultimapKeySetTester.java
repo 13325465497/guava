@@ -27,7 +27,6 @@ import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import java.util.Iterator;
 import java.util.Map.Entry;
-import org.junit.Ignore;
 
 /**
  * Tester for {@code Multimap.keySet}.
@@ -35,7 +34,6 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MultimapKeySetTester<K, V> extends AbstractMultimapTester<K, V, Multimap<K, V>> {
   public void testKeySet() {
     for (Entry<K, V> entry : getSampleElements()) {

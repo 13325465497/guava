@@ -19,13 +19,13 @@ package com.google.common.collect.testing.testers;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEYS;
 import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_KEY_QUERIES;
+import static com.google.common.collect.testing.features.MapFeature.ALLOWS_NULL_VALUES;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.AbstractMapTester;
 import com.google.common.collect.testing.WrongType;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
-import org.junit.Ignore;
 
 /**
  * A generic JUnit test which tests {@code containsKey()} operations on a map. Can't be invoked
@@ -34,7 +34,6 @@ import org.junit.Ignore;
  * @author George van den Driessche
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MapContainsKeyTester<K, V> extends AbstractMapTester<K, V> {
   @CollectionSize.Require(absent = ZERO)
   public void testContains_yes() {
@@ -67,6 +66,15 @@ public class MapContainsKeyTester<K, V> extends AbstractMapTester<K, V> {
   public void testContains_nullContained() {
     initMapWithNullKey();
     assertTrue("containsKey(null) should return true", getMap().containsKey(null));
+  }
+
+  @MapFeature.Require(ALLOWS_NULL_VALUES)
+  @CollectionSize.Require(absent = ZERO)
+  public void testContains_keyWithNullValueContained() {
+    initMapWithNullValue();
+    assertTrue(
+        "containsKey(keyForNullValue) should return true",
+        getMap().containsKey(getKeyForNullValue()));
   }
 
   public void testContains_wrongType() {

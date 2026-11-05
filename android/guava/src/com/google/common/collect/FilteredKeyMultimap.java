@@ -16,19 +16,24 @@ package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkPositionIndex;
+import static com.google.common.collect.Collections2.filter;
+import static com.google.common.collect.Maps.filterKeys;
+import static com.google.common.collect.Maps.keyPredicateOnEntries;
+import static com.google.common.collect.Sets.filter;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Predicate;
+import com.google.common.collect.ForwardingCollection.SimpleForwardingCollection;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.google.j2objc.annotations.WeakOuter;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link Multimaps#filterKeys(Multimap, Predicate)}.
@@ -36,7 +41,8 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Louis Wasserman
  */
 @GwtCompatible
-class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements FilteredMultimap<K, V> {
+class FilteredKeyMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractMultimap<K, V> implements FilteredMultimap<K, V> {
   final Multimap<K, V> unfiltered;
   final Predicate<? super K> keyPredicate;
 
@@ -51,8 +57,8 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  public Predicate<? super Entry<K, V>> entryPredicate() {
-    return Maps.keyPredicateOnEntries(keyPredicate);
+  public final Predicate<? super Entry<K, V>> entryPredicate() {
+    return keyPredicateOnEntries(keyPredicate);
   }
 
   @Override
@@ -65,7 +71,7 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  public boolean containsKey(@NullableDecl Object key) {
+  public final boolean containsKey(@Nullable Object key) {
     if (unfiltered.containsKey(key)) {
       @SuppressWarnings("unchecked") // k is equal to a K, if not one itself
       K k = (K) key;
@@ -75,15 +81,16 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  public Collection<V> removeAll(Object key) {
+  public Collection<V> removeAll(@Nullable Object key) {
     return containsKey(key) ? unfiltered.removeAll(key) : unmodifiableEmptyCollection();
   }
 
-  Collection<V> unmodifiableEmptyCollection() {
+  @SuppressWarnings("EmptyList") // ImmutableList doesn't support nullable element types
+  final Collection<V> unmodifiableEmptyCollection() {
     if (unfiltered instanceof SetMultimap) {
-      return ImmutableSet.of();
+      return emptySet();
     } else {
-      return ImmutableList.of();
+      return emptyList();
     }
   }
 
@@ -93,12 +100,12 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  Set<K> createKeySet() {
-    return Sets.filter(unfiltered.keySet(), keyPredicate);
+  public Set<K> keySet() {
+    return filter(unfiltered.keySet(), keyPredicate);
   }
 
   @Override
-  public Collection<V> get(K key) {
+  public Collection<V> get(@ParametricNullness K key) {
     if (keyPredicate.apply(key)) {
       return unfiltered.get(key);
     } else if (unfiltered instanceof SetMultimap) {
@@ -108,15 +115,16 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
     }
   }
 
-  static class AddRejectingSet<K, V> extends ForwardingSet<V> {
-    final K key;
+  private static final class AddRejectingSet<K extends @Nullable Object, V extends @Nullable Object>
+      extends ForwardingSet<V> {
+    @ParametricNullness final K key;
 
-    AddRejectingSet(K key) {
+    AddRejectingSet(@ParametricNullness K key) {
       this.key = key;
     }
 
     @Override
-    public boolean add(V element) {
+    public boolean add(@ParametricNullness V element) {
       throw new IllegalArgumentException("Key does not satisfy predicate: " + key);
     }
 
@@ -128,25 +136,27 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
 
     @Override
     protected Set<V> delegate() {
-      return Collections.emptySet();
+      return emptySet();
     }
   }
 
-  static class AddRejectingList<K, V> extends ForwardingList<V> {
-    final K key;
+  private static final class AddRejectingList<
+          K extends @Nullable Object, V extends @Nullable Object>
+      extends ForwardingList<V> {
+    @ParametricNullness final K key;
 
-    AddRejectingList(K key) {
+    AddRejectingList(@ParametricNullness K key) {
       this.key = key;
     }
 
     @Override
-    public boolean add(V v) {
+    public boolean add(@ParametricNullness V v) {
       add(0, v);
       return true;
     }
 
     @Override
-    public void add(int index, V element) {
+    public void add(int index, @ParametricNullness V element) {
       checkPositionIndex(index, 0);
       throw new IllegalArgumentException("Key does not satisfy predicate: " + key);
     }
@@ -165,9 +175,10 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
       throw new IllegalArgumentException("Key does not satisfy predicate: " + key);
     }
 
+    @SuppressWarnings("EmptyList") // ImmutableList doesn't support nullable element types
     @Override
     protected List<V> delegate() {
-      return Collections.emptyList();
+      return emptyList();
     }
   }
 
@@ -177,20 +188,18 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  Collection<Entry<K, V>> createEntries() {
+  public Collection<Entry<K, V>> entries() {
     return new Entries();
   }
 
-  @WeakOuter
-  class Entries extends ForwardingCollection<Entry<K, V>> {
-    @Override
-    protected Collection<Entry<K, V>> delegate() {
-      return Collections2.filter(unfiltered.entries(), entryPredicate());
+  class Entries extends SimpleForwardingCollection<Entry<K, V>> {
+    Entries() {
+      super(filter(unfiltered.entries(), entryPredicate()));
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public boolean remove(@NullableDecl Object o) {
+    public final boolean remove(@Nullable Object o) {
       if (o instanceof Entry) {
         Entry<?, ?> entry = (Entry<?, ?>) o;
         if (unfiltered.containsKey(entry.getKey())
@@ -204,17 +213,17 @@ class FilteredKeyMultimap<K, V> extends AbstractMultimap<K, V> implements Filter
   }
 
   @Override
-  Collection<V> createValues() {
+  public Collection<V> values() {
     return new FilteredMultimapValues<>(this);
   }
 
   @Override
-  Map<K, Collection<V>> createAsMap() {
-    return Maps.filterKeys(unfiltered.asMap(), keyPredicate);
+  public Map<K, Collection<V>> asMap() {
+    return filterKeys(unfiltered.asMap(), keyPredicate);
   }
 
   @Override
-  Multiset<K> createKeys() {
+  public Multiset<K> keys() {
     return Multisets.filter(unfiltered.keys(), keyPredicate);
   }
 }

@@ -16,13 +16,15 @@
 
 package com.google.common.io;
 
-import static com.google.common.io.Files.touch;
+import static com.google.common.hash.Hashing.sha512;
+import static com.google.common.primitives.Bytes.asList;
 import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static java.nio.charset.StandardCharsets.UTF_16LE;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.Assert.assertThrows;
 
-import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
-import com.google.common.hash.Hashing;
-import com.google.common.primitives.Bytes;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -35,21 +37,29 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Files}.
  *
- * <p>Note: {@link Files#fileTraverser()} is tested in {@link FilesFileTraverserTest}.
+ * <p>Some methods are tested in separate files:
+ *
+ * <ul>
+ *   <li>{@link Files#fileTraverser()} is tested in {@link FilesFileTraverserTest}.
+ *   <li>{@link Files#createTempDir()} is tested in {@link FilesCreateTempDirTest}.
+ * </ul>
  *
  * @author Chris Nokleberg
  */
 
+@SuppressWarnings("InlineMeInliner") // many tests of deprecated methods
+@NullUnmarked
 public class FilesTest extends IoTestCase {
 
+  @AndroidIncompatible // suites, ByteSourceTester (b/230620681)
   public static TestSuite suite() {
     TestSuite suite = new TestSuite();
     suite.addTest(
@@ -79,15 +89,15 @@ public class FilesTest extends IoTestCase {
   public void testRoundTripSources() throws Exception {
     File asciiFile = getTestFile("ascii.txt");
     ByteSource byteSource = Files.asByteSource(asciiFile);
-    assertSame(byteSource, byteSource.asCharSource(Charsets.UTF_8).asByteSource(Charsets.UTF_8));
+    assertThat(byteSource.asCharSource(UTF_8).asByteSource(UTF_8)).isSameInstanceAs(byteSource);
   }
 
   public void testToByteArray() throws IOException {
     File asciiFile = getTestFile("ascii.txt");
     File i18nFile = getTestFile("i18n.txt");
-    assertTrue(Arrays.equals(ASCII.getBytes(Charsets.US_ASCII), Files.toByteArray(asciiFile)));
-    assertTrue(Arrays.equals(I18N.getBytes(Charsets.UTF_8), Files.toByteArray(i18nFile)));
-    assertTrue(Arrays.equals(I18N.getBytes(Charsets.UTF_8), Files.asByteSource(i18nFile).read()));
+    assertThat(Files.toByteArray(asciiFile)).isEqualTo(ASCII.getBytes(US_ASCII));
+    assertThat(Files.toByteArray(i18nFile)).isEqualTo(I18N.getBytes(UTF_8));
+    assertThat(Files.asByteSource(i18nFile).read()).isEqualTo(I18N.getBytes(UTF_8));
   }
 
   /** A {@link File} that provides a specialized value for {@link File#length()}. */
@@ -95,7 +105,7 @@ public class FilesTest extends IoTestCase {
 
     private final long badLength;
 
-    public BadLengthFile(File delegate, long badLength) {
+    BadLengthFile(File delegate, long badLength) {
       super(delegate.getPath());
       this.badLength = badLength;
     }
@@ -111,92 +121,81 @@ public class FilesTest extends IoTestCase {
   public void testToString() throws IOException {
     File asciiFile = getTestFile("ascii.txt");
     File i18nFile = getTestFile("i18n.txt");
-    assertEquals(ASCII, Files.toString(asciiFile, Charsets.US_ASCII));
-    assertEquals(I18N, Files.toString(i18nFile, Charsets.UTF_8));
-    assertThat(Files.toString(i18nFile, Charsets.US_ASCII)).isNotEqualTo(I18N);
+    assertThat(Files.toString(asciiFile, US_ASCII)).isEqualTo(ASCII);
+    assertThat(Files.toString(i18nFile, UTF_8)).isEqualTo(I18N);
+    assertThat(Files.toString(i18nFile, US_ASCII)).isNotEqualTo(I18N);
   }
 
   public void testWriteString() throws IOException {
     File temp = createTempFile();
-    Files.write(I18N, temp, Charsets.UTF_16LE);
-    assertEquals(I18N, Files.toString(temp, Charsets.UTF_16LE));
+    Files.write(I18N, temp, UTF_16LE);
+    assertThat(Files.toString(temp, UTF_16LE)).isEqualTo(I18N);
   }
 
   public void testWriteBytes() throws IOException {
     File temp = createTempFile();
     byte[] data = newPreFilledByteArray(2000);
     Files.write(data, temp);
-    assertTrue(Arrays.equals(data, Files.toByteArray(temp)));
+    assertThat(Files.toByteArray(temp)).isEqualTo(data);
 
-    try {
-      Files.write(null, temp);
-      fail("expected exception");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Files.write(null, temp));
   }
 
   public void testAppendString() throws IOException {
     File temp = createTempFile();
-    Files.append(I18N, temp, Charsets.UTF_16LE);
-    assertEquals(I18N, Files.toString(temp, Charsets.UTF_16LE));
-    Files.append(I18N, temp, Charsets.UTF_16LE);
-    assertEquals(I18N + I18N, Files.toString(temp, Charsets.UTF_16LE));
-    Files.append(I18N, temp, Charsets.UTF_16LE);
-    assertEquals(I18N + I18N + I18N, Files.toString(temp, Charsets.UTF_16LE));
+    Files.append(I18N, temp, UTF_16LE);
+    assertThat(Files.toString(temp, UTF_16LE)).isEqualTo(I18N);
+    Files.append(I18N, temp, UTF_16LE);
+    assertThat(Files.toString(temp, UTF_16LE)).isEqualTo(I18N + I18N);
+    Files.append(I18N, temp, UTF_16LE);
+    assertThat(Files.toString(temp, UTF_16LE)).isEqualTo(I18N + I18N + I18N);
   }
 
+  @SuppressWarnings({"PreferCharsetOverload", "JdkObsolete"}) // requires Java 10 / API Level 33
   public void testCopyToOutputStream() throws IOException {
     File i18nFile = getTestFile("i18n.txt");
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     Files.copy(i18nFile, out);
-    assertEquals(I18N, out.toString("UTF-8"));
+    assertThat(out.toString("UTF-8")).isEqualTo(I18N);
   }
 
   public void testCopyToAppendable() throws IOException {
     File i18nFile = getTestFile("i18n.txt");
     StringBuilder sb = new StringBuilder();
-    Files.copy(i18nFile, Charsets.UTF_8, sb);
-    assertEquals(I18N, sb.toString());
+    Files.copy(i18nFile, UTF_8, sb);
+    assertThat(sb.toString()).isEqualTo(I18N);
   }
 
   public void testCopyFile() throws IOException {
     File i18nFile = getTestFile("i18n.txt");
     File temp = createTempFile();
     Files.copy(i18nFile, temp);
-    assertEquals(I18N, Files.toString(temp, Charsets.UTF_8));
+    assertThat(Files.toString(temp, UTF_8)).isEqualTo(I18N);
   }
 
   public void testCopyEqualFiles() throws IOException {
     File temp1 = createTempFile();
     File temp2 = file(temp1.getPath());
     assertEquals(temp1, temp2);
-    Files.write(ASCII, temp1, Charsets.UTF_8);
-    try {
-      Files.copy(temp1, temp2);
-      fail("Expected an IAE to be thrown but wasn't");
-    } catch (IllegalArgumentException expected) {
-    }
-    assertEquals(ASCII, Files.toString(temp1, Charsets.UTF_8));
+    Files.write(ASCII, temp1, UTF_8);
+    assertThrows(IllegalArgumentException.class, () -> Files.copy(temp1, temp2));
+    assertThat(Files.toString(temp1, UTF_8)).isEqualTo(ASCII);
   }
 
   public void testCopySameFile() throws IOException {
     File temp = createTempFile();
-    Files.write(ASCII, temp, Charsets.UTF_8);
-    try {
-      Files.copy(temp, temp);
-      fail("Expected an IAE to be thrown but wasn't");
-    } catch (IllegalArgumentException expected) {
-    }
-    assertEquals(ASCII, Files.toString(temp, Charsets.UTF_8));
+    Files.write(ASCII, temp, UTF_8);
+    assertThrows(IllegalArgumentException.class, () -> Files.copy(temp, temp));
+    assertThat(Files.toString(temp, UTF_8)).isEqualTo(ASCII);
   }
 
   public void testCopyIdenticalFiles() throws IOException {
     File temp1 = createTempFile();
-    Files.write(ASCII, temp1, Charsets.UTF_8);
+    Files.write(ASCII, temp1, UTF_8);
     File temp2 = createTempFile();
-    Files.write(ASCII, temp2, Charsets.UTF_8);
+    Files.write(ASCII, temp2, UTF_8);
     Files.copy(temp1, temp2);
-    assertEquals(ASCII, Files.toString(temp1, Charsets.UTF_8));
+    assertThat(Files.toString(temp2, UTF_8)).isEqualTo(ASCII);
   }
 
   public void testEqual() throws IOException {
@@ -227,21 +226,13 @@ public class FilesTest extends IoTestCase {
 
   public void testNewReader() throws IOException {
     File asciiFile = getTestFile("ascii.txt");
-    try {
-      Files.newReader(asciiFile, null);
-      fail("expected exception");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Files.newReader(asciiFile, null));
 
-    try {
-      Files.newReader(null, Charsets.UTF_8);
-      fail("expected exception");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Files.newReader(null, UTF_8));
 
-    BufferedReader r = Files.newReader(asciiFile, Charsets.US_ASCII);
+    BufferedReader r = Files.newReader(asciiFile, US_ASCII);
     try {
-      assertEquals(ASCII, r.readLine());
+      assertThat(r.readLine()).isEqualTo(ASCII);
     } finally {
       r.close();
     }
@@ -249,19 +240,11 @@ public class FilesTest extends IoTestCase {
 
   public void testNewWriter() throws IOException {
     File temp = createTempFile();
-    try {
-      Files.newWriter(temp, null);
-      fail("expected exception");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Files.newWriter(temp, null));
 
-    try {
-      Files.newWriter(null, Charsets.UTF_8);
-      fail("expected exception");
-    } catch (NullPointerException expected) {
-    }
+    assertThrows(NullPointerException.class, () -> Files.newWriter(null, UTF_8));
 
-    BufferedWriter w = Files.newWriter(temp, Charsets.UTF_8);
+    BufferedWriter w = Files.newWriter(temp, UTF_8);
     try {
       w.write(I18N);
     } finally {
@@ -282,19 +265,18 @@ public class FilesTest extends IoTestCase {
     Files.touch(temp);
     assertTrue(temp.exists());
 
-    try {
-      Files.touch(
-          new File(temp.getPath()) {
-            @Override
-            public boolean setLastModified(long t) {
-              return false;
-            }
+    assertThrows(
+        IOException.class,
+        () ->
+            Files.touch(
+                new File(temp.getPath()) {
+                  @Override
+                  public boolean setLastModified(long t) {
+                    return false;
+                  }
 
-            private static final long serialVersionUID = 0;
-          });
-      fail("expected exception");
-    } catch (IOException expected) {
-    }
+                  private static final long serialVersionUID = 0;
+                }));
   }
 
   public void testTouchTime() throws IOException {
@@ -308,15 +290,15 @@ public class FilesTest extends IoTestCase {
 
   public void testCreateParentDirs_root() throws IOException {
     File file = root();
-    assertNull(file.getParentFile());
-    assertNull(file.getCanonicalFile().getParentFile());
+    assertThat(file.getParentFile()).isNull();
+    assertThat(file.getCanonicalFile().getParentFile()).isNull();
     Files.createParentDirs(file);
   }
 
   public void testCreateParentDirs_relativePath() throws IOException {
     File file = file("nonexistent.file");
-    assertNull(file.getParentFile());
-    assertNotNull(file.getCanonicalFile().getParentFile());
+    assertThat(file.getParentFile()).isNull();
+    assertThat(file.getCanonicalFile().getParentFile()).isNotNull();
     Files.createParentDirs(file);
   }
 
@@ -351,19 +333,7 @@ public class FilesTest extends IoTestCase {
     File parent = getTestFile("ascii.txt");
     assertTrue(parent.isFile());
     File file = file(parent, "foo");
-    try {
-      Files.createParentDirs(file);
-      fail();
-    } catch (IOException expected) {
-    }
-  }
-
-  public void testCreateTempDir() {
-    File temp = Files.createTempDir();
-    assertTrue(temp.exists());
-    assertTrue(temp.isDirectory());
-    assertThat(temp.listFiles()).isEmpty();
-    assertTrue(temp.delete());
+    assertThrows(IOException.class, () -> Files.createParentDirs(file));
   }
 
   public void testMove() throws IOException {
@@ -394,15 +364,11 @@ public class FilesTest extends IoTestCase {
     moveHelper(
         false, new UnmovableFile(temp1, false, false), new UnmovableFile(temp2, true, false));
 
-    try {
-      File asciiFile = getTestFile("ascii.txt");
-      moveHelper(false, asciiFile, asciiFile);
-      fail("expected exception");
-    } catch (IllegalArgumentException expected) {
-    }
+    File asciiFile = getTestFile("ascii.txt");
+    assertThrows(IllegalArgumentException.class, () -> moveHelper(false, asciiFile, asciiFile));
   }
 
-  private void moveHelper(boolean success, File from, File to) throws IOException {
+  private static void moveHelper(boolean success, File from, File to) throws IOException {
     try {
       Files.move(from, to);
       if (success) {
@@ -423,7 +389,7 @@ public class FilesTest extends IoTestCase {
     private final boolean canRename;
     private final boolean canDelete;
 
-    public UnmovableFile(File file, boolean canRename, boolean canDelete) {
+    UnmovableFile(File file, boolean canRename, boolean canDelete) {
       super(file.getPath());
       this.canRename = canRename;
       this.canDelete = canDelete;
@@ -444,19 +410,18 @@ public class FilesTest extends IoTestCase {
 
   public void testLineReading() throws IOException {
     File temp = createTempFile();
-    assertNull(Files.readFirstLine(temp, Charsets.UTF_8));
-    assertTrue(Files.readLines(temp, Charsets.UTF_8).isEmpty());
+    assertThat(Files.readFirstLine(temp, UTF_8)).isNull();
+    assertTrue(Files.readLines(temp, UTF_8).isEmpty());
 
-    PrintWriter w = new PrintWriter(Files.newWriter(temp, Charsets.UTF_8));
+    PrintWriter w = new PrintWriter(Files.newWriter(temp, UTF_8));
     w.println("hello");
     w.println("");
     w.println(" world  ");
     w.println("");
     w.close();
 
-    assertEquals("hello", Files.readFirstLine(temp, Charsets.UTF_8));
-    assertEquals(
-        ImmutableList.of("hello", "", " world  ", ""), Files.readLines(temp, Charsets.UTF_8));
+    assertThat(Files.readFirstLine(temp, UTF_8)).isEqualTo("hello");
+    assertEquals(ImmutableList.of("hello", "", " world  ", ""), Files.readLines(temp, UTF_8));
 
     assertTrue(temp.delete());
   }
@@ -465,7 +430,7 @@ public class FilesTest extends IoTestCase {
     File temp = createTempFile();
     LineProcessor<List<String>> collect =
         new LineProcessor<List<String>>() {
-          List<String> collector = new ArrayList<>();
+          final List<String> collector = new ArrayList<>();
 
           @Override
           public boolean processLine(String line) {
@@ -478,20 +443,20 @@ public class FilesTest extends IoTestCase {
             return collector;
           }
         };
-    assertThat(Files.readLines(temp, Charsets.UTF_8, collect)).isEmpty();
+    assertThat(Files.readLines(temp, UTF_8, collect)).isEmpty();
 
-    PrintWriter w = new PrintWriter(Files.newWriter(temp, Charsets.UTF_8));
+    PrintWriter w = new PrintWriter(Files.newWriter(temp, UTF_8));
     w.println("hello");
     w.println("");
     w.println(" world  ");
     w.println("");
     w.close();
-    Files.readLines(temp, Charsets.UTF_8, collect);
+    Files.readLines(temp, UTF_8, collect);
     assertThat(collect.getResult()).containsExactly("hello", "", " world  ", "").inOrder();
 
     LineProcessor<List<String>> collectNonEmptyLines =
         new LineProcessor<List<String>>() {
-          List<String> collector = new ArrayList<>();
+          final List<String> collector = new ArrayList<>();
 
           @Override
           public boolean processLine(String line) {
@@ -506,7 +471,7 @@ public class FilesTest extends IoTestCase {
             return collector;
           }
         };
-    Files.readLines(temp, Charsets.UTF_8, collectNonEmptyLines);
+    Files.readLines(temp, UTF_8, collectNonEmptyLines);
     assertThat(collectNonEmptyLines.getResult()).containsExactly("hello", " world  ").inOrder();
 
     assertTrue(temp.delete());
@@ -516,14 +481,17 @@ public class FilesTest extends IoTestCase {
     File asciiFile = getTestFile("ascii.txt");
     File i18nFile = getTestFile("i18n.txt");
 
-    String init = "d41d8cd98f00b204e9800998ecf8427e";
-    assertEquals(init, Hashing.md5().newHasher().hash().toString());
+    String init =
+        "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
+    assertThat(sha512().newHasher().hash().toString()).isEqualTo(init);
 
-    String asciiHash = "e5df5a39f2b8cb71b24e1d8038f93131";
-    assertEquals(asciiHash, Files.hash(asciiFile, Hashing.md5()).toString());
+    String asciiHash =
+        "65d4ba90de6e2733e2364c8baf514b557d18fdda9c8227c68c2e7a7190d8888b4919f84ce412be8fa548298d36fe1f762b38c562bb147e04835e3a52f251ae34";
+    assertThat(Files.hash(asciiFile, sha512()).toString()).isEqualTo(asciiHash);
 
-    String i18nHash = "7fa826962ce2079c8334cd4ebf33aea4";
-    assertEquals(i18nHash, Files.hash(i18nFile, Hashing.md5()).toString());
+    String i18nHash =
+        "4d64ba743dfc35ad6896fcb8674f7ccc040320a8413e086ddd65197e8a8a323559a9cb2d47137b83dd46deb44bbb14c42f9fde3b411411080ed7625828f8474e";
+    assertThat(Files.hash(i18nFile, sha512()).toString()).isEqualTo(i18nHash);
   }
 
   public void testMap() throws IOException {
@@ -550,11 +518,7 @@ public class FilesTest extends IoTestCase {
     assertTrue(deleted);
 
     // Test
-    try {
-      Files.map(file);
-      fail("Should have thrown FileNotFoundException.");
-    } catch (FileNotFoundException expected) {
-    }
+    assertThrows(FileNotFoundException.class, () -> Files.map(file));
   }
 
   public void testMap_readWrite() throws IOException {
@@ -576,7 +540,7 @@ public class FilesTest extends IoTestCase {
 
     // Verify
     byte[] actualBytes = Files.toByteArray(file);
-    assertTrue(Arrays.equals(expectedBytes, actualBytes));
+    assertThat(actualBytes).isEqualTo(expectedBytes);
   }
 
   public void testMap_readWrite_creates() throws IOException {
@@ -599,63 +563,61 @@ public class FilesTest extends IoTestCase {
     assertTrue(file.isFile());
     assertEquals(size, file.length());
     byte[] actualBytes = Files.toByteArray(file);
-    assertTrue(Arrays.equals(expectedBytes, actualBytes));
+    assertThat(actualBytes).isEqualTo(expectedBytes);
   }
 
   public void testMap_readWrite_max_value_plus_1() throws IOException {
     // Setup
     File file = createTempFile();
     // Test
-    try {
-      Files.map(file, MapMode.READ_WRITE, (long) Integer.MAX_VALUE + 1);
-      fail("Should throw when size exceeds Integer.MAX_VALUE");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> Files.map(file, MapMode.READ_WRITE, (long) Integer.MAX_VALUE + 1));
   }
 
   public void testGetFileExtension() {
-    assertEquals("txt", Files.getFileExtension(".txt"));
-    assertEquals("txt", Files.getFileExtension("blah.txt"));
-    assertEquals("txt", Files.getFileExtension("blah..txt"));
-    assertEquals("txt", Files.getFileExtension(".blah.txt"));
-    assertEquals("txt", Files.getFileExtension("/tmp/blah.txt"));
-    assertEquals("gz", Files.getFileExtension("blah.tar.gz"));
-    assertEquals("", Files.getFileExtension("/"));
-    assertEquals("", Files.getFileExtension("."));
-    assertEquals("", Files.getFileExtension(".."));
-    assertEquals("", Files.getFileExtension("..."));
-    assertEquals("", Files.getFileExtension("blah"));
-    assertEquals("", Files.getFileExtension("blah."));
-    assertEquals("", Files.getFileExtension(".blah."));
-    assertEquals("", Files.getFileExtension("/foo.bar/blah"));
-    assertEquals("", Files.getFileExtension("/foo/.bar/blah"));
+    assertThat(Files.getFileExtension(".txt")).isEqualTo("txt");
+    assertThat(Files.getFileExtension("blah.txt")).isEqualTo("txt");
+    assertThat(Files.getFileExtension("blah..txt")).isEqualTo("txt");
+    assertThat(Files.getFileExtension(".blah.txt")).isEqualTo("txt");
+    assertThat(Files.getFileExtension("/tmp/blah.txt")).isEqualTo("txt");
+    assertThat(Files.getFileExtension("blah.tar.gz")).isEqualTo("gz");
+    assertThat(Files.getFileExtension("/")).isEqualTo("");
+    assertThat(Files.getFileExtension(".")).isEqualTo("");
+    assertThat(Files.getFileExtension("..")).isEqualTo("");
+    assertThat(Files.getFileExtension("...")).isEqualTo("");
+    assertThat(Files.getFileExtension("blah")).isEqualTo("");
+    assertThat(Files.getFileExtension("blah.")).isEqualTo("");
+    assertThat(Files.getFileExtension(".blah.")).isEqualTo("");
+    assertThat(Files.getFileExtension("/foo.bar/blah")).isEqualTo("");
+    assertThat(Files.getFileExtension("/foo/.bar/blah")).isEqualTo("");
   }
 
   public void testGetNameWithoutExtension() {
-    assertEquals("", Files.getNameWithoutExtension(".txt"));
-    assertEquals("blah", Files.getNameWithoutExtension("blah.txt"));
-    assertEquals("blah.", Files.getNameWithoutExtension("blah..txt"));
-    assertEquals(".blah", Files.getNameWithoutExtension(".blah.txt"));
-    assertEquals("blah", Files.getNameWithoutExtension("/tmp/blah.txt"));
-    assertEquals("blah.tar", Files.getNameWithoutExtension("blah.tar.gz"));
-    assertEquals("", Files.getNameWithoutExtension("/"));
-    assertEquals("", Files.getNameWithoutExtension("."));
-    assertEquals(".", Files.getNameWithoutExtension(".."));
-    assertEquals("..", Files.getNameWithoutExtension("..."));
-    assertEquals("blah", Files.getNameWithoutExtension("blah"));
-    assertEquals("blah", Files.getNameWithoutExtension("blah."));
-    assertEquals(".blah", Files.getNameWithoutExtension(".blah."));
-    assertEquals("blah", Files.getNameWithoutExtension("/foo.bar/blah"));
-    assertEquals("blah", Files.getNameWithoutExtension("/foo/.bar/blah"));
+    assertThat(Files.getNameWithoutExtension(".txt")).isEqualTo("");
+    assertThat(Files.getNameWithoutExtension("blah.txt")).isEqualTo("blah");
+    assertThat(Files.getNameWithoutExtension("blah..txt")).isEqualTo("blah.");
+    assertThat(Files.getNameWithoutExtension(".blah.txt")).isEqualTo(".blah");
+    assertThat(Files.getNameWithoutExtension("/tmp/blah.txt")).isEqualTo("blah");
+    assertThat(Files.getNameWithoutExtension("blah.tar.gz")).isEqualTo("blah.tar");
+    assertThat(Files.getNameWithoutExtension("/")).isEqualTo("");
+    assertThat(Files.getNameWithoutExtension(".")).isEqualTo("");
+    assertThat(Files.getNameWithoutExtension("..")).isEqualTo(".");
+    assertThat(Files.getNameWithoutExtension("...")).isEqualTo("..");
+    assertThat(Files.getNameWithoutExtension("blah")).isEqualTo("blah");
+    assertThat(Files.getNameWithoutExtension("blah.")).isEqualTo("blah");
+    assertThat(Files.getNameWithoutExtension(".blah.")).isEqualTo(".blah");
+    assertThat(Files.getNameWithoutExtension("/foo.bar/blah")).isEqualTo("blah");
+    assertThat(Files.getNameWithoutExtension("/foo/.bar/blah")).isEqualTo("blah");
   }
 
   public void testReadBytes() throws IOException {
     ByteProcessor<byte[]> processor =
         new ByteProcessor<byte[]>() {
-          private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+          final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
           @Override
-          public boolean processBytes(byte[] buffer, int offset, int length) throws IOException {
+          public boolean processBytes(byte[] buffer, int offset, int length) {
             if (length >= 0) {
               out.write(buffer, offset, length);
             }
@@ -670,16 +632,16 @@ public class FilesTest extends IoTestCase {
 
     File asciiFile = getTestFile("ascii.txt");
     byte[] result = Files.readBytes(asciiFile, processor);
-    assertEquals(Bytes.asList(Files.toByteArray(asciiFile)), Bytes.asList(result));
+    assertEquals(asList(Files.toByteArray(asciiFile)), asList(result));
   }
 
   public void testReadBytes_returnFalse() throws IOException {
     ByteProcessor<byte[]> processor =
         new ByteProcessor<byte[]>() {
-          private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+          final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
           @Override
-          public boolean processBytes(byte[] buffer, int offset, int length) throws IOException {
+          public boolean processBytes(byte[] buffer, int offset, int length) {
             if (length > 0) {
               out.write(buffer, offset, 1);
               return false;
@@ -696,7 +658,7 @@ public class FilesTest extends IoTestCase {
 
     File asciiFile = getTestFile("ascii.txt");
     byte[] result = Files.readBytes(asciiFile, processor);
-    assertEquals(1, result.length);
+    assertThat(result).hasLength(1);
   }
 
   public void testPredicates() throws IOException {

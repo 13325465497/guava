@@ -36,6 +36,11 @@ import static com.google.common.math.StatsTesting.MANY_VALUES_MAX;
 import static com.google.common.math.StatsTesting.MANY_VALUES_MEAN;
 import static com.google.common.math.StatsTesting.MANY_VALUES_MIN;
 import static com.google.common.math.StatsTesting.MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS;
+import static com.google.common.math.StatsTesting.MEGA_STREAM_COUNT;
+import static com.google.common.math.StatsTesting.MEGA_STREAM_MAX;
+import static com.google.common.math.StatsTesting.MEGA_STREAM_MEAN;
+import static com.google.common.math.StatsTesting.MEGA_STREAM_MIN;
+import static com.google.common.math.StatsTesting.MEGA_STREAM_POPULATION_VARIANCE;
 import static com.google.common.math.StatsTesting.ONE_VALUE;
 import static com.google.common.math.StatsTesting.OTHER_ONE_VALUE;
 import static com.google.common.math.StatsTesting.TWO_VALUES;
@@ -43,15 +48,23 @@ import static com.google.common.math.StatsTesting.TWO_VALUES_MAX;
 import static com.google.common.math.StatsTesting.TWO_VALUES_MEAN;
 import static com.google.common.math.StatsTesting.TWO_VALUES_MIN;
 import static com.google.common.math.StatsTesting.TWO_VALUES_SUM_OF_SQUARES_OF_DELTAS;
+import static com.google.common.math.StatsTesting.megaPrimitiveDoubleStream;
+import static com.google.common.math.StatsTesting.megaPrimitiveDoubleStreamPart1;
+import static com.google.common.math.StatsTesting.megaPrimitiveDoubleStreamPart2;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static java.lang.Math.sqrt;
+import static java.util.stream.DoubleStream.concat;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.math.StatsTesting.ManyValues;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Longs;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link StatsAccumulator}. This tests the stats methods for instances built with {@link
@@ -61,6 +74,9 @@ import junit.framework.TestCase;
  *
  * @author Pete Gillin
  */
+@NullUnmarked
+@J2ktIncompatible
+@GwtIncompatible
 public class StatsAccumulatorTest extends TestCase {
 
   private StatsAccumulator emptyAccumulator;
@@ -76,6 +92,7 @@ public class StatsAccumulatorTest extends TestCase {
   private StatsAccumulator manyValuesAccumulatorByRepeatedAdd;
   private StatsAccumulator manyValuesAccumulatorByAddAndAddAll;
   private StatsAccumulator manyValuesAccumulatorByAddAllStats;
+  private StatsAccumulator manyValuesAccumulatorByAddAllStatsAccumulator;
   private StatsAccumulator integerManyValuesAccumulatorByAddAllIterable;
   private StatsAccumulator longManyValuesAccumulatorByAddAllIterator;
   private StatsAccumulator longManyValuesAccumulatorByAddAllVarargs;
@@ -130,6 +147,12 @@ public class StatsAccumulatorTest extends TestCase {
     manyValuesAccumulatorByAddAllStats.addAll(
         Stats.of(MANY_VALUES.subList(MANY_VALUES.size() / 2, MANY_VALUES.size())));
 
+    manyValuesAccumulatorByAddAllStatsAccumulator = new StatsAccumulator();
+    manyValuesAccumulatorByAddAllStatsAccumulator.addAll(
+        statsAccumulatorOf(MANY_VALUES.subList(0, MANY_VALUES.size() / 2)));
+    manyValuesAccumulatorByAddAllStatsAccumulator.addAll(
+        statsAccumulatorOf(MANY_VALUES.subList(MANY_VALUES.size() / 2, MANY_VALUES.size())));
+
     integerManyValuesAccumulatorByAddAllIterable = new StatsAccumulator();
     integerManyValuesAccumulatorByAddAllIterable.addAll(INTEGER_MANY_VALUES);
 
@@ -138,6 +161,12 @@ public class StatsAccumulatorTest extends TestCase {
 
     longManyValuesAccumulatorByAddAllVarargs = new StatsAccumulator();
     longManyValuesAccumulatorByAddAllVarargs.addAll(Longs.toArray(LONG_MANY_VALUES));
+  }
+
+  private static StatsAccumulator statsAccumulatorOf(Iterable<? extends Number> values) {
+    StatsAccumulator accumulator = new StatsAccumulator();
+    accumulator.addAll(values);
+    return accumulator;
   }
 
   public void testCount() {
@@ -154,6 +183,7 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByRepeatedAdd.count()).isEqualTo(MANY_VALUES_COUNT);
     assertThat(manyValuesAccumulatorByAddAndAddAll.count()).isEqualTo(MANY_VALUES_COUNT);
     assertThat(manyValuesAccumulatorByAddAllStats.count()).isEqualTo(MANY_VALUES_COUNT);
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.count()).isEqualTo(MANY_VALUES_COUNT);
     assertThat(integerManyValuesAccumulatorByAddAllIterable.count())
         .isEqualTo(StatsTesting.INTEGER_MANY_VALUES_COUNT);
     assertThat(longManyValuesAccumulatorByAddAllIterator.count())
@@ -174,21 +204,9 @@ public class StatsAccumulatorTest extends TestCase {
   }
 
   public void testMean() {
-    try {
-      emptyAccumulator.mean();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.mean();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.mean();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.mean());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyIterable.mean());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyStats.mean());
     assertThat(oneValueAccumulator.mean()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
     assertThat(oneValueAccumulatorByAddAllEmptyStats.mean()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
     assertThat(twoValuesAccumulator.mean()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MEAN);
@@ -213,6 +231,9 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.mean())
         .isWithin(ALLOWED_ERROR)
         .of(MANY_VALUES_MEAN);
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.mean())
+        .isWithin(ALLOWED_ERROR)
+        .of(MANY_VALUES_MEAN);
     // For datasets of many double values created from an iterable, we test many combinations of
     // finite and non-finite values:
     for (ManyValues values : ALL_MANY_VALUES) {
@@ -225,47 +246,47 @@ public class StatsAccumulatorTest extends TestCase {
       double mean = accumulator.mean();
       double meanByAddAllStats = accumulatorByAddAllStats.mean();
       if (values.hasAnyNaN()) {
-        assertWithMessage("mean of " + values).that(mean).isNaN();
-        assertWithMessage("mean by addAll(Stats) of " + values).that(meanByAddAllStats).isNaN();
+        assertWithMessage("mean of %s", values).that(mean).isNaN();
+        assertWithMessage("mean by addAll(Stats) of %s", values).that(meanByAddAllStats).isNaN();
       } else if (values.hasAnyPositiveInfinity() && values.hasAnyNegativeInfinity()) {
-        assertWithMessage("mean of " + values).that(mean).isNaN();
-        assertWithMessage("mean by addAll(Stats) of " + values).that(meanByAddAllStats).isNaN();
+        assertWithMessage("mean of %s", values).that(mean).isNaN();
+        assertWithMessage("mean by addAll(Stats) of %s", values).that(meanByAddAllStats).isNaN();
       } else if (values.hasAnyPositiveInfinity()) {
-        assertWithMessage("mean of " + values).that(mean).isPositiveInfinity();
-        assertWithMessage("mean by addAll(Stats) of " + values)
+        assertWithMessage("mean of %s", values).that(mean).isPositiveInfinity();
+        assertWithMessage("mean by addAll(Stats) of %s", values)
             .that(meanByAddAllStats)
             .isPositiveInfinity();
       } else if (values.hasAnyNegativeInfinity()) {
-        assertWithMessage("mean of " + values).that(mean).isNegativeInfinity();
-        assertWithMessage("mean by addAll(Stats) of " + values)
+        assertWithMessage("mean of %s", values).that(mean).isNegativeInfinity();
+        assertWithMessage("mean by addAll(Stats) of %s", values)
             .that(meanByAddAllStats)
             .isNegativeInfinity();
       } else {
-        assertWithMessage("mean of " + values)
+        assertWithMessage("mean of %s", values)
             .that(mean)
             .isWithin(ALLOWED_ERROR)
             .of(MANY_VALUES_MEAN);
-        assertWithMessage("mean by addAll(Stats) of " + values)
+        assertWithMessage("mean by addAll(Stats) of %s", values)
             .that(meanByAddAllStats)
             .isWithin(ALLOWED_ERROR)
             .of(MANY_VALUES_MEAN);
       }
     }
     assertThat(integerManyValuesAccumulatorByAddAllIterable.mean())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * INTEGER_MANY_VALUES_MEAN)
         .of(INTEGER_MANY_VALUES_MEAN);
     assertThat(longManyValuesAccumulatorByAddAllIterator.mean())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_MEAN)
         .of(LONG_MANY_VALUES_MEAN);
     assertThat(longManyValuesAccumulatorByAddAllVarargs.mean())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_MEAN)
         .of(LONG_MANY_VALUES_MEAN);
   }
 
   public void testSum() {
-    assertThat(emptyAccumulator.sum()).isWithin(0.0).of(0.0);
-    assertThat(emptyAccumulatorByAddAllEmptyIterable.sum()).isWithin(0.0).of(0.0);
-    assertThat(emptyAccumulatorByAddAllEmptyStats.sum()).isWithin(0.0).of(0.0);
+    assertThat(emptyAccumulator.sum()).isEqualTo(0.0);
+    assertThat(emptyAccumulatorByAddAllEmptyIterable.sum()).isEqualTo(0.0);
+    assertThat(emptyAccumulatorByAddAllEmptyStats.sum()).isEqualTo(0.0);
     assertThat(oneValueAccumulator.sum()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
     assertThat(oneValueAccumulatorByAddAllEmptyStats.sum()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
     assertThat(twoValuesAccumulator.sum()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MEAN * 2);
@@ -290,35 +311,29 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.sum())
         .isWithin(ALLOWED_ERROR)
         .of(MANY_VALUES_MEAN * MANY_VALUES_COUNT);
-    assertThat(integerManyValuesAccumulatorByAddAllIterable.sum())
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.sum())
         .isWithin(ALLOWED_ERROR)
+        .of(MANY_VALUES_MEAN * MANY_VALUES_COUNT);
+    assertThat(integerManyValuesAccumulatorByAddAllIterable.sum())
+        .isWithin(ALLOWED_ERROR * INTEGER_MANY_VALUES_MEAN)
         .of(INTEGER_MANY_VALUES_MEAN * INTEGER_MANY_VALUES_COUNT);
     assertThat(longManyValuesAccumulatorByAddAllIterator.sum())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_MEAN)
         .of(LONG_MANY_VALUES_MEAN * LONG_MANY_VALUES_COUNT);
     assertThat(longManyValuesAccumulatorByAddAllVarargs.sum())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_MEAN)
         .of(LONG_MANY_VALUES_MEAN * LONG_MANY_VALUES_COUNT);
   }
 
   public void testPopulationVariance() {
-    try {
-      emptyAccumulator.populationVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.populationVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.populationVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    assertThat(oneValueAccumulator.populationVariance()).isWithin(0.0).of(0.0);
-    assertThat(oneValueAccumulatorByAddAllEmptyStats.populationVariance()).isWithin(0.0).of(0.0);
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.populationVariance());
+    assertThrows(
+        IllegalStateException.class,
+        () -> emptyAccumulatorByAddAllEmptyIterable.populationVariance());
+    assertThrows(
+        IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyStats.populationVariance());
+    assertThat(oneValueAccumulator.populationVariance()).isEqualTo(0.0);
+    assertThat(oneValueAccumulatorByAddAllEmptyStats.populationVariance()).isEqualTo(0.0);
     assertThat(twoValuesAccumulator.populationVariance())
         .isWithin(ALLOWED_ERROR)
         .of(TWO_VALUES_SUM_OF_SQUARES_OF_DELTAS / 2);
@@ -343,6 +358,9 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.populationVariance())
         .isWithin(ALLOWED_ERROR)
         .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT);
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.populationVariance())
+        .isWithin(ALLOWED_ERROR)
+        .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT);
     // For datasets of many double values created from an iterator, we test many combinations of
     // finite and non-finite values:
     for (ManyValues values : ALL_MANY_VALUES) {
@@ -355,52 +373,42 @@ public class StatsAccumulatorTest extends TestCase {
       double populationVariance = accumulator.populationVariance();
       double populationVarianceByAddAllStats = accumulatorByAddAllStats.populationVariance();
       if (values.hasAnyNonFinite()) {
-        assertWithMessage("population variance of " + values).that(populationVariance).isNaN();
-        assertWithMessage("population variance by addAll(Stats) of " + values)
+        assertWithMessage("population variance of %s", values).that(populationVariance).isNaN();
+        assertWithMessage("population variance by addAll(Stats) of %s", values)
             .that(populationVarianceByAddAllStats)
             .isNaN();
       } else {
-        assertWithMessage("population variance of " + values)
+        assertWithMessage("population variance of %s", values)
             .that(populationVariance)
             .isWithin(ALLOWED_ERROR)
             .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT);
-        assertWithMessage("population variance by addAll(Stats) of " + values)
+        assertWithMessage("population variance by addAll(Stats) of %s", values)
             .that(populationVarianceByAddAllStats)
             .isWithin(ALLOWED_ERROR)
             .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT);
       }
     }
     assertThat(integerManyValuesAccumulatorByAddAllIterable.populationVariance())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / INTEGER_MANY_VALUES_COUNT);
     assertThat(longManyValuesAccumulatorByAddAllIterator.populationVariance())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / LONG_MANY_VALUES_COUNT);
     assertThat(longManyValuesAccumulatorByAddAllVarargs.populationVariance())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / LONG_MANY_VALUES_COUNT);
   }
 
   public void testPopulationStandardDeviation() {
-    try {
-      emptyAccumulator.populationStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.populationStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.populationStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    assertThat(oneValueAccumulator.populationStandardDeviation()).isWithin(0.0).of(0.0);
-    assertThat(oneValueAccumulatorByAddAllEmptyStats.populationStandardDeviation())
-        .isWithin(0.0)
-        .of(0.0);
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.populationStandardDeviation());
+    assertThrows(
+        IllegalStateException.class,
+        () -> emptyAccumulatorByAddAllEmptyIterable.populationStandardDeviation());
+    assertThrows(
+        IllegalStateException.class,
+        () -> emptyAccumulatorByAddAllEmptyStats.populationStandardDeviation());
+    assertThat(oneValueAccumulator.populationStandardDeviation()).isEqualTo(0.0);
+    assertThat(oneValueAccumulatorByAddAllEmptyStats.populationStandardDeviation()).isEqualTo(0.0);
     assertThat(twoValuesAccumulator.populationStandardDeviation())
         .isWithin(ALLOWED_ERROR)
         .of(sqrt(TWO_VALUES_SUM_OF_SQUARES_OF_DELTAS / 2));
@@ -425,43 +433,29 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.populationStandardDeviation())
         .isWithin(ALLOWED_ERROR)
         .of(sqrt(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT));
-    assertThat(integerManyValuesAccumulatorByAddAllIterable.populationStandardDeviation())
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.populationStandardDeviation())
         .isWithin(ALLOWED_ERROR)
+        .of(sqrt(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / MANY_VALUES_COUNT));
+    assertThat(integerManyValuesAccumulatorByAddAllIterable.populationStandardDeviation())
+        .isWithin(ALLOWED_ERROR * sqrt(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS))
         .of(sqrt(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / INTEGER_MANY_VALUES_COUNT));
     assertThat(longManyValuesAccumulatorByAddAllIterator.populationStandardDeviation())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS))
         .of(sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / LONG_MANY_VALUES_COUNT));
     assertThat(longManyValuesAccumulatorByAddAllVarargs.populationStandardDeviation())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS))
         .of(sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / LONG_MANY_VALUES_COUNT));
   }
 
   public void testSampleVariance() {
-    try {
-      emptyAccumulator.sampleVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.sampleVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.sampleVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      oneValueAccumulator.sampleVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      oneValueAccumulatorByAddAllEmptyStats.sampleVariance();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.sampleVariance());
+    assertThrows(
+        IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyIterable.sampleVariance());
+    assertThrows(
+        IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyStats.sampleVariance());
+    assertThrows(IllegalStateException.class, () -> oneValueAccumulator.sampleVariance());
+    assertThrows(
+        IllegalStateException.class, () -> oneValueAccumulatorByAddAllEmptyStats.sampleVariance());
     assertThat(twoValuesAccumulator.sampleVariance())
         .isWithin(ALLOWED_ERROR)
         .of(TWO_VALUES_SUM_OF_SQUARES_OF_DELTAS);
@@ -486,43 +480,32 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.sampleVariance())
         .isWithin(ALLOWED_ERROR)
         .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (MANY_VALUES_COUNT - 1));
-    assertThat(integerManyValuesAccumulatorByAddAllIterable.sampleVariance())
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.sampleVariance())
         .isWithin(ALLOWED_ERROR)
+        .of(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (MANY_VALUES_COUNT - 1));
+    assertThat(integerManyValuesAccumulatorByAddAllIterable.sampleVariance())
+        .isWithin(ALLOWED_ERROR * INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (INTEGER_MANY_VALUES_COUNT - 1));
     assertThat(longManyValuesAccumulatorByAddAllIterator.sampleVariance())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (LONG_MANY_VALUES_COUNT - 1));
     assertThat(longManyValuesAccumulatorByAddAllVarargs.sampleVariance())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (LONG_MANY_VALUES_COUNT - 1));
   }
 
   public void testSampleStandardDeviation() {
-    try {
-      emptyAccumulator.sampleStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.sampleStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.sampleStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      oneValueAccumulator.sampleStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      oneValueAccumulatorByAddAllEmptyStats.sampleStandardDeviation();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.sampleStandardDeviation());
+    assertThrows(
+        IllegalStateException.class,
+        () -> emptyAccumulatorByAddAllEmptyIterable.sampleStandardDeviation());
+    assertThrows(
+        IllegalStateException.class,
+        () -> emptyAccumulatorByAddAllEmptyStats.sampleStandardDeviation());
+    assertThrows(IllegalStateException.class, () -> oneValueAccumulator.sampleStandardDeviation());
+    assertThrows(
+        IllegalStateException.class,
+        () -> oneValueAccumulatorByAddAllEmptyStats.sampleStandardDeviation());
     assertThat(twoValuesAccumulator.sampleStandardDeviation())
         .isWithin(ALLOWED_ERROR)
         .of(sqrt(TWO_VALUES_SUM_OF_SQUARES_OF_DELTAS));
@@ -547,55 +530,35 @@ public class StatsAccumulatorTest extends TestCase {
     assertThat(manyValuesAccumulatorByAddAllStats.sampleStandardDeviation())
         .isWithin(ALLOWED_ERROR)
         .of(sqrt(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (MANY_VALUES_COUNT - 1)));
-    assertThat(integerManyValuesAccumulatorByAddAllIterable.sampleStandardDeviation())
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.sampleStandardDeviation())
         .isWithin(ALLOWED_ERROR)
+        .of(sqrt(MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (MANY_VALUES_COUNT - 1)));
+    assertThat(integerManyValuesAccumulatorByAddAllIterable.sampleStandardDeviation())
+        .isWithin(ALLOWED_ERROR * sqrt(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS))
         .of(sqrt(INTEGER_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (INTEGER_MANY_VALUES_COUNT - 1)));
     assertThat(longManyValuesAccumulatorByAddAllIterator.sampleStandardDeviation())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (LONG_MANY_VALUES_COUNT - 1)));
     assertThat(longManyValuesAccumulatorByAddAllVarargs.sampleStandardDeviation())
-        .isWithin(ALLOWED_ERROR)
+        .isWithin(ALLOWED_ERROR * LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS)
         .of(sqrt(LONG_MANY_VALUES_SUM_OF_SQUARES_OF_DELTAS / (LONG_MANY_VALUES_COUNT - 1)));
   }
 
   public void testMax() {
-    try {
-      emptyAccumulator.max();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.max();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.max();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    assertThat(oneValueAccumulator.max()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
-    assertThat(oneValueAccumulatorByAddAllEmptyStats.max()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
-    assertThat(twoValuesAccumulator.max()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MAX);
-    assertThat(twoValuesAccumulatorByAddAllStats.max()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByAddAllIterable.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByAddAllIterator.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByAddAllVarargs.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByRepeatedAdd.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByAddAndAddAll.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
-    assertThat(manyValuesAccumulatorByAddAllStats.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MAX);
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.max());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyIterable.max());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyStats.max());
+    assertThat(oneValueAccumulator.max()).isEqualTo(ONE_VALUE);
+    assertThat(oneValueAccumulatorByAddAllEmptyStats.max()).isEqualTo(ONE_VALUE);
+    assertThat(twoValuesAccumulator.max()).isEqualTo(TWO_VALUES_MAX);
+    assertThat(twoValuesAccumulatorByAddAllStats.max()).isEqualTo(TWO_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAllIterable.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAllIterator.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAllVarargs.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByRepeatedAdd.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAndAddAll.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAllStats.max()).isEqualTo(MANY_VALUES_MAX);
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.max()).isEqualTo(MANY_VALUES_MAX);
     // For datasets of many double values created from an array, we test many combinations of
     // finite and non-finite values:
     for (ManyValues values : ALL_MANY_VALUES) {
@@ -608,70 +571,41 @@ public class StatsAccumulatorTest extends TestCase {
       double max = accumulator.max();
       double maxByAddAllStats = accumulatorByAddAllStats.max();
       if (values.hasAnyNaN()) {
-        assertWithMessage("max of " + values).that(max).isNaN();
-        assertWithMessage("max by addAll(Stats) of " + values).that(maxByAddAllStats).isNaN();
+        assertWithMessage("max of %s", values).that(max).isNaN();
+        assertWithMessage("max by addAll(Stats) of %s", values).that(maxByAddAllStats).isNaN();
       } else if (values.hasAnyPositiveInfinity()) {
-        assertWithMessage("max of " + values).that(max).isPositiveInfinity();
-        assertWithMessage("max by addAll(Stats) of " + values)
+        assertWithMessage("max of %s", values).that(max).isPositiveInfinity();
+        assertWithMessage("max by addAll(Stats) of %s", values)
             .that(maxByAddAllStats)
             .isPositiveInfinity();
       } else {
-        assertWithMessage("max of " + values).that(max).isWithin(ALLOWED_ERROR).of(MANY_VALUES_MAX);
-        assertWithMessage("max by addAll(Stats) of " + values)
+        assertWithMessage("max of %s", values).that(max).isEqualTo(MANY_VALUES_MAX);
+        assertWithMessage("max by addAll(Stats) of %s", values)
             .that(maxByAddAllStats)
-            .isWithin(ALLOWED_ERROR)
-            .of(MANY_VALUES_MAX);
+            .isEqualTo(MANY_VALUES_MAX);
       }
     }
     assertThat(integerManyValuesAccumulatorByAddAllIterable.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(INTEGER_MANY_VALUES_MAX);
-    assertThat(longManyValuesAccumulatorByAddAllIterator.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(LONG_MANY_VALUES_MAX);
-    assertThat(longManyValuesAccumulatorByAddAllVarargs.max())
-        .isWithin(ALLOWED_ERROR)
-        .of(LONG_MANY_VALUES_MAX);
+        .isEqualTo(INTEGER_MANY_VALUES_MAX);
+    assertThat(longManyValuesAccumulatorByAddAllIterator.max()).isEqualTo(LONG_MANY_VALUES_MAX);
+    assertThat(longManyValuesAccumulatorByAddAllVarargs.max()).isEqualTo(LONG_MANY_VALUES_MAX);
   }
 
   public void testMin() {
-    try {
-      emptyAccumulator.min();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyIterable.min();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      emptyAccumulatorByAddAllEmptyStats.min();
-      fail("Expected IllegalStateException");
-    } catch (IllegalStateException expected) {
-    }
-    assertThat(oneValueAccumulator.min()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
-    assertThat(oneValueAccumulatorByAddAllEmptyStats.min()).isWithin(ALLOWED_ERROR).of(ONE_VALUE);
-    assertThat(twoValuesAccumulator.min()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MIN);
-    assertThat(twoValuesAccumulatorByAddAllStats.min()).isWithin(ALLOWED_ERROR).of(TWO_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByAddAllIterable.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByAddAllIterator.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByAddAllVarargs.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByRepeatedAdd.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByAddAndAddAll.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
-    assertThat(manyValuesAccumulatorByAddAllStats.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(MANY_VALUES_MIN);
+    assertThrows(IllegalStateException.class, () -> emptyAccumulator.min());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyIterable.min());
+    assertThrows(IllegalStateException.class, () -> emptyAccumulatorByAddAllEmptyStats.min());
+    assertThat(oneValueAccumulator.min()).isEqualTo(ONE_VALUE);
+    assertThat(oneValueAccumulatorByAddAllEmptyStats.min()).isEqualTo(ONE_VALUE);
+    assertThat(twoValuesAccumulator.min()).isEqualTo(TWO_VALUES_MIN);
+    assertThat(twoValuesAccumulatorByAddAllStats.min()).isEqualTo(TWO_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAllIterable.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAllIterator.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAllVarargs.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByRepeatedAdd.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAndAddAll.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAllStats.min()).isEqualTo(MANY_VALUES_MIN);
+    assertThat(manyValuesAccumulatorByAddAllStatsAccumulator.min()).isEqualTo(MANY_VALUES_MIN);
     // For datasets of many double values created by adding elements individually, we test many
     // combinations of finite and non-finite values:
     for (ManyValues values : ALL_MANY_VALUES) {
@@ -684,29 +618,70 @@ public class StatsAccumulatorTest extends TestCase {
       double min = accumulator.min();
       double minByAddAllStats = accumulatorByAddAllStats.min();
       if (values.hasAnyNaN()) {
-        assertWithMessage("min of " + values).that(min).isNaN();
-        assertWithMessage("min by addAll(Stats) of " + values).that(minByAddAllStats).isNaN();
+        assertWithMessage("min of %s", values).that(min).isNaN();
+        assertWithMessage("min by addAll(Stats) of %s", values).that(minByAddAllStats).isNaN();
       } else if (values.hasAnyNegativeInfinity()) {
-        assertWithMessage("min of " + values).that(min).isNegativeInfinity();
-        assertWithMessage("min by addAll(Stats) of " + values)
+        assertWithMessage("min of %s", values).that(min).isNegativeInfinity();
+        assertWithMessage("min by addAll(Stats) of %s", values)
             .that(minByAddAllStats)
             .isNegativeInfinity();
       } else {
-        assertWithMessage("min of " + values).that(min).isWithin(ALLOWED_ERROR).of(MANY_VALUES_MIN);
-        assertWithMessage("min by addAll(Stats) of " + values)
+        assertWithMessage("min of %s", values).that(min).isEqualTo(MANY_VALUES_MIN);
+        assertWithMessage("min by addAll(Stats) of %s", values)
             .that(minByAddAllStats)
-            .isWithin(ALLOWED_ERROR)
-            .of(MANY_VALUES_MIN);
+            .isEqualTo(MANY_VALUES_MIN);
       }
     }
     assertThat(integerManyValuesAccumulatorByAddAllIterable.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(INTEGER_MANY_VALUES_MIN);
-    assertThat(longManyValuesAccumulatorByAddAllIterator.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(LONG_MANY_VALUES_MIN);
-    assertThat(longManyValuesAccumulatorByAddAllVarargs.min())
-        .isWithin(ALLOWED_ERROR)
-        .of(LONG_MANY_VALUES_MIN);
+        .isEqualTo(INTEGER_MANY_VALUES_MIN);
+    assertThat(longManyValuesAccumulatorByAddAllIterator.min()).isEqualTo(LONG_MANY_VALUES_MIN);
+    assertThat(longManyValuesAccumulatorByAddAllVarargs.min()).isEqualTo(LONG_MANY_VALUES_MIN);
+  }
+
+  public void testVerifyMegaStreamHalves() {
+    assertThat(
+            concat(megaPrimitiveDoubleStreamPart1(), megaPrimitiveDoubleStreamPart2())
+                .sorted()
+                .toArray())
+        .isEqualTo(megaPrimitiveDoubleStream().toArray());
+  }
+
+  public void testAddAllPrimitiveDoubleStream() {
+    StatsAccumulator accumulator = new StatsAccumulator();
+    accumulator.addAll(megaPrimitiveDoubleStreamPart1());
+    accumulator.addAll(megaPrimitiveDoubleStreamPart2());
+    assertThat(accumulator.count()).isEqualTo(MEGA_STREAM_COUNT);
+    assertThat(accumulator.mean()).isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT).of(MEGA_STREAM_MEAN);
+    assertThat(accumulator.populationVariance())
+        .isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT)
+        .of(MEGA_STREAM_POPULATION_VARIANCE);
+    assertThat(accumulator.min()).isEqualTo(MEGA_STREAM_MIN);
+    assertThat(accumulator.max()).isEqualTo(MEGA_STREAM_MAX);
+  }
+
+  public void testAddAllPrimitiveIntStream() {
+    StatsAccumulator accumulator = new StatsAccumulator();
+    accumulator.addAll(megaPrimitiveDoubleStreamPart1().mapToInt(x -> (int) x));
+    accumulator.addAll(megaPrimitiveDoubleStreamPart2().mapToInt(x -> (int) x));
+    assertThat(accumulator.count()).isEqualTo(MEGA_STREAM_COUNT);
+    assertThat(accumulator.mean()).isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT).of(MEGA_STREAM_MEAN);
+    assertThat(accumulator.populationVariance())
+        .isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT)
+        .of(MEGA_STREAM_POPULATION_VARIANCE);
+    assertThat(accumulator.min()).isEqualTo(MEGA_STREAM_MIN);
+    assertThat(accumulator.max()).isEqualTo(MEGA_STREAM_MAX);
+  }
+
+  public void testAddAllPrimitiveLongStream() {
+    StatsAccumulator accumulator = new StatsAccumulator();
+    accumulator.addAll(megaPrimitiveDoubleStreamPart1().mapToLong(x -> (long) x));
+    accumulator.addAll(megaPrimitiveDoubleStreamPart2().mapToLong(x -> (long) x));
+    assertThat(accumulator.count()).isEqualTo(MEGA_STREAM_COUNT);
+    assertThat(accumulator.mean()).isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT).of(MEGA_STREAM_MEAN);
+    assertThat(accumulator.populationVariance())
+        .isWithin(ALLOWED_ERROR * MEGA_STREAM_COUNT)
+        .of(MEGA_STREAM_POPULATION_VARIANCE);
+    assertThat(accumulator.min()).isEqualTo(MEGA_STREAM_MIN);
+    assertThat(accumulator.max()).isEqualTo(MEGA_STREAM_MAX);
   }
 }

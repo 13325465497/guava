@@ -16,47 +16,48 @@ package com.google.common.net;
 
 import static com.google.common.base.CharMatcher.ascii;
 import static com.google.common.base.CharMatcher.javaIsoControl;
-import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.Maps.transformValues;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Objects.hash;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Ascii;
 import com.google.common.base.CharMatcher;
-import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Joiner.MapJoiner;
-import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.Immutable;
 import com.google.errorprone.annotations.concurrent.LazyInit;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
-import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents an <a href="http://en.wikipedia.org/wiki/Internet_media_type">Internet Media Type</a>
  * (also known as a MIME Type or Content Type). This class also supports the concept of media ranges
- * <a href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.1">defined by HTTP/1.1</a>.
- * As such, the {@code *} character is treated as a wildcard and is used to represent any acceptable
+ * <a href="https://datatracker.ietf.org/doc/html/rfc2616#section-14.1">defined by HTTP/1.1</a>. As
+ * such, the {@code *} character is treated as a wildcard and is used to represent any acceptable
  * type or subtype value. A media type may not have wildcard type with a declared subtype. The
  * {@code *} character has no special meaning as part of a parameter. All values for type, subtype,
  * parameter attributes or parameter values must be valid according to RFCs <a
- * href="http://www.ietf.org/rfc/rfc2045.txt">2045</a> and <a
- * href="http://www.ietf.org/rfc/rfc2046.txt">2046</a>.
+ * href="https://datatracker.ietf.org/doc/html/rfc2045">2045</a> and <a
+ * href="https://datatracker.ietf.org/doc/html/rfc2046">2046</a>, except that parameter values may
+ * not contain ASCII control characters other than {@code '\t'} (matching HTTP's <a
+ * href="https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.4">RFC 9110</a>).
  *
  * <p>All portions of the media type that are case-insensitive (type, subtype, parameter attributes)
  * are normalized to lowercase. The value of the {@code charset} parameter is normalized to
@@ -72,7 +73,6 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * @since 12.0
  * @author Gregory Kick
  */
-@Beta
 @GwtCompatible
 @Immutable
 public final class MediaType {
@@ -87,7 +87,11 @@ public final class MediaType {
           .and(CharMatcher.isNot(' '))
           .and(CharMatcher.noneOf("()<>@,;:\\\"/[]?="));
 
-  private static final CharMatcher QUOTED_TEXT_MATCHER = ascii().and(CharMatcher.noneOf("\"\\\r"));
+  private static final CharMatcher PARAMETER_VALUE_MATCHER =
+      ascii().and(javaIsoControl().negate()).or(CharMatcher.is('\t'));
+
+  private static final CharMatcher QUOTED_TEXT_MATCHER =
+      PARAMETER_VALUE_MATCHER.and(CharMatcher.noneOf("\"\\"));
 
   /*
    * This matches the same characters as linear-white-space from RFC 822, but we make no effort to
@@ -101,14 +105,14 @@ public final class MediaType {
   private static final String IMAGE_TYPE = "image";
   private static final String TEXT_TYPE = "text";
   private static final String VIDEO_TYPE = "video";
+  private static final String FONT_TYPE = "font";
 
   private static final String WILDCARD = "*";
 
-  private static final Map<MediaType, MediaType> KNOWN_TYPES = Maps.newHashMap();
+  private static final Map<MediaType, MediaType> knownTypes = new HashMap<>();
 
   private static MediaType createConstant(String type, String subtype) {
-    MediaType mediaType =
-        addKnownType(new MediaType(type, subtype, ImmutableListMultimap.<String, String>of()));
+    MediaType mediaType = addKnownType(new MediaType(type, subtype, ImmutableListMultimap.of()));
     mediaType.parsedCharset = Optional.absent();
     return mediaType;
   }
@@ -119,8 +123,9 @@ public final class MediaType {
     return mediaType;
   }
 
+  @CanIgnoreReturnValue
   private static MediaType addKnownType(MediaType mediaType) {
-    KNOWN_TYPES.put(mediaType, mediaType);
+    knownTypes.put(mediaType, mediaType);
     return mediaType;
   }
 
@@ -134,20 +139,61 @@ public final class MediaType {
    * "_UTF_8".
    */
 
+  /** Wildcard matching any media type. */
   public static final MediaType ANY_TYPE = createConstant(WILDCARD, WILDCARD);
+
+  /** Wildcard matching any "text" top-level media type. */
   public static final MediaType ANY_TEXT_TYPE = createConstant(TEXT_TYPE, WILDCARD);
+
+  /** Wildcard matching any "image" top-level media type. */
   public static final MediaType ANY_IMAGE_TYPE = createConstant(IMAGE_TYPE, WILDCARD);
+
+  /** Wildcard matching any "audio" top-level media type. */
   public static final MediaType ANY_AUDIO_TYPE = createConstant(AUDIO_TYPE, WILDCARD);
+
+  /** Wildcard matching any "video" top-level media type. */
   public static final MediaType ANY_VIDEO_TYPE = createConstant(VIDEO_TYPE, WILDCARD);
+
+  /** Wildcard matching any "application" top-level media type. */
   public static final MediaType ANY_APPLICATION_TYPE = createConstant(APPLICATION_TYPE, WILDCARD);
 
+  /**
+   * Wildcard matching any "font" top-level media type.
+   *
+   * @since 30.0
+   */
+  public static final MediaType ANY_FONT_TYPE = createConstant(FONT_TYPE, WILDCARD);
+
   /* text types */
+  /**
+   * <a
+   * href="https://web.archive.org/web/20190215171256/https://developer.mozilla.org/en-US/docs/Web/HTML/Using_the_application_cache#The_cache_manifest_file">Cache
+   * Manifest</a>.
+   */
   public static final MediaType CACHE_MANIFEST_UTF_8 =
       createConstantUtf8(TEXT_TYPE, "cache-manifest");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2318.html">CSS</a>. */
   public static final MediaType CSS_UTF_8 = createConstantUtf8(TEXT_TYPE, "css");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc4180.html">CSV</a>. */
   public static final MediaType CSV_UTF_8 = createConstantUtf8(TEXT_TYPE, "csv");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2854.html">HTML</a>. */
   public static final MediaType HTML_UTF_8 = createConstantUtf8(TEXT_TYPE, "html");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc5545.html">iCalendar</a>. */
   public static final MediaType I_CALENDAR_UTF_8 = createConstantUtf8(TEXT_TYPE, "calendar");
+
+  /**
+   * As described in <a href="https://www.rfc-editor.org/rfc/rfc7763.html">RFC 7763</a>, this
+   * constant ({@code text/markdown}) is used for Markdown documents.
+   *
+   * @since 33.3.0
+   */
+  public static final MediaType MD_UTF_8 = createConstantUtf8(TEXT_TYPE, "markdown");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2046.html#section-4.1">Plain text</a>. */
   public static final MediaType PLAIN_TEXT_UTF_8 = createConstantUtf8(TEXT_TYPE, "plain");
 
   /**
@@ -156,6 +202,7 @@ public final class MediaType {
    * may be necessary in certain situations for compatibility.
    */
   public static final MediaType TEXT_JAVASCRIPT_UTF_8 = createConstantUtf8(TEXT_TYPE, "javascript");
+
   /**
    * <a href="http://www.iana.org/assignments/media-types/text/tab-separated-values">Tab separated
    * values</a>.
@@ -164,6 +211,7 @@ public final class MediaType {
    */
   public static final MediaType TSV_UTF_8 = createConstantUtf8(TEXT_TYPE, "tab-separated-values");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc6350.html">vCard</a>. */
   public static final MediaType VCARD_UTF_8 = createConstantUtf8(TEXT_TYPE, "vcard");
 
   /**
@@ -189,6 +237,7 @@ public final class MediaType {
    */
   public static final MediaType VTT_UTF_8 = createConstantUtf8(TEXT_TYPE, "vtt");
 
+  /* image types */
   /**
    * <a href="https://en.wikipedia.org/wiki/BMP_file_format">Bitmap file format</a> ({@code bmp}
    * files).
@@ -208,9 +257,19 @@ public final class MediaType {
    */
   public static final MediaType CRW = createConstant(IMAGE_TYPE, "x-canon-crw");
 
+  /**
+   * <a
+   * href="https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types#gif_graphics_interchange_format">GIF</a>.
+   */
   public static final MediaType GIF = createConstant(IMAGE_TYPE, "gif");
+
+  /** <a href="https://www.iana.org/assignments/media-types/image/vnd.microsoft.icon">ICO</a>. */
   public static final MediaType ICO = createConstant(IMAGE_TYPE, "vnd.microsoft.icon");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2046.html#section-4.2">JPEG</a>. */
   public static final MediaType JPEG = createConstant(IMAGE_TYPE, "jpeg");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2083.html">PNG</a>. */
   public static final MediaType PNG = createConstant(IMAGE_TYPE, "png");
 
   /**
@@ -232,8 +291,18 @@ public final class MediaType {
    */
   public static final MediaType PSD = createConstant(IMAGE_TYPE, "vnd.adobe.photoshop");
 
+  /** <a href="https://www.w3.org/TR/SVG11/mimereg.html">SVG</a>. */
   public static final MediaType SVG_UTF_8 = createConstantUtf8(IMAGE_TYPE, "svg+xml");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc3302.html">TIFF</a>. */
   public static final MediaType TIFF = createConstant(IMAGE_TYPE, "tiff");
+
+  /**
+   * <a href="https://en.wikipedia.org/wiki/AVIF">AVIF image format</a>.
+   *
+   * @since 33.5.0
+   */
+  public static final MediaType AVIF = createConstant(IMAGE_TYPE, "avif");
 
   /**
    * <a href="https://en.wikipedia.org/wiki/WebP">WebP image format</a>.
@@ -242,10 +311,31 @@ public final class MediaType {
    */
   public static final MediaType WEBP = createConstant(IMAGE_TYPE, "webp");
 
+  /**
+   * <a href="https://www.iana.org/assignments/media-types/image/heif">HEIF image format</a>.
+   *
+   * @since 28.1
+   */
+  public static final MediaType HEIF = createConstant(IMAGE_TYPE, "heif");
+
+  /**
+   * <a href="https://tools.ietf.org/html/rfc3745">JP2K image format</a>.
+   *
+   * @since 28.1
+   */
+  public static final MediaType JP2K = createConstant(IMAGE_TYPE, "jp2");
+
   /* audio types */
+  /** <a href="https://www.rfc-editor.org/rfc/rfc4337.html">MP4 audio</a>. */
   public static final MediaType MP4_AUDIO = createConstant(AUDIO_TYPE, "mp4");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc3003.html">MPEG audio</a>. */
   public static final MediaType MPEG_AUDIO = createConstant(AUDIO_TYPE, "mpeg");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc5334.html">Ogg audio</a>. */
   public static final MediaType OGG_AUDIO = createConstant(AUDIO_TYPE, "ogg");
+
+  /** <a href="https://www.webmproject.org/docs/container/">WebM audio</a>. */
   public static final MediaType WEBM_AUDIO = createConstant(AUDIO_TYPE, "webm");
 
   /**
@@ -319,11 +409,26 @@ public final class MediaType {
   public static final MediaType VND_WAVE_AUDIO = createConstant(AUDIO_TYPE, "vnd.wave");
 
   /* video types */
+  /** <a href="https://www.rfc-editor.org/rfc/rfc4337.html">MP4 video</a>. */
   public static final MediaType MP4_VIDEO = createConstant(VIDEO_TYPE, "mp4");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2046.html#section-4.4">MPEG video</a>. */
   public static final MediaType MPEG_VIDEO = createConstant(VIDEO_TYPE, "mpeg");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc5334.html">Ogg video</a>. */
   public static final MediaType OGG_VIDEO = createConstant(VIDEO_TYPE, "ogg");
+
+  /** <a href="https://www.iana.org/assignments/media-types/video/quicktime">QuickTime video</a>. */
   public static final MediaType QUICKTIME = createConstant(VIDEO_TYPE, "quicktime");
+
+  /** <a href="https://www.webmproject.org/docs/container/">WebM video</a>. */
   public static final MediaType WEBM_VIDEO = createConstant(VIDEO_TYPE, "webm");
+
+  /**
+   * <a
+   * href="https://learn.microsoft.com/en-us/previous-versions/windows/desktop/wmp/file-name-extensions">Windows
+   * Media Video</a>.
+   */
   public static final MediaType WMV = createConstant(VIDEO_TYPE, "x-ms-wmv");
 
   /**
@@ -363,7 +468,10 @@ public final class MediaType {
    */
   public static final MediaType APPLICATION_XML_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "xml");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc4287.html">Atom feeds</a>. */
   public static final MediaType ATOM_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "atom+xml");
+
+  /** bzip2 archives. */
   public static final MediaType BZIP2 = createConstant(APPLICATION_TYPE, "x-bzip2");
 
   /**
@@ -375,7 +483,9 @@ public final class MediaType {
   public static final MediaType DART_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "dart");
 
   /**
-   * <a href="https://goo.gl/2QoMvg">Apple Passbook</a>.
+   * <a
+   * href="https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/PassKit_PG/DistributingPasses.html">Apple
+   * Passbook</a>.
    *
    * @since 19.0
    */
@@ -402,6 +512,7 @@ public final class MediaType {
    */
   public static final MediaType EPUB = createConstant(APPLICATION_TYPE, "epub+zip");
 
+  /** <a href="https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4.1">HTML form data</a>. */
   public static final MediaType FORM_DATA =
       createConstant(APPLICATION_TYPE, "x-www-form-urlencoded");
 
@@ -427,6 +538,15 @@ public final class MediaType {
   public static final MediaType APPLICATION_BINARY = createConstant(APPLICATION_TYPE, "binary");
 
   /**
+   * As described in <a href="https://www.rfc-editor.org/rfc/rfc8949.html">RFC 8949</a>, this
+   * constant ({@code application/cbor}) is used for the Concise Binary Object Representation (CBOR)
+   * data format.
+   *
+   * @since 33.4.0
+   */
+  public static final MediaType CBOR = createConstant(APPLICATION_TYPE, "cbor");
+
+  /**
    * Media type for the <a href="https://tools.ietf.org/html/rfc7946">GeoJSON Format</a>, a
    * geospatial data interchange format based on JSON.
    *
@@ -434,7 +554,25 @@ public final class MediaType {
    */
   public static final MediaType GEO_JSON = createConstant(APPLICATION_TYPE, "geo+json");
 
-  public static final MediaType GZIP = createConstant(APPLICATION_TYPE, "x-gzip");
+  /**
+   * Gzip-compressed data, as registered in <a
+   * href="https://datatracker.ietf.org/doc/html/rfc6713">RFC 6713</a> ({@code application/gzip}).
+   *
+   * <p>Prefer this constant over {@link #GZIP}, which uses the legacy {@code application/x-gzip}
+   * type.
+   *
+   * @since 33.8.0
+   */
+  public static final MediaType APPLICATION_GZIP = createConstant(APPLICATION_TYPE, "gzip");
+
+  /**
+   * Gzip-compressed data using the legacy {@code application/x-gzip} type.
+   *
+   * @deprecated Prefer {@link #APPLICATION_GZIP}: <a
+   *     href="https://datatracker.ietf.org/doc/html/rfc6713">RFC 6713</a> registers {@code
+   *     application/gzip} and says the {@code x-} prefixed form should no longer be used.
+   */
+  @Deprecated public static final MediaType GZIP = createConstant(APPLICATION_TYPE, "x-gzip");
 
   /**
    * <a href="https://tools.ietf.org/html/draft-kelly-json-hal-08#section-3">JSON Hypertext
@@ -468,10 +606,18 @@ public final class MediaType {
    */
   public static final MediaType JOSE_JSON = createConstant(APPLICATION_TYPE, "jose+json");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc8259.html">JSON</a>. */
   public static final MediaType JSON_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "json");
 
   /**
-   * The <a href="http://www.w3.org/TR/appmanifest/">Manifest for a web application</a>.
+   * For <a href="https://tools.ietf.org/html/7519">JWT objects using the compact Serialization</a>.
+   *
+   * @since 32.0.0
+   */
+  public static final MediaType JWT = createConstant(APPLICATION_TYPE, "jwt");
+
+  /**
+   * The <a href="https://www.w3.org/TR/appmanifest/">Manifest for a web application</a>.
    *
    * @since 19.0
    */
@@ -497,30 +643,57 @@ public final class MediaType {
   public static final MediaType MBOX = createConstant(APPLICATION_TYPE, "mbox");
 
   /**
-   * <a href="http://goo.gl/1pGBFm">Apple over-the-air mobile configuration profiles</a>.
+   * <a
+   * href="https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/iPhoneOTAConfiguration/profile-service/profile-service.html">Apple
+   * over-the-air mobile configuration profiles</a>.
    *
    * @since 18.0
    */
   public static final MediaType APPLE_MOBILE_CONFIG =
       createConstant(APPLICATION_TYPE, "x-apple-aspen-config");
 
-  /** <a href="http://goo.gl/XDQ1h2">Microsoft Excel</a> spreadsheets. */
+  /**
+   * <a
+   * href="https://learn.microsoft.com/en-us/archive/blogs/vsofficedeveloper/office-2007-file-format-mime-types-for-http-content-streaming-2">Microsoft
+   * Excel</a> spreadsheets.
+   */
   public static final MediaType MICROSOFT_EXCEL = createConstant(APPLICATION_TYPE, "vnd.ms-excel");
 
   /**
-   * <a href="http://goo.gl/XrTEqG">Microsoft Outlook</a> items.
+   * <a href="https://www.loc.gov/preservation/digital/formats/fdd/fdd000379.shtml">Microsoft
+   * Outlook</a> items.
    *
    * @since 27.1
    */
   public static final MediaType MICROSOFT_OUTLOOK =
       createConstant(APPLICATION_TYPE, "vnd.ms-outlook");
 
-  /** <a href="http://goo.gl/XDQ1h2">Microsoft Powerpoint</a> presentations. */
+  /**
+   * <a
+   * href="https://learn.microsoft.com/en-us/archive/blogs/vsofficedeveloper/office-2007-file-format-mime-types-for-http-content-streaming-2">Microsoft
+   * Powerpoint</a> presentations.
+   */
   public static final MediaType MICROSOFT_POWERPOINT =
       createConstant(APPLICATION_TYPE, "vnd.ms-powerpoint");
 
-  /** <a href="http://goo.gl/XDQ1h2">Microsoft Word</a> documents. */
+  /**
+   * <a
+   * href="https://learn.microsoft.com/en-us/archive/blogs/vsofficedeveloper/office-2007-file-format-mime-types-for-http-content-streaming-2">Microsoft
+   * Word</a> documents.
+   */
   public static final MediaType MICROSOFT_WORD = createConstant(APPLICATION_TYPE, "msword");
+
+  /**
+   * Media type for <a
+   * href="https://en.wikipedia.org/wiki/Dynamic_Adaptive_Streaming_over_HTTP">Dynamic Adaptive
+   * Streaming over HTTP (DASH)</a>. This is <a
+   * href="https://www.iana.org/assignments/media-types/application/dash+xml">registered</a> with
+   * the IANA.
+   *
+   * @since 28.2
+   */
+  public static final MediaType MEDIA_PRESENTATION_DESCRIPTION =
+      createConstant(APPLICATION_TYPE, "dash+xml");
 
   /**
    * WASM applications. For more information see <a href="https://webassembly.org/">the Web Assembly
@@ -540,6 +713,14 @@ public final class MediaType {
   public static final MediaType NACL_APPLICATION = createConstant(APPLICATION_TYPE, "x-nacl");
 
   /**
+   * The <a href="https://pki-tutorial.readthedocs.io/en/latest/mime.html">PEM format</a>. See also
+   * <a href="https://github.com/ietf-wg-acme/acme/issues/120">ietf-wg-acme proposal</a>.
+   *
+   * @since 33.7.0
+   */
+  public static final MediaType PEM = createConstant(APPLICATION_TYPE, "x-pem-file");
+
+  /**
    * NaCl portable applications. For more information see <a
    * href="https://developer.chrome.com/native-client/devguide/coding/application-structure">the
    * Developer Guide for Native Client Application Structure</a>.
@@ -549,26 +730,84 @@ public final class MediaType {
   public static final MediaType NACL_PORTABLE_APPLICATION =
       createConstant(APPLICATION_TYPE, "x-pnacl");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2046.html#section-4.5.1">Binary data</a>. */
   public static final MediaType OCTET_STREAM = createConstant(APPLICATION_TYPE, "octet-stream");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc5334.html">Ogg container</a>. */
   public static final MediaType OGG_CONTAINER = createConstant(APPLICATION_TYPE, "ogg");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.wordprocessingml.document">OOXML
+   * Document</a>.
+   */
   public static final MediaType OOXML_DOCUMENT =
       createConstant(
           APPLICATION_TYPE, "vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.presentationml.presentation">OOXML
+   * Presentation</a>.
+   */
   public static final MediaType OOXML_PRESENTATION =
       createConstant(
           APPLICATION_TYPE, "vnd.openxmlformats-officedocument.presentationml.presentation");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">OOXML
+   * Sheet</a>.
+   */
   public static final MediaType OOXML_SHEET =
       createConstant(APPLICATION_TYPE, "vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.oasis.opendocument.graphics">OpenDocument
+   * Graphics</a>.
+   */
   public static final MediaType OPENDOCUMENT_GRAPHICS =
       createConstant(APPLICATION_TYPE, "vnd.oasis.opendocument.graphics");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.oasis.opendocument.presentation">OpenDocument
+   * Presentation</a>.
+   */
   public static final MediaType OPENDOCUMENT_PRESENTATION =
       createConstant(APPLICATION_TYPE, "vnd.oasis.opendocument.presentation");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.oasis.opendocument.spreadsheet">OpenDocument
+   * Spreadsheet</a>.
+   */
   public static final MediaType OPENDOCUMENT_SPREADSHEET =
       createConstant(APPLICATION_TYPE, "vnd.oasis.opendocument.spreadsheet");
+
+  /**
+   * <a
+   * href="https://www.iana.org/assignments/media-types/application/vnd.oasis.opendocument.text">OpenDocument
+   * Text</a>.
+   */
   public static final MediaType OPENDOCUMENT_TEXT =
       createConstant(APPLICATION_TYPE, "vnd.oasis.opendocument.text");
+
+  /**
+   * <a href="https://tools.ietf.org/id/draft-ellermann-opensearch-01.html">OpenSearch</a>
+   * Description files are XML files that describe how a website can be used as a search engine by
+   * consumers (e.g. web browsers).
+   *
+   * @since 28.2
+   */
+  public static final MediaType OPENSEARCH_DESCRIPTION_UTF_8 =
+      createConstantUtf8(APPLICATION_TYPE, "opensearchdescription+xml");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc3778.html">PDF</a>. */
   public static final MediaType PDF = createConstant(APPLICATION_TYPE, "pdf");
+
+  /** <a href="https://www.rfc-editor.org/rfc/rfc2046.html#section-4.5.2">PostScript</a>. */
   public static final MediaType POSTSCRIPT = createConstant(APPLICATION_TYPE, "postscript");
 
   /**
@@ -588,18 +827,19 @@ public final class MediaType {
    */
   public static final MediaType RDF_XML_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "rdf+xml");
 
+  /** <a href="https://www.iana.org/assignments/media-types/application/rtf">RTF</a>. */
   public static final MediaType RTF_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "rtf");
 
   /**
-   * SFNT fonts (which includes <a href="http://en.wikipedia.org/wiki/TrueType/">TrueType</a> and <a
-   * href="http://en.wikipedia.org/wiki/OpenType/">OpenType</a> fonts). This is <a
-   * href="http://www.iana.org/assignments/media-types/application/font-sfnt">registered</a> with
-   * the IANA.
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares {@link #FONT_SFNT
+   * font/sfnt} to be the correct media type for SFNT, but this may be necessary in certain
+   * situations for compatibility.
    *
    * @since 17.0
    */
   public static final MediaType SFNT = createConstant(APPLICATION_TYPE, "font-sfnt");
 
+  /** Adobe Flash content. */
   public static final MediaType SHOCKWAVE_FLASH =
       createConstant(APPLICATION_TYPE, "x-shockwave-flash");
 
@@ -617,33 +857,35 @@ public final class MediaType {
    * serialized with XML 1.0.
    *
    * <p>For SOAP 1.1 messages, see {@code XML_UTF_8} per <a
-   * href="http://www.w3.org/TR/2000/NOTE-SOAP-20000508/">W3C Note on Simple Object Access Protocol
+   * href="https://www.w3.org/TR/2000/NOTE-SOAP-20000508/">W3C Note on Simple Object Access Protocol
    * (SOAP) 1.1</a>
    *
    * @since 20.0
    */
   public static final MediaType SOAP_XML_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "soap+xml");
 
+  /** tar archives. */
   public static final MediaType TAR = createConstant(APPLICATION_TYPE, "x-tar");
 
   /**
-   * <a href="http://en.wikipedia.org/wiki/Web_Open_Font_Format">Web Open Font Format</a> (WOFF) <a
-   * href="http://www.w3.org/TR/WOFF/">defined</a> by the W3C. This is <a
-   * href="http://www.iana.org/assignments/media-types/application/font-woff">registered</a> with
-   * the IANA.
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares {@link #FONT_WOFF
+   * font/woff} to be the correct media type for WOFF, but this may be necessary in certain
+   * situations for compatibility.
    *
    * @since 17.0
    */
   public static final MediaType WOFF = createConstant(APPLICATION_TYPE, "font-woff");
 
   /**
-   * <a href="http://en.wikipedia.org/wiki/Web_Open_Font_Format">Web Open Font Format</a> (WOFF)
-   * version 2 <a href="https://www.w3.org/TR/WOFF2/">defined</a> by the W3C.
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares {@link #FONT_WOFF2
+   * font/woff2} to be the correct media type for WOFF2, but this may be necessary in certain
+   * situations for compatibility.
    *
    * @since 20.0
    */
   public static final MediaType WOFF2 = createConstant(APPLICATION_TYPE, "font-woff2");
 
+  /** <a href="https://www.rfc-editor.org/rfc/rfc3236.html">XHTML</a>. */
   public static final MediaType XHTML_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "xhtml+xml");
 
   /**
@@ -656,17 +898,85 @@ public final class MediaType {
    */
   public static final MediaType XRD_UTF_8 = createConstantUtf8(APPLICATION_TYPE, "xrd+xml");
 
+  /** <a href="https://www.iana.org/assignments/media-types/application/zip">ZIP archives</a>. */
   public static final MediaType ZIP = createConstant(APPLICATION_TYPE, "zip");
+
+  /* font types */
+
+  /**
+   * A collection of font outlines as defined by <a href="https://tools.ietf.org/html/rfc8081">RFC
+   * 8081</a>.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_COLLECTION = createConstant(FONT_TYPE, "collection");
+
+  /**
+   * <a href="https://en.wikipedia.org/wiki/OpenType">Open Type Font Format</a> (OTF) as defined by
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a>.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_OTF = createConstant(FONT_TYPE, "otf");
+
+  /**
+   * <a href="https://en.wikipedia.org/wiki/SFNT">Spline or Scalable Font Format</a> (SFNT). <a
+   * href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares this to be the correct media
+   * type for SFNT, but {@link #SFNT application/font-sfnt} may be necessary in certain situations
+   * for compatibility.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_SFNT = createConstant(FONT_TYPE, "sfnt");
+
+  /**
+   * <a href="https://en.wikipedia.org/wiki/TrueType">True Type Font Format</a> (TTF) as defined by
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a>.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_TTF = createConstant(FONT_TYPE, "ttf");
+
+  /**
+   * <a href="http://en.wikipedia.org/wiki/Web_Open_Font_Format">Web Open Font Format</a> (WOFF). <a
+   * href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares this to be the correct media
+   * type for SFNT, but {@link #WOFF application/font-woff} may be necessary in certain situations
+   * for compatibility.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_WOFF = createConstant(FONT_TYPE, "woff");
+
+  /**
+   * <a href="http://en.wikipedia.org/wiki/Web_Open_Font_Format">Web Open Font Format</a> (WOFF2).
+   * <a href="https://tools.ietf.org/html/rfc8081">RFC 8081</a> declares this to be the correct
+   * media type for SFNT, but {@link #WOFF2 application/font-woff2} may be necessary in certain
+   * situations for compatibility.
+   *
+   * @since 30.0
+   */
+  public static final MediaType FONT_WOFF2 = createConstant(FONT_TYPE, "woff2");
+
+  /**
+   * <a href="https://yaml.org">YAML</a>, as standardized in <a
+   * href="https://www.rfc-editor.org/info/rfc9512">RFC 9512</a>.
+   *
+   * @since 33.7.0
+   */
+  public static final MediaType YAML = createConstant(APPLICATION_TYPE, "yaml");
 
   private final String type;
   private final String subtype;
   private final ImmutableListMultimap<String, String> parameters;
 
-  @LazyInit private String toString;
+  @LazyInit private @Nullable String toString;
 
   @LazyInit private int hashCode;
 
-  @LazyInit private Optional<Charset> parsedCharset;
+  // We need to differentiate between "not computed" and "computed to be absent."
+  @SuppressWarnings("NullableOptional")
+  @LazyInit
+  private @Nullable Optional<Charset> parsedCharset;
 
   private MediaType(String type, String subtype, ImmutableListMultimap<String, String> parameters) {
     this.type = type;
@@ -690,14 +1000,7 @@ public final class MediaType {
   }
 
   private Map<String, ImmutableMultiset<String>> parametersAsMap() {
-    return Maps.transformValues(
-        parameters.asMap(),
-        new Function<Collection<String>, ImmutableMultiset<String>>() {
-          @Override
-          public ImmutableMultiset<String> apply(Collection<String> input) {
-            return ImmutableMultiset.copyOf(input);
-          }
-        });
+    return transformValues(parameters.asMap(), ImmutableMultiset::copyOf);
   }
 
   /**
@@ -756,23 +1059,27 @@ public final class MediaType {
     checkNotNull(attribute);
     checkNotNull(values);
     String normalizedAttribute = normalizeToken(attribute);
-    ImmutableListMultimap.Builder<String, String> builder = ImmutableListMultimap.builder();
+    ImmutableListMultimap.Builder<String, String> updatedParameters =
+        ImmutableListMultimap.builder();
     for (Entry<String, String> entry : parameters.entries()) {
       String key = entry.getKey();
       if (!normalizedAttribute.equals(key)) {
-        builder.put(key, entry.getValue());
+        updatedParameters.put(key, entry.getValue());
       }
     }
     for (String value : values) {
-      builder.put(normalizedAttribute, normalizeParameterValue(normalizedAttribute, value));
+      updatedParameters.put(
+          normalizedAttribute, normalizeParameterValue(normalizedAttribute, value));
     }
-    MediaType mediaType = new MediaType(type, subtype, builder.build());
+    MediaType mediaType = new MediaType(type, subtype, updatedParameters.build());
     // if the attribute isn't charset, we can just inherit the current parsedCharset
     if (!normalizedAttribute.equals(CHARSET_ATTRIBUTE)) {
       mediaType.parsedCharset = this.parsedCharset;
     }
     // Return one of the constants if the media type is a known type.
-    return MoreObjects.firstNonNull(KNOWN_TYPES.get(mediaType), mediaType);
+    @SuppressWarnings("GetOrDefaultNotNull") // getOrDefault requires API Level 24
+    MediaType result = firstNonNull(knownTypes.get(mediaType), mediaType);
+    return result;
   }
 
   /**
@@ -794,7 +1101,7 @@ public final class MediaType {
    * one.
    *
    * <p>If a charset must be specified that is not supported on this JVM (and thus is not
-   * representable as a {@link Charset} instance, use {@link #withParameter}.
+   * representable as a {@link Charset} instance), use {@link #withParameter}.
    */
   public MediaType withCharset(Charset charset) {
     checkNotNull(charset);
@@ -806,13 +1113,13 @@ public final class MediaType {
 
   /** Returns true if either the type or subtype is the wildcard. */
   public boolean hasWildcard() {
-    return WILDCARD.equals(type) || WILDCARD.equals(subtype);
+    return type.equals(WILDCARD) || subtype.equals(WILDCARD);
   }
 
   /**
    * Returns {@code true} if this instance falls within the range (as defined by <a
-   * href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html">the HTTP Accept header</a>) given
-   * by the argument according to three criteria:
+   * href="https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html">the HTTP Accept header</a>)
+   * given by the argument according to three criteria:
    *
    * <ol>
    *   <li>The type of the argument is the wildcard or equal to the type of this instance.
@@ -822,7 +1129,7 @@ public final class MediaType {
    *
    * <p>For example:
    *
-   * <pre>{@code
+   * {@snippet :
    * PLAIN_TEXT_UTF_8.is(PLAIN_TEXT_UTF_8) // true
    * PLAIN_TEXT_UTF_8.is(HTML_UTF_8) // false
    * PLAIN_TEXT_UTF_8.is(ANY_TYPE) // true
@@ -831,7 +1138,7 @@ public final class MediaType {
    * PLAIN_TEXT_UTF_8.is(ANY_TEXT_TYPE.withCharset(UTF_8)) // true
    * PLAIN_TEXT_UTF_8.withoutParameters().is(ANY_TEXT_TYPE.withCharset(UTF_8)) // false
    * PLAIN_TEXT_UTF_8.is(ANY_TEXT_TYPE.withCharset(UTF_16)) // false
-   * }</pre>
+   * }
    *
    * <p>Note that while it is possible to have the same parameter declared multiple times within a
    * media type this method does not consider the number of occurrences of a parameter. For example,
@@ -851,7 +1158,7 @@ public final class MediaType {
    *     type, but not the subtype.
    */
   public static MediaType create(String type, String subtype) {
-    MediaType mediaType = create(type, subtype, ImmutableListMultimap.<String, String>of());
+    MediaType mediaType = create(type, subtype, ImmutableListMultimap.of());
     mediaType.parsedCharset = Optional.absent();
     return mediaType;
   }
@@ -864,7 +1171,7 @@ public final class MediaType {
     String normalizedType = normalizeToken(type);
     String normalizedSubtype = normalizeToken(subtype);
     checkArgument(
-        !WILDCARD.equals(normalizedType) || WILDCARD.equals(normalizedSubtype),
+        !normalizedType.equals(WILDCARD) || normalizedSubtype.equals(WILDCARD),
         "A wildcard type cannot be used with a non-wildcard subtype");
     ImmutableListMultimap.Builder<String, String> builder = ImmutableListMultimap.builder();
     for (Entry<String, String> entry : parameters.entries()) {
@@ -873,7 +1180,9 @@ public final class MediaType {
     }
     MediaType mediaType = new MediaType(normalizedType, normalizedSubtype, builder.build());
     // Return one of the constants if the media type is a known type.
-    return MoreObjects.firstNonNull(KNOWN_TYPES.get(mediaType), mediaType);
+    @SuppressWarnings("GetOrDefaultNotNull") // getOrDefault requires API Level 24
+    MediaType result = firstNonNull(knownTypes.get(mediaType), mediaType);
+    return result;
   }
 
   /**
@@ -892,6 +1201,15 @@ public final class MediaType {
    */
   static MediaType createAudioType(String subtype) {
     return create(AUDIO_TYPE, subtype);
+  }
+
+  /**
+   * Creates a media type with the "font" type and the given subtype.
+   *
+   * @throws IllegalArgumentException if subtype is invalid
+   */
+  static MediaType createFontType(String subtype) {
+    return create(FONT_TYPE, subtype);
   }
 
   /**
@@ -923,11 +1241,17 @@ public final class MediaType {
 
   private static String normalizeToken(String token) {
     checkArgument(TOKEN_MATCHER.matchesAllOf(token));
+    checkArgument(!token.isEmpty());
     return Ascii.toLowerCase(token);
   }
 
   private static String normalizeParameterValue(String attribute, String value) {
-    return CHARSET_ATTRIBUTE.equals(attribute) ? Ascii.toLowerCase(value) : value;
+    checkNotNull(value); // for GWT
+    checkArgument(
+        PARAMETER_VALUE_MATCHER.matchesAllOf(value),
+        "parameter values must contain only ASCII and no control characters: %s",
+        value);
+    return attribute.equals(CHARSET_ATTRIBUTE) ? Ascii.toLowerCase(value) : value;
   }
 
   /**
@@ -935,28 +1259,27 @@ public final class MediaType {
    *
    * @throws IllegalArgumentException if the input is not parsable
    */
+  @CanIgnoreReturnValue // TODO(b/219820829): consider removing
   public static MediaType parse(String input) {
     checkNotNull(input);
     Tokenizer tokenizer = new Tokenizer(input);
     try {
       String type = tokenizer.consumeToken(TOKEN_MATCHER);
-      tokenizer.consumeCharacter('/');
+      consumeSeparator(tokenizer, '/');
       String subtype = tokenizer.consumeToken(TOKEN_MATCHER);
       ImmutableListMultimap.Builder<String, String> parameters = ImmutableListMultimap.builder();
       while (tokenizer.hasMore()) {
-        tokenizer.consumeTokenIfPresent(LINEAR_WHITE_SPACE);
-        tokenizer.consumeCharacter(';');
-        tokenizer.consumeTokenIfPresent(LINEAR_WHITE_SPACE);
+        consumeSeparator(tokenizer, ';');
         String attribute = tokenizer.consumeToken(TOKEN_MATCHER);
-        tokenizer.consumeCharacter('=');
-        final String value;
-        if ('"' == tokenizer.previewChar()) {
+        consumeSeparator(tokenizer, '=');
+        String value;
+        if (tokenizer.previewChar() == '"') {
           tokenizer.consumeCharacter('"');
           StringBuilder valueBuilder = new StringBuilder();
-          while ('"' != tokenizer.previewChar()) {
-            if ('\\' == tokenizer.previewChar()) {
+          while (tokenizer.previewChar() != '"') {
+            if (tokenizer.previewChar() == '\\') {
               tokenizer.consumeCharacter('\\');
-              valueBuilder.append(tokenizer.consumeCharacter(ascii()));
+              valueBuilder.append(tokenizer.consumeCharacter(PARAMETER_VALUE_MATCHER));
             } else {
               valueBuilder.append(tokenizer.consumeToken(QUOTED_TEXT_MATCHER));
             }
@@ -974,6 +1297,12 @@ public final class MediaType {
     }
   }
 
+  private static void consumeSeparator(Tokenizer tokenizer, char c) {
+    tokenizer.consumeTokenIfPresent(LINEAR_WHITE_SPACE);
+    tokenizer.consumeCharacter(c);
+    tokenizer.consumeTokenIfPresent(LINEAR_WHITE_SPACE);
+  }
+
   private static final class Tokenizer {
     final String input;
     int position = 0;
@@ -982,6 +1311,7 @@ public final class MediaType {
       this.input = input;
     }
 
+    @CanIgnoreReturnValue
     String consumeTokenIfPresent(CharMatcher matcher) {
       checkState(hasMore());
       int startPosition = position;
@@ -1004,6 +1334,7 @@ public final class MediaType {
       return c;
     }
 
+    @CanIgnoreReturnValue
     char consumeCharacter(char c) {
       checkState(hasMore());
       checkState(previewChar() == c);
@@ -1041,7 +1372,7 @@ public final class MediaType {
     // racy single-check idiom
     int h = hashCode;
     if (h == 0) {
-      h = Objects.hashCode(type, subtype, parametersAsMap());
+      h = hash(type, subtype, parametersAsMap());
       hashCode = h;
     }
     return h;
@@ -1071,12 +1402,10 @@ public final class MediaType {
       Multimap<String, String> quotedParameters =
           Multimaps.transformValues(
               parameters,
-              new Function<String, String>() {
-                @Override
-                public String apply(String value) {
-                  return TOKEN_MATCHER.matchesAllOf(value) ? value : escapeAndQuote(value);
-                }
-              });
+              (String value) ->
+                  (TOKEN_MATCHER.matchesAllOf(value) && !value.isEmpty())
+                      ? value
+                      : escapeAndQuote(value));
       PARAMETER_JOINER.appendTo(builder, quotedParameters.entries());
     }
     return builder.toString();
@@ -1086,7 +1415,7 @@ public final class MediaType {
     StringBuilder escaped = new StringBuilder(value.length() + 16).append('"');
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
-      if (ch == '\r' || ch == '\\' || ch == '"') {
+      if (ch == '\\' || ch == '"') {
         escaped.append('\\');
       }
       escaped.append(ch);

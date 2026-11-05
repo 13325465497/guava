@@ -18,6 +18,8 @@ package com.google.common.util.concurrent;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -25,9 +27,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /** Utilities for the AbstractFutureBenchmarks */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 final class AbstractFutureBenchmarks {
   private AbstractFutureBenchmarks() {}
 
@@ -85,6 +91,7 @@ final class AbstractFutureBenchmarks {
     abstract <T> Facade<T> newFacade();
   }
 
+  @SuppressWarnings("ThreadPriorityCheck") // TODO(b/175898629): Consider onSpinWait.
   static void awaitWaiting(Thread t) {
     while (true) {
       Thread.State state = t.getState();
@@ -218,7 +225,7 @@ final class AbstractFutureBenchmarks {
      * @return true if the state was successfully changed.
      */
     @CanIgnoreReturnValue
-    protected boolean set(@NullableDecl V value) {
+    protected boolean set(@Nullable V value) {
       boolean result = sync.set(value);
       if (result) {
         executionList.execute();
@@ -297,8 +304,7 @@ final class AbstractFutureBenchmarks {
        * Blocks until the task is complete or the timeout expires. Throws a {@link TimeoutException}
        * if the timer expires, otherwise behaves like {@link #get()}.
        */
-      V get(long nanos)
-          throws TimeoutException, CancellationException, ExecutionException, InterruptedException {
+      V get(long nanos) throws TimeoutException, ExecutionException, InterruptedException {
 
         // Attempt to acquire the shared lock with a timeout.
         if (!tryAcquireSharedNanos(-1, nanos)) {
@@ -313,7 +319,7 @@ final class AbstractFutureBenchmarks {
        * a {@link CancellationException} if the task was cancelled, or a {@link ExecutionException}
        * if the task completed with an error.
        */
-      V get() throws CancellationException, ExecutionException, InterruptedException {
+      V get() throws ExecutionException, InterruptedException {
 
         // Acquire the shared lock allowing interruption.
         acquireSharedInterruptibly(-1);
@@ -325,7 +331,7 @@ final class AbstractFutureBenchmarks {
        * exception on failure, a cancellation on cancellation, or an illegal state if the
        * synchronizer is in an invalid state.
        */
-      private V getValue() throws CancellationException, ExecutionException {
+      private V getValue() throws ExecutionException {
         int state = getState();
         switch (state) {
           case COMPLETED:
@@ -360,7 +366,7 @@ final class AbstractFutureBenchmarks {
       }
 
       /** Transition to the COMPLETED state and set the value. */
-      boolean set(@NullableDecl V v) {
+      boolean set(@Nullable V v) {
         return complete(v, null, COMPLETED);
       }
 
@@ -384,7 +390,7 @@ final class AbstractFutureBenchmarks {
        * @param t the exception to set as the result of the computation.
        * @param finalState the state to transition to.
        */
-      private boolean complete(@NullableDecl V v, @NullableDecl Throwable t, int finalState) {
+      private boolean complete(@Nullable V v, @Nullable Throwable t, int finalState) {
         boolean doCompletion = compareAndSetState(RUNNING, COMPLETING);
         if (doCompletion) {
           // If this thread successfully transitioned to COMPLETING, set the value
@@ -405,8 +411,8 @@ final class AbstractFutureBenchmarks {
       }
     }
 
-    static final CancellationException cancellationExceptionWithCause(
-        @NullableDecl String message, @NullableDecl Throwable cause) {
+    static CancellationException cancellationExceptionWithCause(
+        @Nullable String message, @Nullable Throwable cause) {
       CancellationException exception = new CancellationException(message);
       exception.initCause(cause);
       return exception;

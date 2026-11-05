@@ -16,7 +16,12 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Tables.transpose;
+import static com.google.common.truth.Truth.assertThat;
+
 import com.google.common.annotations.GwtCompatible;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Test cases for {@link Tables#transpose}.
@@ -24,12 +29,13 @@ import com.google.common.annotations.GwtCompatible;
  * @author Jared Levy
  */
 @GwtCompatible
-public class TransposedTableTest extends AbstractTableTest {
+@NullMarked
+public class TransposedTableTest extends AbstractTableTest<Character> {
 
   @Override
-  protected Table<String, Integer, Character> create(Object... data) {
+  Table<String, Integer, Character> create(@Nullable Object... data) {
     Table<Integer, String, Character> original = HashBasedTable.create();
-    Table<String, Integer, Character> table = Tables.transpose(original);
+    Table<String, Integer, Character> table = transpose(original);
     table.clear();
     populate(table, data);
     return table;
@@ -37,32 +43,32 @@ public class TransposedTableTest extends AbstractTableTest {
 
   public void testTransposeTransposed() {
     Table<Integer, String, Character> original = HashBasedTable.create();
-    assertSame(original, Tables.transpose(Tables.transpose(original)));
+    assertThat(transpose(transpose(original))).isSameInstanceAs(original);
   }
 
   public void testPutOriginalModifiesTranspose() {
     Table<Integer, String, Character> original = HashBasedTable.create();
-    Table<String, Integer, Character> transpose = Tables.transpose(original);
+    Table<String, Integer, Character> transpose = transpose(original);
     original.put(1, "foo", 'a');
     assertEquals((Character) 'a', transpose.get("foo", 1));
   }
 
   public void testPutTransposeModifiesOriginal() {
     Table<Integer, String, Character> original = HashBasedTable.create();
-    Table<String, Integer, Character> transpose = Tables.transpose(original);
+    Table<String, Integer, Character> transpose = transpose(original);
     transpose.put("foo", 1, 'a');
     assertEquals((Character) 'a', original.get(1, "foo"));
   }
 
   public void testTransposedViews() {
     Table<Integer, String, Character> original = HashBasedTable.create();
-    Table<String, Integer, Character> transpose = Tables.transpose(original);
+    Table<String, Integer, Character> transpose = transpose(original);
     original.put(1, "foo", 'a');
-    assertSame(original.columnKeySet(), transpose.rowKeySet());
-    assertSame(original.rowKeySet(), transpose.columnKeySet());
-    assertSame(original.columnMap(), transpose.rowMap());
-    assertSame(original.rowMap(), transpose.columnMap());
-    assertSame(original.values(), transpose.values());
+    assertThat(transpose.rowKeySet()).isEqualTo(original.columnKeySet());
+    assertThat(transpose.columnKeySet()).isEqualTo(original.rowKeySet());
+    assertThat(transpose.rowMap()).isEqualTo(original.columnMap());
+    assertThat(transpose.columnMap()).isEqualTo(original.rowMap());
+    assertThat(transpose.values()).containsExactlyElementsIn(original.values());
     assertEquals(original.row(1), transpose.column(1));
     assertEquals(original.row(2), transpose.column(2));
     assertEquals(original.column("foo"), transpose.row("foo"));

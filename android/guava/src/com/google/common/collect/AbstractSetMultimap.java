@@ -16,14 +16,18 @@
 
 package com.google.common.collect;
 
+import static java.util.Collections.emptySet;
+import static java.util.Collections.unmodifiableSet;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Basic implementation of the {@link SetMultimap} interface. It's a wrapper around {@link
@@ -33,14 +37,14 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Jared Levy
  */
 @GwtCompatible
-abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
-    implements SetMultimap<K, V> {
+abstract class AbstractSetMultimap<K extends @Nullable Object, V extends @Nullable Object>
+    extends AbstractMapBasedMultimap<K, V> implements SetMultimap<K, V> {
   /**
    * Creates a new multimap that uses the provided map.
    *
    * @param map place to store the mapping from each key to its corresponding values
    */
-  protected AbstractSetMultimap(Map<K, Collection<V>> map) {
+  AbstractSetMultimap(Map<K, Collection<V>> map) {
     super(map);
   }
 
@@ -49,16 +53,17 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
 
   @Override
   Set<V> createUnmodifiableEmptyCollection() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   @Override
-  <E> Collection<E> unmodifiableCollectionSubclass(Collection<E> collection) {
-    return Collections.unmodifiableSet((Set<E>) collection);
+  <E extends @Nullable Object> Collection<E> unmodifiableCollectionSubclass(
+      Collection<E> collection) {
+    return unmodifiableSet((Set<E>) collection);
   }
 
   @Override
-  Collection<V> wrapCollection(K key, Collection<V> collection) {
+  Collection<V> wrapCollection(@ParametricNullness K key, Collection<V> collection) {
     return new WrappedSet(key, (Set<V>) collection);
   }
 
@@ -71,7 +76,7 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
    * {@link Set}, instead of the {@link Collection} specified in the {@link Multimap} interface.
    */
   @Override
-  public Set<V> get(@NullableDecl K key) {
+  public Set<V> get(@ParametricNullness K key) {
     return (Set<V>) super.get(key);
   }
 
@@ -94,7 +99,7 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
    */
   @CanIgnoreReturnValue
   @Override
-  public Set<V> removeAll(@NullableDecl Object key) {
+  public Set<V> removeAll(@Nullable Object key) {
     return (Set<V>) super.removeAll(key);
   }
 
@@ -108,7 +113,7 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
    */
   @CanIgnoreReturnValue
   @Override
-  public Set<V> replaceValues(@NullableDecl K key, Iterable<? extends V> values) {
+  public Set<V> replaceValues(@ParametricNullness K key, Iterable<? extends V> values) {
     return (Set<V>) super.replaceValues(key, values);
   }
 
@@ -133,7 +138,7 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
    */
   @CanIgnoreReturnValue
   @Override
-  public boolean put(@NullableDecl K key, @NullableDecl V value) {
+  public final boolean put(@ParametricNullness K key, @ParametricNullness V value) {
     return super.put(key, value);
   }
 
@@ -144,9 +149,9 @@ abstract class AbstractSetMultimap<K, V> extends AbstractMapBasedMultimap<K, V>
    * Equality does not depend on the ordering of keys or values.
    */
   @Override
-  public boolean equals(@NullableDecl Object object) {
+  public final boolean equals(@Nullable Object object) {
     return super.equals(object);
   }
 
-  private static final long serialVersionUID = 7431625294878419160L;
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 7431625294878419160L;
 }

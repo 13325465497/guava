@@ -19,18 +19,23 @@ package com.google.common.graph;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.Iterators.concat;
+import static com.google.common.collect.Iterators.transform;
+import static com.google.common.collect.Iterators.unmodifiableIterator;
+import static com.google.common.collect.Sets.difference;
+import static com.google.common.collect.Sets.union;
 import static com.google.common.graph.GraphConstants.ENDPOINTS_MISMATCH;
+import static com.google.common.graph.GraphConstants.NODE_PAIR_REMOVED_FROM_GRAPH;
+import static com.google.common.graph.GraphConstants.NODE_REMOVED_FROM_GRAPH;
 
-import com.google.common.base.Function;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterators;
-import com.google.common.collect.Sets;
 import com.google.common.collect.UnmodifiableIterator;
+import com.google.common.graph.IncidentEdgeSet.EdgeType;
 import com.google.common.math.IntMath;
 import com.google.common.primitives.Ints;
 import java.util.AbstractSet;
 import java.util.Set;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * This class provides a skeletal implementation of {@link BaseGraph}.
@@ -44,9 +49,9 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
 abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
 
   /**
-   * Returns the number of edges in this graph; used to calculate the size of {@link #edges()}. This
-   * implementation requires O(|N|) time. Classes extending this one may manually keep track of the
-   * number of edges as the graph is updated, and override this method for better performance.
+   * Returns the number of edges in this graph; used to calculate the size of {@link Graph#edges()}.
+   * This implementation requires O(|N|) time. Classes extending this one may manually keep track of
+   * the number of edges as the graph is updated, and override this method for better performance.
    */
   protected long edgeCount() {
     long degreeSum = 0L;
@@ -59,8 +64,8 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
   }
 
   /**
-   * An implementation of {@link BaseGraph#edges()} defined in terms of {@link #nodes()} and {@link
-   * #successors(Object)}.
+   * An implementation of {@link BaseGraph#edges()} defined in terms of {@link Graph#nodes()} and
+   * {@link #successors(Object)}.
    */
   @Override
   public Set<EndpointPair<N>> edges() {
@@ -76,7 +81,7 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
       }
 
       @Override
-      public boolean remove(Object o) {
+      public boolean remove(@Nullable Object o) {
         throw new UnsupportedOperationException();
       }
 
@@ -85,7 +90,7 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
       // Graph<LinkedList>.
       @SuppressWarnings("unchecked")
       @Override
-      public boolean contains(@NullableDecl Object obj) {
+      public boolean contains(@Nullable Object obj) {
         if (!(obj instanceof EndpointPair)) {
           return false;
         }
@@ -98,10 +103,38 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
   }
 
   @Override
+  public ElementOrder<N> incidentEdgeOrder() {
+    return ElementOrder.unordered();
+  }
+
+  @Override
   public Set<EndpointPair<N>> incidentEdges(N node) {
     checkNotNull(node);
     checkArgument(nodes().contains(node), "Node %s is not an element of this graph.", node);
-    return IncidentEdgeSet.of(this, node);
+    IncidentEdgeSet<N> incident =
+        new IncidentEdgeSet<N>(this, node, EdgeType.BOTH) {
+          @Override
+          public UnmodifiableIterator<EndpointPair<N>> iterator() {
+            if (graph.isDirected()) {
+              return unmodifiableIterator(
+                  concat(
+                      transform(
+                          graph.predecessors(node).iterator(),
+                          (N predecessor) -> EndpointPair.ordered(predecessor, node)),
+                      transform(
+                          // filter out 'node' from successors (already covered by predecessors,
+                          // above)
+                          difference(graph.successors(node), ImmutableSet.of(node)).iterator(),
+                          (N successor) -> EndpointPair.ordered(node, successor))));
+            } else {
+              return unmodifiableIterator(
+                  transform(
+                      graph.adjacentNodes(node).iterator(),
+                      (N adjacentNode) -> EndpointPair.unordered(node, adjacentNode)));
+            }
+          }
+        };
+    return nodeInvalidatableSet(incident, node);
   }
 
   @Override
@@ -143,6 +176,139 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
     return nodes().contains(nodeU) && successors(nodeU).contains(nodeV);
   }
 
+  @Override
+  public Network<N, EndpointPair<N>> asNetwork() {
+    return new AbstractNetwork<N, EndpointPair<N>>() {
+      @Override
+      public Set<N> nodes() {
+        return AbstractBaseGraph.this.nodes();
+      }
+
+      @Override
+      public Set<EndpointPair<N>> edges() {
+        return AbstractBaseGraph.this.edges();
+      }
+
+      @Override
+      public Graph<N> asGraph() {
+        if (AbstractBaseGraph.this instanceof Graph) {
+          return (Graph<N>) AbstractBaseGraph.this;
+        } else if (AbstractBaseGraph.this instanceof ValueGraph) {
+          return ((ValueGraph<N, ?>) AbstractBaseGraph.this).asGraph();
+        }
+        throw new UnsupportedOperationException(
+            "Unexpected graph type: " + AbstractBaseGraph.this.getClass());
+      }
+
+      @Override
+      public boolean isDirected() {
+        return AbstractBaseGraph.this.isDirected();
+      }
+
+      @Override
+      public boolean allowsParallelEdges() {
+        return false; // Graph doesn't allow parallel edges
+      }
+
+      @Override
+      public boolean allowsSelfLoops() {
+        return AbstractBaseGraph.this.allowsSelfLoops();
+      }
+
+      @Override
+      public ElementOrder<N> nodeOrder() {
+        return AbstractBaseGraph.this.nodeOrder();
+      }
+
+      @Override
+      public ElementOrder<EndpointPair<N>> edgeOrder() {
+        return ElementOrder.unordered(); // Graph doesn't define edge order
+      }
+
+      @Override
+      public Set<N> adjacentNodes(N node) {
+        return AbstractBaseGraph.this.adjacentNodes(node);
+      }
+
+      @Override
+      public Set<N> predecessors(N node) {
+        return AbstractBaseGraph.this.predecessors(node);
+      }
+
+      @Override
+      public Set<N> successors(N node) {
+        return AbstractBaseGraph.this.successors(node);
+      }
+
+      @Override
+      public Set<EndpointPair<N>> incidentEdges(N node) {
+        return AbstractBaseGraph.this.incidentEdges(node);
+      }
+
+      @Override
+      public Set<EndpointPair<N>> inEdges(N node) {
+        checkNotNull(node);
+        checkArgument(nodes().contains(node));
+        IncidentEdgeSet<N> incident =
+            new IncidentEdgeSet<N>(this, node, EdgeType.INCOMING) {
+              @Override
+              public UnmodifiableIterator<EndpointPair<N>> iterator() {
+                return unmodifiableIterator(
+                    transform(
+                        graph.predecessors(node).iterator(),
+                        (N predecessor) ->
+                            graph.isDirected()
+                                ? EndpointPair.ordered(predecessor, node)
+                                : EndpointPair.unordered(predecessor, node)));
+              }
+            };
+        return nodeInvalidatableSet(incident, node);
+      }
+
+      @Override
+      public Set<EndpointPair<N>> outEdges(N node) {
+        checkNotNull(node);
+        checkArgument(nodes().contains(node));
+        IncidentEdgeSet<N> incident =
+            new IncidentEdgeSet<N>(this, node, EdgeType.OUTGOING) {
+              @Override
+              public UnmodifiableIterator<EndpointPair<N>> iterator() {
+                return unmodifiableIterator(
+                    transform(
+                        graph.successors(node).iterator(),
+                        (N successor) ->
+                            graph.isDirected()
+                                ? EndpointPair.ordered(node, successor)
+                                : EndpointPair.unordered(node, successor)));
+              }
+            };
+        return nodeInvalidatableSet(incident, node);
+      }
+
+      @Override
+      public Set<EndpointPair<N>> adjacentEdges(EndpointPair<N> edge) {
+        checkNotNull(edge);
+        checkArgument(edges().contains(edge));
+        N nodeU = edge.nodeU();
+        N nodeV = edge.nodeV();
+        Set<EndpointPair<N>> endpointPairIncidentEdges =
+            union(incidentEdges(nodeU), incidentEdges(nodeV));
+        return nodePairInvalidatableSet(
+            difference(endpointPairIncidentEdges, ImmutableSet.of(edge)), nodeU, nodeV);
+      }
+
+      @Override
+      public EndpointPair<N> incidentNodes(EndpointPair<N> edge) {
+        checkNotNull(edge);
+        checkArgument(edges().contains(edge));
+        return edge;
+      }
+
+      // Don't override the existing edge[s]Connecting() or *degree() AbstractNetwork
+      // implementations; they call in/outEdges() and should be fine.
+    };
+  }
+
   /**
    * Throws {@code IllegalArgumentException} if the ordering of {@code endpoints} is not compatible
    * with the directionality of this graph.
@@ -152,122 +318,26 @@ abstract class AbstractBaseGraph<N> implements BaseGraph<N> {
     checkArgument(isOrderingCompatible(endpoints), ENDPOINTS_MISMATCH);
   }
 
+  /**
+   * Returns {@code true} if {@code endpoints}' ordering is compatible with the directionality of
+   * this graph.
+   */
   protected final boolean isOrderingCompatible(EndpointPair<?> endpoints) {
-    return endpoints.isOrdered() || !this.isDirected();
+    return endpoints.isOrdered() == this.isDirected();
   }
 
-  private abstract static class IncidentEdgeSet<N> extends AbstractSet<EndpointPair<N>> {
-    protected final N node;
-    protected final BaseGraph<N> graph;
+  protected final <T> Set<T> nodeInvalidatableSet(Set<T> set, N node) {
+    checkNotNull(node);
+    return InvalidatableSet.of(
+        set, () -> nodes().contains(node), () -> String.format(NODE_REMOVED_FROM_GRAPH, node));
+  }
 
-    public static <N> IncidentEdgeSet<N> of(BaseGraph<N> graph, N node) {
-      return graph.isDirected() ? new Directed<>(graph, node) : new Undirected<>(graph, node);
-    }
-
-    private IncidentEdgeSet(BaseGraph<N> graph, N node) {
-      this.graph = graph;
-      this.node = node;
-    }
-
-    @Override
-    public boolean remove(Object o) {
-      throw new UnsupportedOperationException();
-    }
-
-    private static final class Directed<N> extends IncidentEdgeSet<N> {
-
-      private Directed(BaseGraph<N> graph, N node) {
-        super(graph, node);
-      }
-
-      @Override
-      public UnmodifiableIterator<EndpointPair<N>> iterator() {
-        return Iterators.unmodifiableIterator(
-            Iterators.concat(
-                Iterators.transform(
-                    graph.predecessors(node).iterator(),
-                    new Function<N, EndpointPair<N>>() {
-                      @Override
-                      public EndpointPair<N> apply(N predecessor) {
-                        return EndpointPair.ordered(predecessor, node);
-                      }
-                    }),
-                Iterators.transform(
-                    // filter out 'node' from successors (already covered by predecessors, above)
-                    Sets.difference(graph.successors(node), ImmutableSet.of(node)).iterator(),
-                    new Function<N, EndpointPair<N>>() {
-                      @Override
-                      public EndpointPair<N> apply(N successor) {
-                        return EndpointPair.ordered(node, successor);
-                      }
-                    })));
-      }
-
-      @Override
-      public int size() {
-        return graph.inDegree(node)
-            + graph.outDegree(node)
-            - (graph.successors(node).contains(node) ? 1 : 0);
-      }
-
-      @Override
-      public boolean contains(@NullableDecl Object obj) {
-        if (!(obj instanceof EndpointPair)) {
-          return false;
-        }
-
-        EndpointPair<?> endpointPair = (EndpointPair<?>) obj;
-        if (!endpointPair.isOrdered()) {
-          return false;
-        }
-
-        Object source = endpointPair.source();
-        Object target = endpointPair.target();
-        return (node.equals(source) && graph.successors(node).contains(target))
-            || (node.equals(target) && graph.predecessors(node).contains(source));
-      }
-    }
-
-    private static final class Undirected<N> extends IncidentEdgeSet<N> {
-      private Undirected(BaseGraph<N> graph, N node) {
-        super(graph, node);
-      }
-
-      @Override
-      public UnmodifiableIterator<EndpointPair<N>> iterator() {
-        return Iterators.unmodifiableIterator(
-            Iterators.transform(
-                graph.adjacentNodes(node).iterator(),
-                new Function<N, EndpointPair<N>>() {
-                  @Override
-                  public EndpointPair<N> apply(N adjacentNode) {
-                    return EndpointPair.unordered(node, adjacentNode);
-                  }
-                }));
-      }
-
-      @Override
-      public int size() {
-        return graph.adjacentNodes(node).size();
-      }
-
-      @Override
-      public boolean contains(@NullableDecl Object obj) {
-        if (!(obj instanceof EndpointPair)) {
-          return false;
-        }
-
-        EndpointPair<?> endpointPair = (EndpointPair<?>) obj;
-        if (endpointPair.isOrdered()) {
-          return false;
-        }
-        Set<N> adjacent = graph.adjacentNodes(node);
-        Object nodeU = endpointPair.nodeU();
-        Object nodeV = endpointPair.nodeV();
-
-        return (node.equals(nodeV) && adjacent.contains(nodeU))
-            || (node.equals(nodeU) && adjacent.contains(nodeV));
-      }
-    }
+  protected final <T> Set<T> nodePairInvalidatableSet(Set<T> set, N nodeU, N nodeV) {
+    checkNotNull(nodeU);
+    checkNotNull(nodeV);
+    return InvalidatableSet.of(
+        set,
+        () -> nodes().contains(nodeU) && nodes().contains(nodeV),
+        () -> String.format(NODE_PAIR_REMOVED_FROM_GRAPH, nodeU, nodeV));
   }
 }

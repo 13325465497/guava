@@ -16,22 +16,29 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.collect.Iterables.getOnlyElement;
+import static java.util.Arrays.asList;
 import static org.mockito.Answers.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.google.common.base.Function;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ForwardingObject;
-import com.google.common.collect.Iterables;
 import com.google.common.testing.ForwardingWrapperTester;
 import java.lang.reflect.Method;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
- * Tester for typical subclass of {@link ForwardingObject} by using EasyMock partial mocks.
+ * Tester for typical subclass of {@link ForwardingObject} by using Mockito.
  *
  * @author Ben Yu
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 final class ForwardingObjectTester {
 
   private static final Method DELEGATE_METHOD;
@@ -51,25 +58,26 @@ final class ForwardingObjectTester {
    * Ensures that all interface methods of {@code forwarderClass} are forwarded to the {@link
    * ForwardingObject#delegate}. {@code forwarderClass} is assumed to only implement one interface.
    */
-  static <T extends ForwardingObject> void testForwardingObject(final Class<T> forwarderClass) {
+  static <T extends ForwardingObject> void testForwardingObject(Class<T> forwarderClass) {
+    List<Class<?>> interfaces = new ArrayList<>(asList(forwarderClass.getInterfaces()));
+    // Desugaring may introduce AutoCloseable as an extra interface.
+    interfaces.remove(AutoCloseable.class);
     @SuppressWarnings("unchecked") // super interface type of T
-    Class<? super T> interfaceType =
-        (Class<? super T>) Iterables.getOnlyElement(Arrays.asList(forwarderClass.getInterfaces()));
+    Class<? super T> interfaceType = (Class<? super T>) getOnlyElement(interfaces);
     new ForwardingWrapperTester()
         .testForwarding(
             interfaceType,
-            new Function<Object, T>() {
-              @Override
-              public T apply(Object delegate) {
-                T mock = mock(forwarderClass, CALLS_REAL_METHODS.get());
-                try {
-                  T stubber = doReturn(delegate).when(mock);
-                  DELEGATE_METHOD.invoke(stubber);
-                } catch (Exception e) {
-                  throw new RuntimeException(e);
-                }
-                return mock;
+            delegate -> {
+              T mock = mock(forwarderClass, CALLS_REAL_METHODS);
+              try {
+                T stubber = doReturn(delegate).when(mock);
+                DELEGATE_METHOD.invoke(stubber);
+              } catch (Exception e) {
+                throw new RuntimeException(e);
               }
+              return mock;
             });
   }
+
+  private ForwardingObjectTester() {}
 }

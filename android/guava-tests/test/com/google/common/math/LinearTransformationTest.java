@@ -21,14 +21,22 @@ import static com.google.common.math.StatsTesting.assertHorizontalLinearTransfor
 import static com.google.common.math.StatsTesting.assertLinearTransformationNaN;
 import static com.google.common.math.StatsTesting.assertVerticalLinearTransformation;
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
+import com.google.common.primitives.Doubles;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link LinearTransformation}.
  *
  * @author Pete Gillin
  */
+@GwtIncompatible
+@J2ktIncompatible
+@NullUnmarked
 public class LinearTransformationTest extends TestCase {
 
   private static final double ALLOWED_ERROR = 1e-10;
@@ -60,79 +68,56 @@ public class LinearTransformationTest extends TestCase {
   }
 
   public void testMapping_infiniteX1() {
-    try {
-      LinearTransformation.mapping(Double.POSITIVE_INFINITY, 3.4);
-      fail("Expected IllegalArgumentException from mapping(x, y) with infinite x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(Double.POSITIVE_INFINITY, 3.4));
   }
 
   public void testMapping_infiniteY1() {
-    try {
-      LinearTransformation.mapping(1.2, Double.NEGATIVE_INFINITY);
-      fail("Expected IllegalArgumentException from mapping(x, y) with infinite y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, Double.NEGATIVE_INFINITY));
   }
 
   public void testMappingAnd_infiniteX2() {
-    try {
-      LinearTransformation.mapping(1.2, 3.4).and(Double.NEGATIVE_INFINITY, 7.8);
-      fail("Expected IllegalArgumentException from and(x, y) with infinite x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, 3.4).and(Double.NEGATIVE_INFINITY, 7.8));
   }
 
   public void testMappingAnd_infiniteY2() {
-    try {
-      LinearTransformation.mapping(1.2, 3.4).and(5.6, Double.POSITIVE_INFINITY);
-      fail("Expected IllegalArgumentException from and(x, y) with infinite y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, 3.4).and(5.6, Double.POSITIVE_INFINITY));
   }
 
   public void testMapping_nanX1() {
-    try {
-      LinearTransformation.mapping(Double.NaN, 3.4);
-      fail("Expected IllegalArgumentException from mapping(x, y) with NaN x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> LinearTransformation.mapping(Double.NaN, 3.4));
   }
 
   public void testMapping_nanY1() {
-    try {
-      LinearTransformation.mapping(1.2, Double.NaN);
-      fail("Expected IllegalArgumentException from mapping(x, y) with NaN y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class, () -> LinearTransformation.mapping(1.2, Double.NaN));
   }
 
   public void testMappingAnd_nanX2() {
-    try {
-      LinearTransformation.mapping(1.2, 3.4).and(Double.NaN, 7.8);
-      fail("Expected IllegalArgumentException from and(x, y) with NaN x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, 3.4).and(Double.NaN, 7.8));
   }
 
   public void testMappingAnd_nanY2() {
-    try {
-      LinearTransformation.mapping(1.2, 3.4).and(5.6, Double.NaN);
-      fail("Expected IllegalArgumentException from and(x, y) with NaN y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, 3.4).and(5.6, Double.NaN));
   }
 
   public void testMappingAnd_samePointTwice() {
-    try {
-      double x = 1.2;
-      double y = 3.4;
-      LinearTransformation.mapping(x, y).and(x, y);
-      fail(
-          "Expected IllegalArgumentException from mapping(x1, y1).and(x2, y2) with"
-              + " (x1 == x2) && (y1 == y2)");
-    } catch (IllegalArgumentException expected) {
-    }
+    double x = 1.2;
+    double y = 3.4;
+    assertThrows(
+        IllegalArgumentException.class, () -> LinearTransformation.mapping(x, y).and(x, y));
   }
 
   public void testMappingWithSlope_regular() {
@@ -162,7 +147,7 @@ public class LinearTransformationTest extends TestCase {
   public void testMappingWithSlope_minimalSlope() {
     double x1 = 1.2;
     double y1 = 3.4;
-    double slope = Double.MIN_VALUE;
+    double slope = Doubles.MIN_POSITIVE_VALUE;
     LinearTransformation transformation = LinearTransformation.mapping(x1, y1).withSlope(slope);
     assertThat(transformation.isVertical()).isFalse();
     assertThat(transformation.isHorizontal()).isFalse();
@@ -184,11 +169,9 @@ public class LinearTransformationTest extends TestCase {
   }
 
   public void testMappingWithSlope_nanSlope() {
-    try {
-      LinearTransformation.mapping(1.2, 3.4).withSlope(Double.NaN);
-      fail("Expected IllegalArgumentException from withSlope(slope) with NaN slope");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.mapping(1.2, 3.4).withSlope(Double.NaN));
   }
 
   public void testVertical_regular() {
@@ -198,19 +181,13 @@ public class LinearTransformationTest extends TestCase {
   }
 
   public void testVertical_infiniteX() {
-    try {
-      LinearTransformation.vertical(Double.NEGATIVE_INFINITY);
-      fail("Expected IllegalArgumentException from vertical(x) with infinite x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.vertical(Double.NEGATIVE_INFINITY));
   }
 
   public void testVertical_nanX() {
-    try {
-      LinearTransformation.vertical(Double.NaN);
-      fail("Expected IllegalArgumentException from vertical(x) with NaN x");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> LinearTransformation.vertical(Double.NaN));
   }
 
   public void testHorizontal_regular() {
@@ -220,19 +197,13 @@ public class LinearTransformationTest extends TestCase {
   }
 
   public void testHorizontal_infiniteY() {
-    try {
-      LinearTransformation.horizontal(Double.POSITIVE_INFINITY);
-      fail("Expected IllegalArgumentException from horizontal(y) with infinite y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> LinearTransformation.horizontal(Double.POSITIVE_INFINITY));
   }
 
   public void testHorizontal_nanY() {
-    try {
-      LinearTransformation.horizontal(Double.NaN);
-      fail("Expected IllegalArgumentException from horizontal(y) with NaN y");
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> LinearTransformation.horizontal(Double.NaN));
   }
 
   public void testForNaN() {

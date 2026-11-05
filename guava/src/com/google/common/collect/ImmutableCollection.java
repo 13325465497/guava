@@ -19,17 +19,25 @@ package com.google.common.collect;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotCall;
+import com.google.errorprone.annotations.DoNotMock;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.AbstractCollection;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.function.Predicate;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link Collection} whose contents will never change, and which offers a few additional
@@ -40,12 +48,12 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * ImmutableList}, which have well-defined {@link #equals} semantics, thus avoiding a common source
  * of bugs and confusion.
  *
- * <h3>About <i>all</i> {@code Immutable-} collections</h3>
+ * <h2>About <i>all</i> {@code Immutable-} collections</h2>
  *
  * <p>The remainder of this documentation applies to every public {@code Immutable-} type in this
  * package, whether it is a subtype of {@code ImmutableCollection} or not.
  *
- * <h4>Guarantees</h4>
+ * <h3>Guarantees</h3>
  *
  * <p>Each makes the following guarantees:
  *
@@ -66,7 +74,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       these guarantees to be violated).
  * </ul>
  *
- * <h4>"Interfaces", not implementations</h4>
+ * <h3>"Interfaces", not implementations</h3>
  *
  * <p>These are classes instead of interfaces to prevent external subtyping, but should be thought
  * of as interfaces in every important sense. Each public class such as {@link ImmutableSet} is a
@@ -85,11 +93,10 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  * <p>Expressing the immutability guarantee directly in the type that user code references is a
  * powerful advantage. Although Java offers certain immutable collection factory methods, such as
- * {@link Collections#singleton(Object)} and <a
- * href="https://docs.oracle.com/javase/9/docs/api/java/util/Set.html#immutable">{@code Set.of}</a>,
- * we recommend using <i>these</i> classes instead for this reason (as well as for consistency).
+ * {@link Collections#singleton(Object)} and {@link Set##unmodifiable Set.of}, we recommend using
+ * <i>these</i> classes instead for this reason (as well as for consistency).
  *
- * <h4>Creation</h4>
+ * <h3>Creation</h3>
  *
  * <p>Except for logically "abstract" types like {@code ImmutableCollection} itself, each {@code
  * Immutable} type provides the static operations you need to obtain instances of that type. These
@@ -103,7 +110,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       instance.
  * </ul>
  *
- * <h4>Warnings</h4>
+ * <h3>Warnings</h3>
  *
  * <ul>
  *   <li><b>Warning:</b> as with any collection, it is almost always a bad idea to modify an element
@@ -113,7 +120,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       <i>deeply</i> immutable.
  * </ul>
  *
- * <h4>Performance notes</h4>
+ * <h3>Performance notes</h3>
  *
  * <ul>
  *   <li>Implementations can be generally assumed to prioritize memory efficiency, then speed of
@@ -122,7 +129,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       unnecessary; for example, {@code copyOf(copyOf(anArrayList))} should copy the data only
  *       once. This reduces the expense of habitually making defensive copies at API boundaries.
  *       However, the precise conditions for skipping the copy operation are undefined.
- *   <li><b>Warning:</b> a view collection such as {@link ImmutableMap#keySet} or {@link
+ *   <li><b>Warning:</b> a view collection such as {@link ImmutableMap#keySet()} or {@link
  *       ImmutableList#subList} may retain a reference to the entire data set, preventing it from
  *       being garbage collected. If some of the data is no longer reachable through other means,
  *       this constitutes a memory leak. Pass the view collection to the appropriate {@code copyOf}
@@ -133,9 +140,9 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *       {@code hashCode} implementation, it should cache it itself.
  * </ul>
  *
- * <h4>Example usage</h4>
+ * <h3>Example usage</h3>
  *
- * <pre>{@code
+ * {@snippet :
  * class Foo {
  *   private static final ImmutableSet<String> RESERVED_CODES =
  *       ImmutableSet.of("AZ", "CQ", "ZX");
@@ -147,16 +154,17 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *     checkArgument(Collections.disjoint(this.codes, RESERVED_CODES));
  *   }
  * }
- * }</pre>
+ * }
  *
- * <h3>See also</h3>
+ * <h2>See also</h2>
  *
  * <p>See the Guava User Guide article on <a href=
- * "https://github.com/google/guava/wiki/ImmutableCollectionsExplained"> immutable collections</a>.
+ * "https://github.com/google/guava/wiki/ImmutableCollectionsExplained">immutable collections</a>.
  *
  * @since 2.0
  */
-@GwtCompatible(emulated = true)
+@DoNotMock("Use ImmutableList.of or another implementation")
+@GwtCompatible
 @SuppressWarnings("serial") // we're overriding default serialization
 // TODO(kevinb): I think we should push everything down to "BaseImmutableCollection" or something,
 // just to do everything we can to emphasize the "practically an interface" nature of this class.
@@ -183,13 +191,27 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   private static final Object[] EMPTY_ARRAY = {};
 
   @Override
+  @J2ktIncompatible // Incompatible return type change. Use inherited (unoptimized) implementation
   public final Object[] toArray() {
     return toArray(EMPTY_ARRAY);
   }
 
   @CanIgnoreReturnValue
   @Override
-  public final <T> T[] toArray(T[] other) {
+  /*
+   * This suppression is here for two reasons:
+   *
+   * 1. b/192354773 in our checker affects toArray declarations.
+   *
+   * 2. `other[size] = null` is unsound. We could "fix" this by requiring callers to pass in an
+   * array with a nullable element type. But probably they usually want an array with a non-nullable
+   * type. That said, we could *accept* a `@Nullable T[]` (which, given that we treat arrays as
+   * covariant, would still permit a plain `T[]`) and return a plain `T[]`. But of course that would
+   * require its own suppression, since it is also unsound. toArray(T[]) is just a mess from a
+   * nullness perspective. The signature below at least has the virtue of being relatively simple.
+   */
+  @SuppressWarnings("nullness")
+  public final <T extends @Nullable Object> T[] toArray(T[] other) {
     checkNotNull(other);
     int size = size();
 
@@ -207,8 +229,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   }
 
   /** If this collection is backed by an array of its elements in insertion order, returns it. */
-  @Nullable
-  Object[] internalArray() {
+  Object @Nullable [] internalArray() {
     return null;
   }
 
@@ -240,6 +261,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean add(E e) {
     throw new UnsupportedOperationException();
   }
@@ -253,7 +275,8 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
-  public final boolean remove(Object object) {
+  @DoNotCall("Always throws UnsupportedOperationException")
+  public final boolean remove(@Nullable Object object) {
     throw new UnsupportedOperationException();
   }
 
@@ -266,6 +289,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean addAll(Collection<? extends E> newElements) {
     throw new UnsupportedOperationException();
   }
@@ -279,6 +303,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean removeAll(Collection<?> oldElements) {
     throw new UnsupportedOperationException();
   }
@@ -292,6 +317,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
   @CanIgnoreReturnValue
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean removeIf(Predicate<? super E> filter) {
     throw new UnsupportedOperationException();
   }
@@ -304,6 +330,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final boolean retainAll(Collection<?> elementsToKeep) {
     throw new UnsupportedOperationException();
   }
@@ -316,6 +343,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final void clear() {
     throw new UnsupportedOperationException();
   }
@@ -337,7 +365,7 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
       case 1:
         return ImmutableList.of(iterator().next());
       default:
-        return new RegularImmutableAsList<E>(this, toArray());
+        return new RegularImmutableAsList<>(this, toArray());
     }
   }
 
@@ -354,16 +382,23 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    * offset. Returns {@code offset + size()}.
    */
   @CanIgnoreReturnValue
-  int copyIntoArray(Object[] dst, int offset) {
+  int copyIntoArray(@Nullable Object[] dst, int offset) {
     for (E e : this) {
       dst[offset++] = e;
     }
     return offset;
   }
 
-  Object writeReplace() {
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
     // We serialize by default to ImmutableList, the simplest thing that works.
     return new ImmutableList.SerializedForm(toArray());
+  }
+
+  @J2ktIncompatible // serialization
+  private void readObject(ObjectInputStream stream) throws InvalidObjectException {
+    throw new InvalidObjectException("Use SerializedForm");
   }
 
   /**
@@ -371,12 +406,15 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
    *
    * @since 10.0
    */
+  @DoNotMock
   public abstract static class Builder<E> {
     static final int DEFAULT_INITIAL_CAPACITY = 4;
 
     static int expandedCapacity(int oldCapacity, int minCapacity) {
       if (minCapacity < 0) {
-        throw new AssertionError("cannot store more than MAX_VALUE elements");
+        throw new IllegalArgumentException("cannot store more than Integer.MAX_VALUE elements");
+      } else if (minCapacity <= oldCapacity) {
+        return oldCapacity;
       }
       // careful of overflow!
       int newCapacity = oldCapacity + (oldCapacity >> 1) + 1;
@@ -467,4 +505,6 @@ public abstract class ImmutableCollection<E> extends AbstractCollection<E> imple
      */
     public abstract ImmutableCollection<E> build();
   }
+
+  @GwtIncompatible @J2ktIncompatible   private static final long serialVersionUID = 0xcafebabe;
 }

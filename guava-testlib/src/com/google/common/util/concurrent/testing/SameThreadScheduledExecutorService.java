@@ -17,6 +17,7 @@
 package com.google.common.util.concurrent.testing;
 
 import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
+import static java.util.concurrent.Executors.callable;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.base.Preconditions;
@@ -44,7 +45,7 @@ import java.util.concurrent.TimeoutException;
  * @author Zach van Schouwen
  */
 @GwtIncompatible
-class SameThreadScheduledExecutorService extends AbstractExecutorService
+final class SameThreadScheduledExecutorService extends AbstractExecutorService
     implements ListeningScheduledExecutorService {
 
   private final ListeningExecutorService delegate = newDirectExecutorService();
@@ -135,29 +136,26 @@ class SameThreadScheduledExecutorService extends AbstractExecutorService
   public ListenableScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
     Preconditions.checkNotNull(command, "command must not be null");
     Preconditions.checkNotNull(unit, "unit must not be null!");
-    return schedule(java.util.concurrent.Executors.callable(command), delay, unit);
+    return schedule(callable(command), delay, unit);
   }
 
   @Override
   public <V> ListenableScheduledFuture<V> schedule(
-      final Callable<V> callable, long delay, TimeUnit unit) {
+      Callable<V> callable, long delay, TimeUnit unit) {
     Preconditions.checkNotNull(callable, "callable must not be null!");
     Preconditions.checkNotNull(unit, "unit must not be null!");
     ListenableFuture<V> delegateFuture = submit(callable);
-    return new ImmediateScheduledFuture<V>(delegateFuture);
+    return new ImmediateScheduledFuture<>(delegateFuture);
   }
 
-  private static class ImmediateScheduledFuture<V> extends SimpleForwardingListenableFuture<V>
+  private static final class ImmediateScheduledFuture<V> extends SimpleForwardingListenableFuture<V>
       implements ListenableScheduledFuture<V> {
-    private ExecutionException exception;
-
-    protected ImmediateScheduledFuture(ListenableFuture<V> future) {
+    ImmediateScheduledFuture(ListenableFuture<V> future) {
       super(future);
     }
 
     @Override
-    public V get(long timeout, TimeUnit unit)
-        throws InterruptedException, ExecutionException, TimeoutException {
+    public V get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException {
       Preconditions.checkNotNull(unit, "unit must not be null!");
       return get();
     }

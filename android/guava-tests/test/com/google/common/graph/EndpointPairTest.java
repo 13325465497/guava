@@ -17,19 +17,21 @@
 package com.google.common.graph;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.testing.EqualsTester;
 import java.util.Collection;
 import java.util.Set;
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /** Tests for {@link EndpointPair} and {@link Graph#edges()}. */
 @RunWith(JUnit4.class)
+@NullUnmarked
 public final class EndpointPairTest {
   private static final Integer N0 = 0;
   private static final Integer N1 = 1;
@@ -85,17 +87,11 @@ public final class EndpointPairTest {
   @Test
   public void testAdjacentNode_nodeNotIncident() {
     ImmutableList<MutableNetwork<Integer, String>> testNetworks =
-        ImmutableList.of(
-            NetworkBuilder.directed().<Integer, String>build(),
-            NetworkBuilder.undirected().<Integer, String>build());
+        ImmutableList.of(NetworkBuilder.directed().build(), NetworkBuilder.undirected().build());
     for (MutableNetwork<Integer, String> network : testNetworks) {
       network.addEdge(1, 2, "1-2");
       EndpointPair<Integer> endpointPair = network.incidentNodes("1-2");
-      try {
-        endpointPair.adjacentNode(3);
-        fail("Should have rejected adjacentNode() called with a node not incident to edge.");
-      } catch (IllegalArgumentException expected) {
-      }
+      assertThrows(IllegalArgumentException.class, () -> endpointPair.adjacentNode(3));
     }
   }
 
@@ -195,11 +191,8 @@ public final class EndpointPairTest {
     directedGraph.removeEdge(N2, N1);
     containsExactlySanityCheck(edges);
 
-    try {
-      edges.add(EndpointPair.ordered(N1, N2));
-      fail("Set returned by edges() should be unmodifiable");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(
+        UnsupportedOperationException.class, () -> edges.add(EndpointPair.ordered(N1, N2)));
   }
 
   @Test
@@ -214,8 +207,8 @@ public final class EndpointPairTest {
     assertThat(edges).contains(EndpointPair.unordered(N1, N2));
     assertThat(edges).contains(EndpointPair.unordered(N2, N1)); // equal to unordered(N1, N2)
 
-    // ordered endpoints OK for undirected graph (because ordering is irrelevant)
-    assertThat(edges).contains(EndpointPair.ordered(N1, N2));
+    // ordered endpoints not compatible with undirected graph
+    assertThat(edges).doesNotContain(EndpointPair.ordered(N1, N2));
 
     assertThat(edges).doesNotContain(EndpointPair.unordered(N2, N2)); // edge not present
     assertThat(edges).doesNotContain(EndpointPair.unordered(N3, N4)); // nodes not in graph
@@ -240,11 +233,13 @@ public final class EndpointPairTest {
     assertThat(edges).doesNotContain(EndpointPair.ordered(N3, N4)); // nodes not in graph
   }
 
+  // We are testing our implementations of methods on Collection.
+  @SuppressWarnings({"CollectionSizeTruth", "CollectionContainsTruth"})
   private static void containsExactlySanityCheck(Collection<?> collection, Object... varargs) {
-    assertThat(collection).hasSize(varargs.length);
+    assertThat(collection.size()).isEqualTo(varargs.length);
     for (Object obj : varargs) {
-      assertThat(collection).contains(obj);
+      assertThat(collection.contains(obj)).isTrue();
     }
-    assertThat(collection).containsExactly(varargs);
+    assertThat(ImmutableList.copyOf(collection.iterator())).containsExactlyElementsIn(varargs);
   }
 }

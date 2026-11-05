@@ -16,70 +16,64 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.NullPointerTester;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Atomics}.
  *
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
+@GwtIncompatible
 public class AtomicsTest extends TestCase {
 
   private static final Object OBJECT = new Object();
 
-  public void testNewReference() throws Exception {
-    assertEquals(null, Atomics.newReference().get());
+  public void testNewReference() {
+    assertThat(Atomics.newReference().get()).isNull();
   }
 
-  public void testNewReference_withInitialValue() throws Exception {
-    assertEquals(null, Atomics.newReference(null).get());
+  public void testNewReference_withInitialValue() {
+    assertThat(Atomics.newReference(null).get()).isNull();
     assertEquals(OBJECT, Atomics.newReference(OBJECT).get());
   }
 
-  public void testNewReferenceArray_withLength() throws Exception {
+  public void testNewReferenceArray_withLength() {
     int length = 42;
     AtomicReferenceArray<String> refArray = Atomics.newReferenceArray(length);
     for (int i = 0; i < length; ++i) {
-      assertEquals(null, refArray.get(i));
+      assertThat(refArray.get(i)).isNull();
     }
-    try {
-      refArray.get(length);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> refArray.get(length));
   }
 
-  public void testNewReferenceArray_withNegativeLength() throws Exception {
-    try {
-      Atomics.newReferenceArray(-1);
-      fail();
-    } catch (NegativeArraySizeException expected) {
-    }
+  @J2ktIncompatible // J2KT throws IllegalArgumentException instead of NegativeArraySizeException
+  public void testNewReferenceArray_withNegativeLength() {
+    assertThrows(NegativeArraySizeException.class, () -> Atomics.newReferenceArray(-1));
   }
 
-  public void testNewReferenceArray_withStringArray() throws Exception {
+  public void testNewReferenceArray_withStringArray() {
     String[] array = {"foo", "bar", "baz"};
     AtomicReferenceArray<String> refArray = Atomics.newReferenceArray(array);
     for (int i = 0; i < array.length; ++i) {
-      assertEquals(array[i], refArray.get(i));
+      assertThat(refArray.get(i)).isEqualTo(array[i]);
     }
-    try {
-      refArray.get(array.length);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> refArray.get(array.length));
   }
 
-  public void testNewReferenceArray_withNullArray() throws Exception {
-    try {
-      Atomics.newReferenceArray(null);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+  public void testNewReferenceArray_withNullArray() {
+    assertThrows(NullPointerException.class, () -> Atomics.newReferenceArray((String[]) null));
   }
 
+  @J2ktIncompatible
   public void testNullPointers() {
     NullPointerTester tester = new NullPointerTester();
     tester.testAllPublicConstructors(Atomics.class); // there aren't any

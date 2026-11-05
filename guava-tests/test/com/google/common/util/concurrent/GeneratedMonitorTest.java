@@ -16,18 +16,21 @@
 
 package com.google.common.util.concurrent;
 
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.util.concurrent.Uninterruptibles.awaitUninterruptibly;
+import static java.util.Arrays.asList;
+import static java.util.Arrays.sort;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.CaseFormat;
 import com.google.common.collect.ImmutableList;
-import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
@@ -35,6 +38,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Generated tests for {@link Monitor}.
@@ -46,7 +51,9 @@ import junit.framework.TestSuite;
  *
  * @author Justin T. Sampson
  */
-
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class GeneratedMonitorTest extends TestCase {
 
   public static TestSuite suite() {
@@ -216,22 +223,19 @@ public class GeneratedMonitorTest extends TestCase {
 
   /** Determines whether the given method can throw InterruptedException. */
   private static boolean isInterruptible(Method method) {
-    return Arrays.asList(method.getExceptionTypes()).contains(InterruptedException.class);
+    return asList(method.getExceptionTypes()).contains(InterruptedException.class);
   }
 
   /** Sorts the given methods primarily by name and secondarily by number of parameters. */
   private static void sortMethods(Method[] methods) {
-    Arrays.sort(
+    sort(
         methods,
-        new Comparator<Method>() {
-          @Override
-          public int compare(Method m1, Method m2) {
-            int nameComparison = m1.getName().compareTo(m2.getName());
-            if (nameComparison != 0) {
-              return nameComparison;
-            } else {
-              return Ints.compare(m1.getParameterTypes().length, m2.getParameterTypes().length);
-            }
+        (m1, m2) -> {
+          int nameComparison = m1.getName().compareTo(m2.getName());
+          if (nameComparison != 0) {
+            return nameComparison;
+          } else {
+            return Integer.compare(m1.getParameterTypes().length, m2.getParameterTypes().length);
           }
         });
   }
@@ -423,7 +427,7 @@ public class GeneratedMonitorTest extends TestCase {
           suite.addTest(new GeneratedMonitorTest(method, scenario, fair, timeout, expectedOutcome));
         }
       } else {
-        Timeout implicitTimeout = (isTryEnter(method) ? Timeout.ZERO : Timeout.MAX);
+        Timeout implicitTimeout = isTryEnter(method) ? Timeout.ZERO : Timeout.MAX;
         if (timeoutsToUse.timeouts.contains(implicitTimeout)) {
           suite.addTest(new GeneratedMonitorTest(method, scenario, fair, null, expectedOutcome));
         }
@@ -436,7 +440,7 @@ public class GeneratedMonitorTest extends TestCase {
 
     private boolean satisfied;
 
-    protected FlagGuard(Monitor monitor) {
+    FlagGuard(Monitor monitor) {
       super(monitor);
     }
 
@@ -452,7 +456,7 @@ public class GeneratedMonitorTest extends TestCase {
 
   private final Method method;
   private final Scenario scenario;
-  private final Timeout timeout;
+  private final @Nullable Timeout timeout;
   private final Outcome expectedOutcome;
   private final Monitor monitor;
   private final FlagGuard guard;
@@ -461,7 +465,11 @@ public class GeneratedMonitorTest extends TestCase {
   private final CountDownLatch callCompletedLatch;
 
   private GeneratedMonitorTest(
-      Method method, Scenario scenario, boolean fair, Timeout timeout, Outcome expectedOutcome) {
+      Method method,
+      Scenario scenario,
+      boolean fair,
+      @Nullable Timeout timeout,
+      Outcome expectedOutcome) {
     super(nameFor(method, scenario, fair, timeout, expectedOutcome));
     this.method = method;
     this.scenario = scenario;
@@ -486,39 +494,26 @@ public class GeneratedMonitorTest extends TestCase {
         expectedOutcome);
   }
 
+  @SuppressWarnings("TruthConstantAsserts") // HANG really is the actual value/result
   @Override
   protected void runTest() throws Throwable {
-    final Runnable runChosenTest =
-        new Runnable() {
-          @Override
-          public void run() {
-            runChosenTest();
-          }
-        };
-    final FutureTask<Void> task = new FutureTask<>(runChosenTest, null);
-    startThread(
-        new Runnable() {
-          @Override
-          public void run() {
-            task.run();
-          }
-        });
+    FutureTask<@Nullable Void> task = new FutureTask<>(this::runChosenTest, null);
+    startThread(task);
     awaitUninterruptibly(doingCallLatch);
     long hangDelayMillis =
         (expectedOutcome == Outcome.HANG)
             ? EXPECTED_HANG_DELAY_MILLIS
             : UNEXPECTED_HANG_DELAY_MILLIS;
-    boolean hung =
-        !awaitUninterruptibly(callCompletedLatch, hangDelayMillis, TimeUnit.MILLISECONDS);
+    boolean hung = !awaitUninterruptibly(callCompletedLatch, hangDelayMillis, MILLISECONDS);
     if (hung) {
-      assertEquals(expectedOutcome, Outcome.HANG);
+      assertThat(Outcome.HANG).isEqualTo(expectedOutcome);
     } else {
-      assertNull(task.get(UNEXPECTED_HANG_DELAY_MILLIS, TimeUnit.MILLISECONDS));
+      assertThat(task.get(UNEXPECTED_HANG_DELAY_MILLIS, MILLISECONDS)).isNull();
     }
   }
 
   @Override
-  protected void tearDown() throws Exception {
+  protected void tearDown() {
     // We don't want to leave stray threads running after each test. At this point, every thread
     // launched by this test is either:
     //
@@ -534,7 +529,7 @@ public class GeneratedMonitorTest extends TestCase {
     tearDownLatch.countDown();
     assertTrue(
         "Monitor still occupied in tearDown()",
-        monitor.enter(UNEXPECTED_HANG_DELAY_MILLIS, TimeUnit.MILLISECONDS));
+        monitor.enter(UNEXPECTED_HANG_DELAY_MILLIS, MILLISECONDS));
     try {
       guard.setSatisfied(true);
     } finally {
@@ -567,7 +562,7 @@ public class GeneratedMonitorTest extends TestCase {
       assertFalse(monitor.isOccupiedByCurrentThread());
     }
 
-    assertEquals(expectedOutcome, actualOutcome);
+    assertThat(actualOutcome).isEqualTo(expectedOutcome);
     assertEquals(expectedOutcome == Outcome.SUCCESS, occupiedAfterCall);
     assertEquals(
         interruptedBeforeCall && expectedOutcome != Outcome.INTERRUPT, interruptedAfterCall);
@@ -607,7 +602,7 @@ public class GeneratedMonitorTest extends TestCase {
       boolean occupiedAfterCall = monitor.isOccupiedByCurrentThread();
       boolean interruptedAfterCall = Thread.currentThread().isInterrupted();
 
-      assertEquals(expectedOutcome, actualOutcome);
+      assertThat(actualOutcome).isEqualTo(expectedOutcome);
       assertTrue(occupiedAfterCall);
       assertEquals(
           interruptedBeforeCall && expectedOutcome != Outcome.INTERRUPT, interruptedAfterCall);
@@ -650,7 +645,7 @@ public class GeneratedMonitorTest extends TestCase {
     }
     if (isLongTimeUnitBased(method)) {
       arguments.add(timeout.millis);
-      arguments.add(TimeUnit.MILLISECONDS);
+      arguments.add(MILLISECONDS);
     }
     if (isDurationBased(method)) {
       arguments.add(Duration.ofMillis(timeout.millis));
@@ -675,10 +670,10 @@ public class GeneratedMonitorTest extends TestCase {
       if (actualException instanceof InterruptedException) {
         return Outcome.INTERRUPT;
       } else {
-        throw newAssertionError("unexpected exception", targetException);
+        throw new AssertionError("unexpected exception", targetException);
       }
     } catch (IllegalAccessException e) {
-      throw newAssertionError("unexpected exception", e);
+      throw new AssertionError("unexpected exception", e);
     }
   }
 
@@ -692,32 +687,26 @@ public class GeneratedMonitorTest extends TestCase {
   }
 
   private void enterSatisfyGuardAndLeaveInAnotherThread() {
-    final CountDownLatch startedLatch = new CountDownLatch(1);
+    CountDownLatch startedLatch = new CountDownLatch(1);
     startThread(
-        new Runnable() {
-          @Override
-          public void run() {
-            startedLatch.countDown();
-            enterSatisfyGuardAndLeaveInCurrentThread();
-          }
+        () -> {
+          startedLatch.countDown();
+          enterSatisfyGuardAndLeaveInCurrentThread();
         });
     awaitUninterruptibly(startedLatch);
   }
 
   private void enterAndRemainOccupyingInAnotherThread() {
-    final CountDownLatch enteredLatch = new CountDownLatch(1);
+    CountDownLatch enteredLatch = new CountDownLatch(1);
     startThread(
-        new Runnable() {
-          @Override
-          public void run() {
-            monitor.enter();
-            try {
-              enteredLatch.countDown();
-              awaitUninterruptibly(tearDownLatch);
-              guard.setSatisfied(true);
-            } finally {
-              monitor.leave();
-            }
+        () -> {
+          monitor.enter();
+          try {
+            enteredLatch.countDown();
+            awaitUninterruptibly(tearDownLatch);
+            guard.setSatisfied(true);
+          } finally {
+            monitor.leave();
           }
         });
     awaitUninterruptibly(enteredLatch);
@@ -736,8 +725,8 @@ public class GeneratedMonitorTest extends TestCase {
    * with a guard that doesn't match the monitor produces an IllegalMonitorStateException.
    */
   private static TestCase generateGuardWithWrongMonitorTestCase(
-      final Method method, final boolean fair1, final boolean fair2) {
-    final boolean timed = isTimed(method); // Not going to bother with all timeouts, just 0ms.
+      Method method, boolean fair1, boolean fair2) {
+    boolean timed = isTimed(method); // Not going to bother with all timeouts, just 0ms.
     return new TestCase(method.getName() + (timed ? "(0ms)" : "()") + "/WrongMonitor->IMSE") {
       @Override
       protected void runTest() throws Throwable {
@@ -751,7 +740,7 @@ public class GeneratedMonitorTest extends TestCase {
         }
         if (isLongTimeUnitBased(method)) {
           arguments.add(0L);
-          arguments.add(TimeUnit.MILLISECONDS);
+          arguments.add(MILLISECONDS);
         }
         boolean occupyMonitor = isWaitFor(method);
         if (occupyMonitor) {
@@ -763,7 +752,7 @@ public class GeneratedMonitorTest extends TestCase {
           method.invoke(monitor1, arguments.toArray());
           fail("expected IllegalMonitorStateException");
         } catch (InvocationTargetException e) {
-          assertEquals(IllegalMonitorStateException.class, e.getTargetException().getClass());
+          assertThat(e.getTargetException()).isInstanceOf(IllegalMonitorStateException.class);
         } finally {
           if (occupyMonitor) {
             monitor1.leave();
@@ -777,9 +766,8 @@ public class GeneratedMonitorTest extends TestCase {
    * Generates a test case verifying that calling any waitForXxx method when not occupying the
    * monitor produces an IllegalMonitorStateException.
    */
-  private static TestCase generateWaitForWhenNotOccupyingTestCase(
-      final Method method, final boolean fair) {
-    final boolean timed = isTimed(method); // Not going to bother with all timeouts, just 0ms.
+  private static TestCase generateWaitForWhenNotOccupyingTestCase(Method method, boolean fair) {
+    boolean timed = isTimed(method); // Not going to bother with all timeouts, just 0ms.
     String testName =
         method.getName()
             + (fair ? "(fair)" : "(nonfair)")
@@ -797,22 +785,15 @@ public class GeneratedMonitorTest extends TestCase {
         }
         if (isLongTimeUnitBased(method)) {
           arguments.add(0L);
-          arguments.add(TimeUnit.MILLISECONDS);
+          arguments.add(MILLISECONDS);
         }
         try {
           method.invoke(monitor, arguments.toArray());
           fail("expected IllegalMonitorStateException");
         } catch (InvocationTargetException e) {
-          assertEquals(IllegalMonitorStateException.class, e.getTargetException().getClass());
+          assertThat(e.getTargetException()).isInstanceOf(IllegalMonitorStateException.class);
         }
       }
     };
-  }
-
-  /** Alternative to AssertionError(String, Throwable), which doesn't exist in Java 1.6 */
-  private static AssertionError newAssertionError(String message, Throwable cause) {
-    AssertionError e = new AssertionError(message);
-    e.initCause(cause);
-    return e;
   }
 }

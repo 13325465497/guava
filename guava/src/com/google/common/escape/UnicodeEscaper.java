@@ -15,9 +15,11 @@
 package com.google.common.escape;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static java.lang.Character.charCount;
+import static java.lang.System.arraycopy;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An {@link Escaper} that converts literal text into a format safe for inclusion in a particular
@@ -49,8 +51,8 @@ import com.google.common.annotations.GwtCompatible;
  * @author David Beaumont
  * @since 15.0
  */
-@Beta
 @GwtCompatible
+@SuppressWarnings("EscapedEntity") // We do mean for the user to see "&lt;" etc.
 public abstract class UnicodeEscaper extends Escaper {
   /** The amount of padding (chars) to use when growing the escape buffer. */
   private static final int DEST_PAD = 32;
@@ -77,7 +79,11 @@ public abstract class UnicodeEscaper extends Escaper {
    * @param cp the Unicode code point to escape if necessary
    * @return the replacement characters, or {@code null} if no escaping was needed
    */
-  protected abstract char[] escape(int cp);
+  protected abstract char @Nullable [] escape(int cp);
+
+  final char @Nullable [] escapeInternal(int cp) {
+    return escape(cp);
+  }
 
   /**
    * Returns the escaped form of a given literal string.
@@ -90,7 +96,7 @@ public abstract class UnicodeEscaper extends Escaper {
    * <p><b>Note:</b> When implementing an escaper it is a good idea to override this method for
    * efficiency by inlining the implementation of {@link #nextEscapeIndex(CharSequence, int, int)}
    * directly. Doing this for {@link com.google.common.net.PercentEscaper} more than doubled the
-   * performance for unescaped strings (as measured by {@link CharEscapersBenchmark}).
+   * performance for unescaped strings (as measured by {@code CharEscapersBenchmark}).
    *
    * @param string the literal string to be escaped
    * @return the escaped form of {@code string}
@@ -134,7 +140,7 @@ public abstract class UnicodeEscaper extends Escaper {
       if (cp < 0 || escape(cp) != null) {
         break;
       }
-      index += Character.isSupplementaryCodePoint(cp) ? 2 : 1;
+      index += charCount(cp);
     }
     return index;
   }
@@ -171,7 +177,7 @@ public abstract class UnicodeEscaper extends Escaper {
       // (for performance reasons) yield some false positives but it must never
       // give false negatives.
       char[] escaped = escape(cp);
-      int nextIndex = index + (Character.isSupplementaryCodePoint(cp) ? 2 : 1);
+      int nextIndex = index + charCount(cp);
       if (escaped != null) {
         int charsSkipped = index - unescapedChunkStart;
 
@@ -188,7 +194,7 @@ public abstract class UnicodeEscaper extends Escaper {
           destIndex += charsSkipped;
         }
         if (escaped.length > 0) {
-          System.arraycopy(escaped, 0, dest, destIndex, escaped.length);
+          arraycopy(escaped, 0, dest, destIndex, escaped.length);
           destIndex += escaped.length;
         }
         // If we dealt with an escaped character, reset the unescaped range.
@@ -285,6 +291,10 @@ public abstract class UnicodeEscaper extends Escaper {
     throw new IndexOutOfBoundsException("Index exceeds specified range");
   }
 
+  static int codePointAtInternal(CharSequence seq, int index, int end) {
+    return codePointAt(seq, index, end);
+  }
+
   /**
    * Helper method to grow the character buffer as needed, this only happens once in a while so it's
    * ok if it's in a method call. If the index passed in is 0 then no copying will be done.
@@ -295,7 +305,7 @@ public abstract class UnicodeEscaper extends Escaper {
     }
     char[] copy = new char[size];
     if (index > 0) {
-      System.arraycopy(dest, 0, copy, 0, index);
+      arraycopy(dest, 0, copy, 0, index);
     }
     return copy;
   }

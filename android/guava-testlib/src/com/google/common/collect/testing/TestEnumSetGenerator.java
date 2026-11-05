@@ -16,11 +16,13 @@
 
 package com.google.common.collect.testing;
 
+import static java.util.Collections.sort;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.SampleElements.Enums;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * An abstract TestSetGenerator for generating sets containing enum values.
@@ -28,6 +30,7 @@ import java.util.Set;
  * @author Kevin Bourrillion
  */
 @GwtCompatible
+@NullMarked
 public abstract class TestEnumSetGenerator implements TestSetGenerator<AnEnum> {
   @Override
   public SampleElements<AnEnum> samples() {
@@ -52,9 +55,15 @@ public abstract class TestEnumSetGenerator implements TestSetGenerator<AnEnum> {
   }
 
   /** Sorts the enums according to their natural ordering. */
+  /*
+   * While the current implementation returns `this`, that's not something we mean to guarantee.
+   * Callers of TestContainerGenerator.order need to be prepared for implementations to return a new
+   * collection.
+   */
+  @SuppressWarnings("CanIgnoreReturnValueSuggester")
   @Override
   public List<AnEnum> order(List<AnEnum> insertionOrder) {
-    Collections.sort(insertionOrder);
+    sort(insertionOrder);
     return insertionOrder;
   }
 }

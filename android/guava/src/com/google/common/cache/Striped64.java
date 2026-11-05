@@ -12,14 +12,20 @@
 package com.google.common.cache;
 
 import com.google.common.annotations.GwtIncompatible;
+import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Random;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
+import sun.misc.Unsafe;
 
 /**
  * A package-local class holding common representation and mechanics for classes supporting dynamic
  * striping on 64bit values. The class extends Number so that concrete subclasses must publicly do
  * so.
  */
+@SuppressWarnings("SunApi") // b/345822163
 @GwtIncompatible
 abstract class Striped64 extends Number {
   /*
@@ -102,18 +108,18 @@ abstract class Striped64 extends Number {
     }
 
     final boolean cas(long cmp, long val) {
-      return UNSAFE.compareAndSwapLong(this, valueOffset, cmp, val);
+      return UNSAFE.compareAndSwapLong(this, VALUE_OFFSET, cmp, val);
     }
 
     // Unsafe mechanics
-    private static final sun.misc.Unsafe UNSAFE;
-    private static final long valueOffset;
+    private static final Unsafe UNSAFE;
+    private static final long VALUE_OFFSET;
 
     static {
       try {
         UNSAFE = getUnsafe();
         Class<?> ak = Cell.class;
-        valueOffset = UNSAFE.objectFieldOffset(ak.getDeclaredField("value"));
+        VALUE_OFFSET = UNSAFE.objectFieldOffset(ak.getDeclaredField("value"));
       } catch (Exception e) {
         throw new Error(e);
       }
@@ -125,7 +131,7 @@ abstract class Striped64 extends Number {
    * class, we use a suboptimal int[] representation to avoid introducing a new type that can impede
    * class-unloading when ThreadLocals are not removed.
    */
-  static final ThreadLocal<int[]> threadHashCode = new ThreadLocal<>();
+  static final ThreadLocal<int @Nullable []> threadHashCode = new ThreadLocal<>();
 
   /** Generator of new random hash codes */
   static final Random rng = new Random();
@@ -134,7 +140,7 @@ abstract class Striped64 extends Number {
   static final int NCPU = Runtime.getRuntime().availableProcessors();
 
   /** Table of cells. When non-null, size is a power of 2. */
-  @NullableDecl transient volatile Cell[] cells;
+  transient volatile Cell @Nullable [] cells;
 
   /**
    * Base value, used mainly when there is no contention, but also as a fallback during table
@@ -150,12 +156,12 @@ abstract class Striped64 extends Number {
 
   /** CASes the base field. */
   final boolean casBase(long cmp, long val) {
-    return UNSAFE.compareAndSwapLong(this, baseOffset, cmp, val);
+    return UNSAFE.compareAndSwapLong(this, BASE_OFFSET, cmp, val);
   }
 
   /** CASes the busy field from 0 to 1 to acquire lock. */
   final boolean casBusy() {
-    return UNSAFE.compareAndSwapInt(this, busyOffset, 0, 1);
+    return UNSAFE.compareAndSwapInt(this, BUSY_OFFSET, 0, 1);
   }
 
   /**
@@ -177,7 +183,8 @@ abstract class Striped64 extends Number {
    * @param hc the hash code holder
    * @param wasUncontended false if CAS failed before call
    */
-  final void retryUpdate(long x, int[] hc, boolean wasUncontended) {
+  @SuppressWarnings("AssignmentExpression") // rather than introduce non-trivial diffs vs. upstream
+  final void retryUpdate(long x, int @Nullable [] hc, boolean wasUncontended) {
     int h;
     if (hc == null) {
       threadHashCode.set(hc = new int[1]); // Initialize randomly
@@ -264,16 +271,16 @@ abstract class Striped64 extends Number {
   }
 
   // Unsafe mechanics
-  private static final sun.misc.Unsafe UNSAFE;
-  private static final long baseOffset;
-  private static final long busyOffset;
+  private static final Unsafe UNSAFE;
+  private static final long BASE_OFFSET;
+  private static final long BUSY_OFFSET;
 
   static {
     try {
       UNSAFE = getUnsafe();
       Class<?> sk = Striped64.class;
-      baseOffset = UNSAFE.objectFieldOffset(sk.getDeclaredField("base"));
-      busyOffset = UNSAFE.objectFieldOffset(sk.getDeclaredField("busy"));
+      BASE_OFFSET = UNSAFE.objectFieldOffset(sk.getDeclaredField("base"));
+      BUSY_OFFSET = UNSAFE.objectFieldOffset(sk.getDeclaredField("busy"));
     } catch (Exception e) {
       throw new Error(e);
     }
@@ -285,18 +292,18 @@ abstract class Striped64 extends Number {
    *
    * @return a sun.misc.Unsafe
    */
-  private static sun.misc.Unsafe getUnsafe() {
+  private static Unsafe getUnsafe() {
     try {
-      return sun.misc.Unsafe.getUnsafe();
+      return Unsafe.getUnsafe();
     } catch (SecurityException tryReflectionInstead) {
     }
     try {
-      return java.security.AccessController.doPrivileged(
-          new java.security.PrivilegedExceptionAction<sun.misc.Unsafe>() {
+      return AccessController.doPrivileged(
+          new PrivilegedExceptionAction<Unsafe>() {
             @Override
-            public sun.misc.Unsafe run() throws Exception {
-              Class<sun.misc.Unsafe> k = sun.misc.Unsafe.class;
-              for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+            public Unsafe run() throws Exception {
+              Class<Unsafe> k = Unsafe.class;
+              for (Field f : k.getDeclaredFields()) {
                 f.setAccessible(true);
                 Object x = f.get(null);
                 if (k.isInstance(x)) return k.cast(x);
@@ -304,7 +311,7 @@ abstract class Striped64 extends Number {
               throw new NoSuchFieldError("the Unsafe");
             }
           });
-    } catch (java.security.PrivilegedActionException e) {
+    } catch (PrivilegedActionException e) {
       throw new RuntimeException("Could not initialize intrinsics", e.getCause());
     }
   }

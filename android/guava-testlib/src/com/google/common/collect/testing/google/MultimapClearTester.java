@@ -20,6 +20,7 @@ import static com.google.common.collect.testing.Helpers.assertEmpty;
 import static com.google.common.collect.testing.features.CollectionSize.ZERO;
 import static com.google.common.collect.testing.features.MapFeature.SUPPORTS_REMOVE;
 import static com.google.common.collect.testing.google.GoogleHelpers.assertEmpty;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.Multimap;
@@ -28,7 +29,6 @@ import com.google.common.collect.testing.features.MapFeature;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.junit.Ignore;
 
 /**
  * Tests for {@link Multimap#clear()}.
@@ -36,18 +36,15 @@ import org.junit.Ignore;
  * @author Louis Wasserman
  */
 @GwtCompatible
-@Ignore // Affects only Android test runner, which respects JUnit 4 annotations on JUnit 3 tests.
 public class MultimapClearTester<K, V> extends AbstractMultimapTester<K, V, Multimap<K, V>> {
   @CollectionSize.Require(absent = ZERO)
   @MapFeature.Require(absent = SUPPORTS_REMOVE)
   public void testClearUnsupported() {
-    try {
-      multimap().clear();
-      fail("Expected UnsupportedOperationException");
-    } catch (UnsupportedOperationException expected) {
-    }
+    assertThrows(UnsupportedOperationException.class, () -> multimap().clear());
   }
 
+  // Empty multimaps *do* have defined equals semantics.
+  @SuppressWarnings("UndefinedEquals")
   private void assertCleared() {
     assertEquals(0, multimap().size());
     assertEmpty(multimap());

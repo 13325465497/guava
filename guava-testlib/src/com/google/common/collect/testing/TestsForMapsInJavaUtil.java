@@ -17,12 +17,17 @@
 package com.google.common.collect.testing;
 
 import static java.util.Arrays.asList;
+import static java.util.Collections.emptyMap;
+import static java.util.Collections.emptySet;
+import static java.util.Collections.singletonMap;
+import static java.util.Collections.unmodifiableMap;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
 import com.google.common.collect.testing.testers.MapEntrySetTester;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -81,82 +86,83 @@ public class TestsForMapsInJavaUtil {
   }
 
   protected Collection<Method> suppressForCheckedMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForCheckedNavigableMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForCheckedSortedMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForEmptyMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
-  private Collection<Method> suppressForEmptyNavigableMap() {
-    return Collections.emptySet();
+  private static Collection<Method> suppressForEmptyNavigableMap() {
+    return emptySet();
   }
 
-  private Collection<Method> suppressForEmptySortedMap() {
-    return Collections.emptySet();
+  private static Collection<Method> suppressForEmptySortedMap() {
+    return emptySet();
   }
 
   protected Collection<Method> suppressForSingletonMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForHashMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForHashtable() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForLinkedHashMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForSynchronizedNavigableMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForTreeMapNatural() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForTreeMapWithComparator() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForUnmodifiableMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForUnmodifiableNavigableMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForUnmodifiableSortedMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForEnumMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForConcurrentHashMap() {
-    return Collections.emptySet();
+    return emptySet();
   }
 
   protected Collection<Method> suppressForConcurrentSkipListMap() {
     return asList(
         MapEntrySetTester.getSetValueMethod(),
         MapEntrySetTester.getSetValueWithNullValuesAbsentMethod(),
-        MapEntrySetTester.getSetValueWithNullValuesPresentMethod());
+        MapEntrySetTester.getSetValueWithNullValuesPresentMethod(),
+        MapEntrySetTester.getIteratorSetValueAndRemove());
   }
 
   public Test testsForCheckedMap() {
@@ -237,7 +243,7 @@ public class TestsForMapsInJavaUtil {
             new TestStringMapGenerator() {
               @Override
               protected Map<String, String> create(Entry<String, String>[] entries) {
-                return Collections.emptyMap();
+                return emptyMap();
               }
             })
         .named("emptyMap")
@@ -279,7 +285,7 @@ public class TestsForMapsInJavaUtil {
             new TestStringMapGenerator() {
               @Override
               protected Map<String, String> create(Entry<String, String>[] entries) {
-                return Collections.singletonMap(entries[0].getKey(), entries[0].getValue());
+                return singletonMap(entries[0].getKey(), entries[0].getValue());
               }
             })
         .named("singletonMap")
@@ -319,6 +325,8 @@ public class TestsForMapsInJavaUtil {
     return MapTestSuiteBuilder.using(
             new TestStringMapGenerator() {
               @Override
+              // We are testing Hashtable / testing our tests on Hashtable.
+              @SuppressWarnings("JdkObsolete")
               protected Map<String, String> create(Entry<String, String>[] entries) {
                 return populate(new Hashtable<String, String>(), entries);
               }
@@ -441,7 +449,7 @@ public class TestsForMapsInJavaUtil {
             new TestStringMapGenerator() {
               @Override
               protected Map<String, String> create(Entry<String, String>[] entries) {
-                return Collections.unmodifiableMap(toHashMap(entries));
+                return unmodifiableMap(toHashMap(entries));
               }
             })
         .named("unmodifiableMap/HashMap")
@@ -579,6 +587,7 @@ public class TestsForMapsInJavaUtil {
 
   // TODO: call conversion constructors or factory methods instead of using
   // populate() on an empty map
+  @CanIgnoreReturnValue
   private static <T, M extends Map<T, String>> M populate(M map, Entry<T, String>[] entries) {
     for (Entry<T, String> entry : entries) {
       map.put(entry.getKey(), entry.getValue());
@@ -587,7 +596,7 @@ public class TestsForMapsInJavaUtil {
   }
 
   static <T> Comparator<T> arbitraryNullFriendlyComparator() {
-    return new NullFriendlyComparator<T>();
+    return new NullFriendlyComparator<>();
   }
 
   private static final class NullFriendlyComparator<T> implements Comparator<T>, Serializable {

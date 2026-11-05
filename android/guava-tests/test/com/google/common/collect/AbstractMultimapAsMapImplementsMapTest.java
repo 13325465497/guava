@@ -16,10 +16,14 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Lists.newArrayList;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.collect.testing.MapInterfaceTest;
 import java.util.Collection;
 import java.util.Map;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Test {@link Multimap#asMap()} for an arbitrary multimap with {@link MapInterfaceTest}.
@@ -28,15 +32,16 @@ import java.util.Map;
  * @author Jared Levy
  */
 @GwtCompatible
+@NullMarked
 public abstract class AbstractMultimapAsMapImplementsMapTest
     extends MapInterfaceTest<String, Collection<Integer>> {
 
-  public AbstractMultimapAsMapImplementsMapTest(
+  AbstractMultimapAsMapImplementsMapTest(
       boolean modifiable, boolean allowsNulls, boolean supportsIteratorRemove) {
     super(allowsNulls, allowsNulls, false, modifiable, modifiable, supportsIteratorRemove);
   }
 
-  protected void populate(Multimap<String, Integer> multimap) {
+  void populate(Multimap<String, Integer> multimap) {
     multimap.put("one", 1);
     multimap.put("two", 2);
     multimap.put("two", 22);
@@ -46,13 +51,13 @@ public abstract class AbstractMultimapAsMapImplementsMapTest
   }
 
   @Override
-  protected String getKeyNotInPopulatedMap() throws UnsupportedOperationException {
+  protected String getKeyNotInPopulatedMap() {
     return "zero";
   }
 
   @Override
-  protected Collection<Integer> getValueNotInPopulatedMap() throws UnsupportedOperationException {
-    return Lists.newArrayList(0);
+  protected Collection<Integer> getValueNotInPopulatedMap() {
+    return newArrayList(0);
   }
 
   /**
@@ -63,28 +68,23 @@ public abstract class AbstractMultimapAsMapImplementsMapTest
    */
   @Override
   public void testRemove() {
-    final Map<String, Collection<Integer>> map;
-    final String keyToRemove;
+    Map<String, Collection<Integer>> map;
     try {
       map = makePopulatedMap();
     } catch (UnsupportedOperationException e) {
       return;
     }
-    keyToRemove = map.keySet().iterator().next();
+    String keyToRemove = map.keySet().iterator().next();
     if (supportsRemove) {
       int initialSize = map.size();
-      map.get(keyToRemove);
+      // var oldValue = map.get(keyToRemove);
       map.remove(keyToRemove);
       // This line doesn't hold - see the Javadoc comments above.
       // assertEquals(expectedValue, oldValue);
       assertFalse(map.containsKey(keyToRemove));
       assertEquals(initialSize - 1, map.size());
     } else {
-      try {
-        map.remove(keyToRemove);
-        fail("Expected UnsupportedOperationException.");
-      } catch (UnsupportedOperationException expected) {
-      }
+      assertThrows(UnsupportedOperationException.class, () -> map.remove(keyToRemove));
     }
     assertInvariants(map);
   }

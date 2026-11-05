@@ -16,8 +16,10 @@
 
 package com.google.common.base;
 
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+
 import com.google.caliper.Benchmark;
-import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Simple benchmark: create, start, read. This does not currently report the most useful result
@@ -25,6 +27,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Kevin Bourrillion
  */
+@NullUnmarked
 public class StopwatchBenchmark {
   @Benchmark
   long stopwatch(int reps) {
@@ -32,7 +35,7 @@ public class StopwatchBenchmark {
     for (int i = 0; i < reps; i++) {
       Stopwatch s = Stopwatch.createStarted();
       // here is where you would do something
-      total += s.elapsed(TimeUnit.NANOSECONDS);
+      total += s.elapsed(NANOSECONDS);
     }
     return total;
   }
@@ -43,7 +46,7 @@ public class StopwatchBenchmark {
     for (int i = 0; i < reps; i++) {
       long start = System.nanoTime();
       // here is where you would do something
-      total += (System.nanoTime() - start);
+      total += System.nanoTime() - start;
     }
     return total;
   }

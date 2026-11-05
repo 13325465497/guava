@@ -25,14 +25,13 @@ import java.util.HashMap;
  * @author Hayward Chan
  */
 @SuppressWarnings("serial")
-class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
+final class RegularImmutableBiMap<K, V> extends ImmutableBiMap<K, V> {
   static final RegularImmutableBiMap<Object, Object> EMPTY =
       new RegularImmutableBiMap<Object, Object>();
 
-  // This reference is used both by the GWT compiler to infer the elements
-  // of the lists that needs to be serialized.
-  private ImmutableBiMap<V, K> inverse;
+  private final transient ImmutableBiMap<V, K> inverse;
 
+  @SuppressWarnings("unchecked") // used only for the empty map, which works for any types
   RegularImmutableBiMap() {
     super(new RegularImmutableMap<K, V>(new HashMap<K, V>()));
     this.inverse = (ImmutableBiMap<V, K>) this;

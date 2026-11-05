@@ -17,16 +17,18 @@
 package com.google.common.testing;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Throwables.throwIfUnchecked;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.collect.Lists;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
+import java.util.Deque;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * A {@code TearDownStack} contains a stack of {@link TearDown} instances.
@@ -36,37 +38,51 @@ import java.util.logging.Logger;
  * @author Kevin Bourrillion
  * @since 10.0
  */
-@Beta
 @GwtCompatible
+@NullMarked
 public class TearDownStack implements TearDownAccepter {
   private static final Logger logger = Logger.getLogger(TearDownStack.class.getName());
 
-  @GuardedBy("stack")
-  final LinkedList<TearDown> stack = new LinkedList<>();
+  @VisibleForTesting final Object lock = new Object();
+
+  @GuardedBy("lock")
+  final Deque<TearDown> stack = new ArrayDeque<>();
+
+  /*
+   * TODO(cpovirk): Rework the "suppress" terminology in this class for Java's "new" concept of
+   * "suppressed exceptions." At the moment, we use addSuppressed only if suppressThrows is *false*!
+   */
 
   private final boolean suppressThrows;
 
+  /**
+   * Constructs a new {@code TearDownStack} that does not suppress exceptions throw during teardown.
+   */
   public TearDownStack() {
     this.suppressThrows = false;
   }
 
+  /**
+   * Constructs a new {@code TearDownStack}, specifying whether to suppress exceptions thrown during
+   * teardown.
+   */
   public TearDownStack(boolean suppressThrows) {
     this.suppressThrows = suppressThrows;
   }
 
   @Override
   public final void addTearDown(TearDown tearDown) {
-    synchronized (stack) {
+    synchronized (lock) {
       stack.addFirst(checkNotNull(tearDown));
     }
   }
 
   /** Causes teardown to execute. */
   public final void runTearDown() {
-    List<Throwable> exceptions = new ArrayList<>();
+    Throwable exception = null;
     List<TearDown> stackCopy;
-    synchronized (stack) {
-      stackCopy = Lists.newArrayList(stack);
+    synchronized (lock) {
+      stackCopy = new ArrayList<>(stack);
       stack.clear();
     }
     for (TearDown tearDown : stackCopy) {
@@ -76,12 +92,17 @@ public class TearDownStack implements TearDownAccepter {
         if (suppressThrows) {
           logger.log(Level.INFO, "exception thrown during tearDown", t);
         } else {
-          exceptions.add(t);
+          if (exception == null) {
+            exception = t;
+          } else {
+            exception.addSuppressed(t);
+          }
         }
       }
     }
-    if (!suppressThrows && (exceptions.size() > 0)) {
-      throw ClusterException.create(exceptions);
+    if (exception != null) {
+      throwIfUnchecked(exception);
+      throw new RuntimeException("failure during tearDown", exception);
     }
   }
 }

@@ -18,18 +18,20 @@ import static java.lang.Math.min;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.math.LongMath;
 import java.util.concurrent.TimeUnit;
 
+@J2ktIncompatible
 @GwtIncompatible
 abstract class SmoothRateLimiter extends RateLimiter {
   /*
    * How is the RateLimiter designed, and why?
    *
-   * The primary feature of a RateLimiter is its "stable rate", the maximum rate that is should
-   * allow at normal conditions. This is enforced by "throttling" incoming requests as needed, i.e.
-   * compute, for an incoming request, the appropriate throttle time, and make the calling thread
-   * wait as much.
+   * The primary feature of a RateLimiter is its "stable rate", the maximum rate that it should
+   * allow in normal conditions. This is enforced by "throttling" incoming requests as needed. For
+   * example, we could compute the appropriate throttle time for an incoming request, and make the
+   * calling thread wait for that time.
    *
    * The simplest way to maintain a rate of QPS is to keep the timestamp of the last granted
    * request, and ensure that (1/QPS) seconds have elapsed since then. For example, for a rate of
@@ -203,6 +205,7 @@ abstract class SmoothRateLimiter extends RateLimiter {
    */
   static final class SmoothWarmingUp extends SmoothRateLimiter {
     private final long warmupPeriodMicros;
+
     /**
      * The slope of the line from the stable interval (when permits == 0), to the cold interval
      * (when permits == maxPermits)
@@ -210,7 +213,7 @@ abstract class SmoothRateLimiter extends RateLimiter {
     private double slope;
 
     private double thresholdPermits;
-    private double coldFactor;
+    private final double coldFactor;
 
     SmoothWarmingUp(
         SleepingStopwatch stopwatch, long warmupPeriod, TimeUnit timeUnit, double coldFactor) {
@@ -380,7 +383,7 @@ abstract class SmoothRateLimiter extends RateLimiter {
   abstract double coolDownIntervalMicros();
 
   /** Updates {@code storedPermits} and {@code nextFreeTicketMicros} based on the current time. */
-  void resync(long nowMicros) {
+  final void resync(long nowMicros) {
     // if nextFreeTicket is in the past, resync to now
     if (nowMicros > nextFreeTicketMicros) {
       double newPermits = (nowMicros - nextFreeTicketMicros) / coolDownIntervalMicros();

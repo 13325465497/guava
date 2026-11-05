@@ -17,16 +17,26 @@
 package com.google.common.testing;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Predicates.alwaysTrue;
+import static com.google.common.collect.Iterators.peekingIterator;
+import static com.google.common.collect.Maps.difference;
+import static com.google.common.collect.Maps.newTreeMap;
+import static com.google.common.collect.Maps.unmodifiableNavigableMap;
+import static com.google.common.collect.Sets.newTreeSet;
+import static com.google.common.collect.Sets.unmodifiableNavigableSet;
+import static com.google.common.collect.Tables.unmodifiableRowSortedTable;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.sort;
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.CharMatcher;
-import com.google.common.base.Charsets;
 import com.google.common.base.Defaults;
 import com.google.common.base.Equivalence;
 import com.google.common.base.Joiner;
 import com.google.common.base.Predicate;
-import com.google.common.base.Predicates;
 import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Ticker;
@@ -46,10 +56,8 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedMultiset;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.ImmutableTable;
-import com.google.common.collect.Iterators;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.MapDifference;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.collect.Multiset;
@@ -58,12 +66,10 @@ import com.google.common.collect.PeekingIterator;
 import com.google.common.collect.Range;
 import com.google.common.collect.RowSortedTable;
 import com.google.common.collect.SetMultimap;
-import com.google.common.collect.Sets;
 import com.google.common.collect.SortedMapDifference;
 import com.google.common.collect.SortedMultiset;
 import com.google.common.collect.SortedSetMultimap;
 import com.google.common.collect.Table;
-import com.google.common.collect.Tables;
 import com.google.common.collect.TreeBasedTable;
 import com.google.common.collect.TreeMultimap;
 import com.google.common.io.ByteSink;
@@ -74,6 +80,7 @@ import com.google.common.io.CharSource;
 import com.google.common.primitives.Primitives;
 import com.google.common.primitives.UnsignedInteger;
 import com.google.common.primitives.UnsignedLong;
+import com.google.errorprone.annotations.Keep;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -106,7 +113,6 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Currency;
@@ -142,7 +148,8 @@ import java.util.logging.Logger;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Supplies an arbitrary "default" instance for a wide range of types, often useful in testing
@@ -166,8 +173,9 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Ben Yu
  * @since 12.0
  */
-@Beta
 @GwtIncompatible
+@J2ktIncompatible
+@NullMarked
 public final class ArbitraryInstances {
 
   private static final Ordering<Field> BY_FIELD_NAME =
@@ -181,14 +189,17 @@ public final class ArbitraryInstances {
   /**
    * Returns a new {@code MatchResult} that corresponds to a successful match. Apache Harmony (used
    * in Android) requires a successful match in order to generate a {@code MatchResult}:
-   * http://goo.gl/5VQFmC
+   * https://cs.android.com/android/platform/superproject/+/android-2.3.7_r1:libcore/luni/src/main/java/java/util/regex/Matcher.java;l=550;drc=5850271b4ab93ebc27c1d49169a348c6be3c7f04
    */
-  private static MatchResult newMatchResult() {
+  @SuppressWarnings("BareDotMetacharacter") // A trivial match is fine for our purposes.
+  private static MatchResult createMatchResult() {
     Matcher matcher = Pattern.compile(".").matcher("X");
     matcher.find();
     return matcher.toMatchResult();
   }
 
+  // We intentionally create empty MapDifference instances.
+  @SuppressWarnings("DistinctVarargsChecker")
   private static final ClassToInstanceMap<Object> DEFAULTS =
       ImmutableClassToInstanceMap.builder()
           // primitives
@@ -201,10 +212,10 @@ public final class ArbitraryInstances {
           .put(CharSequence.class, "")
           .put(String.class, "")
           .put(Pattern.class, Pattern.compile(""))
-          .put(MatchResult.class, newMatchResult())
-          .put(TimeUnit.class, TimeUnit.SECONDS)
-          .put(Charset.class, Charsets.UTF_8)
-          .put(Currency.class, Currency.getInstance(Locale.US))
+          .put(MatchResult.class, createMatchResult())
+          .put(TimeUnit.class, SECONDS)
+          .put(Charset.class, UTF_8)
+          .put(Currency.class, requireNonNull(Currency.getInstance(Locale.US)))
           .put(Locale.class, Locale.US)
           .put(UUID.class, UUID.randomUUID())
           // common.base
@@ -212,7 +223,7 @@ public final class ArbitraryInstances {
           .put(Joiner.class, Joiner.on(','))
           .put(Splitter.class, Splitter.on(','))
           .put(com.google.common.base.Optional.class, com.google.common.base.Optional.absent())
-          .put(Predicate.class, Predicates.alwaysTrue())
+          .put(Predicate.class, alwaysTrue())
           .put(Equivalence.class, Equivalence.equals())
           .put(Ticker.class, Ticker.systemTicker())
           .put(Stopwatch.class, Stopwatch.createUnstarted())
@@ -234,10 +245,10 @@ public final class ArbitraryInstances {
           .put(ByteSource.class, ByteSource.empty())
           .put(CharSource.class, CharSource.empty())
           .put(ByteSink.class, NullByteSink.INSTANCE)
-          .put(CharSink.class, NullByteSink.INSTANCE.asCharSink(Charsets.UTF_8))
+          .put(CharSink.class, NullByteSink.INSTANCE.asCharSink(UTF_8))
           // All collections are immutable empty. So safe for any type parameter.
           .put(Iterator.class, ImmutableSet.of().iterator())
-          .put(PeekingIterator.class, Iterators.peekingIterator(ImmutableSet.of().iterator()))
+          .put(PeekingIterator.class, peekingIterator(ImmutableSet.of().iterator()))
           .put(ListIterator.class, ImmutableList.of().listIterator())
           .put(Iterable.class, ImmutableSet.of())
           .put(Collection.class, ImmutableList.of())
@@ -248,12 +259,12 @@ public final class ArbitraryInstances {
           .put(ImmutableSet.class, ImmutableSet.of())
           .put(SortedSet.class, ImmutableSortedSet.of())
           .put(ImmutableSortedSet.class, ImmutableSortedSet.of())
-          .put(NavigableSet.class, Sets.unmodifiableNavigableSet(Sets.newTreeSet()))
+          .put(NavigableSet.class, unmodifiableNavigableSet(newTreeSet()))
           .put(Map.class, ImmutableMap.of())
           .put(ImmutableMap.class, ImmutableMap.of())
           .put(SortedMap.class, ImmutableSortedMap.of())
           .put(ImmutableSortedMap.class, ImmutableSortedMap.of())
-          .put(NavigableMap.class, Maps.unmodifiableNavigableMap(Maps.newTreeMap()))
+          .put(NavigableMap.class, unmodifiableNavigableMap(newTreeMap()))
           .put(Multimap.class, ImmutableMultimap.of())
           .put(ImmutableMultimap.class, ImmutableMultimap.of())
           .put(ListMultimap.class, ImmutableListMultimap.of())
@@ -271,17 +282,17 @@ public final class ArbitraryInstances {
           .put(ImmutableBiMap.class, ImmutableBiMap.of())
           .put(Table.class, ImmutableTable.of())
           .put(ImmutableTable.class, ImmutableTable.of())
-          .put(RowSortedTable.class, Tables.unmodifiableRowSortedTable(TreeBasedTable.create()))
+          .put(RowSortedTable.class, unmodifiableRowSortedTable(TreeBasedTable.create()))
           .put(ClassToInstanceMap.class, ImmutableClassToInstanceMap.builder().build())
           .put(ImmutableClassToInstanceMap.class, ImmutableClassToInstanceMap.builder().build())
           .put(Comparable.class, ByToString.INSTANCE)
           .put(Comparator.class, AlwaysEqual.INSTANCE)
           .put(Ordering.class, AlwaysEqual.INSTANCE)
           .put(Range.class, Range.all())
-          .put(MapDifference.class, Maps.difference(ImmutableMap.of(), ImmutableMap.of()))
+          .put(MapDifference.class, difference(ImmutableMap.of(), ImmutableMap.of()))
           .put(
               SortedMapDifference.class,
-              Maps.difference(ImmutableSortedMap.of(), ImmutableSortedMap.of()))
+              difference(ImmutableSortedMap.of(), ImmutableSortedMap.of()))
           // reflect
           .put(AnnotatedElement.class, Object.class)
           .put(GenericDeclaration.class, Object.class)
@@ -292,7 +303,8 @@ public final class ArbitraryInstances {
    * type → implementation. Inherently mutable interfaces and abstract classes are mapped to their
    * default implementations and are "new"d upon get().
    */
-  private static final ConcurrentMap<Class<?>, Class<?>> implementations = Maps.newConcurrentMap();
+  private static final ConcurrentMap<Class<?>, Class<?>> implementations =
+      new ConcurrentHashMap<>();
 
   private static <T> void setImplementation(Class<T> type, Class<? extends T> implementation) {
     checkArgument(type != implementation, "Don't register %s to itself!", type);
@@ -326,10 +338,9 @@ public final class ArbitraryInstances {
     setImplementation(Executor.class, Dummies.DummyExecutor.class);
   }
 
-  @SuppressWarnings("unchecked") // it's a subtype map
-  @NullableDecl
-  private static <T> Class<? extends T> getImplementation(Class<T> type) {
-    return (Class<? extends T>) implementations.get(type);
+  private static <T> @Nullable Class<? extends T> getImplementation(Class<T> type) {
+    Class<?> result = implementations.get(type);
+    return result == null ? null : result.asSubclass(type);
   }
 
   private static final Logger logger = Logger.getLogger(ArbitraryInstances.class.getName());
@@ -338,8 +349,7 @@ public final class ArbitraryInstances {
    * Returns an arbitrary instance for {@code type}, or {@code null} if no arbitrary instance can be
    * determined.
    */
-  @NullableDecl
-  public static <T> T get(Class<T> type) {
+  public static <T> @Nullable T get(Class<T> type) {
     T defaultValue = DEFAULTS.getInstance(type);
     if (defaultValue != null) {
       return defaultValue;
@@ -350,7 +360,7 @@ public final class ArbitraryInstances {
     }
     if (type.isEnum()) {
       T[] enumConstants = type.getEnumConstants();
-      return (enumConstants.length == 0) ? null : enumConstants[0];
+      return (enumConstants == null || enumConstants.length == 0) ? null : enumConstants[0];
     }
     if (type.isArray()) {
       return createEmptyArray(type);
@@ -362,7 +372,7 @@ public final class ArbitraryInstances {
     if (Modifier.isAbstract(type.getModifiers()) || !Modifier.isPublic(type.getModifiers())) {
       return arbitraryConstantInstanceOrNull(type);
     }
-    final Constructor<T> constructor;
+    Constructor<T> constructor;
     try {
       constructor = type.getConstructor();
     } catch (NoSuchMethodException e) {
@@ -379,10 +389,9 @@ public final class ArbitraryInstances {
     }
   }
 
-  @NullableDecl
-  private static <T> T arbitraryConstantInstanceOrNull(Class<T> type) {
+  private static <T> @Nullable T arbitraryConstantInstanceOrNull(Class<T> type) {
     Field[] fields = type.getDeclaredFields();
-    Arrays.sort(fields, BY_FIELD_NAME);
+    sort(fields, BY_FIELD_NAME);
     for (Field field : fields) {
       if (Modifier.isPublic(field.getModifiers())
           && Modifier.isStatic(field.getModifiers())
@@ -404,47 +413,60 @@ public final class ArbitraryInstances {
   }
 
   private static <T> T createEmptyArray(Class<T> arrayType) {
-    return arrayType.cast(Array.newInstance(arrayType.getComponentType(), 0));
+    // getComponentType() is non-null because we call createEmptyArray only with an array type.
+    return arrayType.cast(Array.newInstance(requireNonNull(arrayType.getComponentType()), 0));
   }
 
   // Internal implementations of some classes, with public default constructor that get() needs.
   private static final class Dummies {
 
+    @Keep
     public static final class InMemoryPrintStream extends PrintStream {
+      @Keep
       public InMemoryPrintStream() {
         super(new ByteArrayOutputStream());
       }
     }
 
+    @Keep
     public static final class InMemoryPrintWriter extends PrintWriter {
+      @Keep
       public InMemoryPrintWriter() {
         super(new StringWriter());
       }
     }
 
+    @Keep
     public static final class DeterministicRandom extends Random {
+      @Keep
       public DeterministicRandom() {
         super(0);
       }
     }
 
+    @Keep
     public static final class DummyScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor {
+      @Keep
       public DummyScheduledThreadPoolExecutor() {
         super(1);
       }
     }
 
+    @Keep
     public static final class DummyCountDownLatch extends CountDownLatch {
+      @Keep
       public DummyCountDownLatch() {
         super(0);
       }
     }
 
+    @Keep
     public static final class DummyRunnable implements Runnable, Serializable {
       @Override
       public void run() {}
     }
 
+    @Keep
     public static final class DummyThreadFactory implements ThreadFactory, Serializable {
       @Override
       public Thread newThread(Runnable r) {
@@ -452,6 +474,7 @@ public final class ArbitraryInstances {
       }
     }
 
+    @Keep
     public static final class DummyExecutor implements Executor, Serializable {
       @Override
       public void execute(Runnable command) {}
@@ -490,11 +513,13 @@ public final class ArbitraryInstances {
   }
 
   // Always equal is a valid total ordering. And it works for any Object.
-  private static final class AlwaysEqual extends Ordering<Object> implements Serializable {
+  private static final class AlwaysEqual extends Ordering<@Nullable Object>
+      implements Serializable {
     private static final AlwaysEqual INSTANCE = new AlwaysEqual();
 
     @Override
-    public int compare(Object o1, Object o2) {
+    @SuppressWarnings("UnusedVariable") // intentionally weird Comparator
+    public int compare(@Nullable Object o1, @Nullable Object o2) {
       return 0;
     }
 

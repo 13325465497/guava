@@ -14,11 +14,13 @@
 
 package com.google.common.util.concurrent;
 
-import static com.google.common.util.concurrent.Internal.saturatedToNanos;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.DoNotMock;
 import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -54,7 +56,8 @@ import java.util.concurrent.TimeoutException;
  * @author Luke Sandberg
  * @since 9.0 (in 1.0 as {@code com.google.common.base.Service})
  */
-@Beta
+@DoNotMock("Create an AbstractIdleService")
+@J2ktIncompatible
 @GwtIncompatible
 public interface Service {
   /**
@@ -109,7 +112,7 @@ public interface Service {
    * @since 28.0
    */
   default void awaitRunning(Duration timeout) throws TimeoutException {
-    awaitRunning(saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    awaitRunning(toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -145,7 +148,7 @@ public interface Service {
    * @since 28.0
    */
   default void awaitTerminated(Duration timeout) throws TimeoutException {
-    awaitTerminated(saturatedToNanos(timeout), TimeUnit.NANOSECONDS);
+    awaitTerminated(toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -204,64 +207,30 @@ public interface Service {
    *
    * @since 9.0 (in 1.0 as {@code com.google.common.base.Service.State})
    */
-  @Beta // should come out of Beta when Service does
   enum State {
     /** A service in this state is inactive. It does minimal work and consumes minimal resources. */
-    NEW {
-      @Override
-      boolean isTerminal() {
-        return false;
-      }
-    },
+    NEW,
 
     /** A service in this state is transitioning to {@link #RUNNING}. */
-    STARTING {
-      @Override
-      boolean isTerminal() {
-        return false;
-      }
-    },
+    STARTING,
 
     /** A service in this state is operational. */
-    RUNNING {
-      @Override
-      boolean isTerminal() {
-        return false;
-      }
-    },
+    RUNNING,
 
     /** A service in this state is transitioning to {@link #TERMINATED}. */
-    STOPPING {
-      @Override
-      boolean isTerminal() {
-        return false;
-      }
-    },
+    STOPPING,
 
     /**
      * A service in this state has completed execution normally. It does minimal work and consumes
      * minimal resources.
      */
-    TERMINATED {
-      @Override
-      boolean isTerminal() {
-        return true;
-      }
-    },
+    TERMINATED,
 
     /**
      * A service in this state has encountered a problem and may not be operational. It cannot be
      * started nor stopped.
      */
-    FAILED {
-      @Override
-      boolean isTerminal() {
-        return true;
-      }
-    };
-
-    /** Returns true if this state is terminal. */
-    abstract boolean isTerminal();
+    FAILED,
   }
 
   /**
@@ -272,8 +241,10 @@ public interface Service {
    * @author Luke Sandberg
    * @since 15.0 (present as an interface in 13.0)
    */
-  @Beta // should come out of Beta when Service does
   abstract class Listener {
+    /** Constructor for use by subclasses. */
+    protected Listener() {}
+
     /**
      * Called when the service transitions from {@linkplain State#NEW NEW} to {@linkplain
      * State#STARTING STARTING}. This occurs when {@link Service#startAsync} is called the first

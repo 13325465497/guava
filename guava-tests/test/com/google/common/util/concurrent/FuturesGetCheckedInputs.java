@@ -18,11 +18,14 @@ import static com.google.common.util.concurrent.Futures.immediateFailedFuture;
 
 import com.google.common.annotations.GwtCompatible;
 import java.util.concurrent.Future;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Classes and futures used in {@link FuturesGetCheckedTest} and {@link FuturesGetUncheckedTest}.
  */
 @GwtCompatible
+@NullUnmarked
 final class FuturesGetCheckedInputs {
   static final Exception CHECKED_EXCEPTION = new Exception("mymessage");
   static final Future<String> FAILED_FUTURE_CHECKED_EXCEPTION =
@@ -53,8 +56,50 @@ final class FuturesGetCheckedInputs {
   }
 
   public static final class ExceptionWithPrivateConstructor extends Exception {
+    @SuppressWarnings("UnusedMethod")
     private ExceptionWithPrivateConstructor(String message, Throwable cause) {
       super(message, cause);
+    }
+  }
+
+  public static final class ExceptionWithManyConstructorsButOnlyOneThrowable extends Exception {
+    private @Nullable Throwable antecedent;
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(String message, String a1) {
+      super(message);
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(String message, String a1, String a2) {
+      super(message);
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(
+        String message, String a1, String a2, String a3) {
+      super(message);
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(String message, Throwable antecedent) {
+      super(message);
+      this.antecedent = antecedent;
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(
+        String message, String a1, String a2, String a3, String a4) {
+      super(message);
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(
+        String message, String a1, String a2, String a3, String a4, String a5) {
+      super(message);
+    }
+
+    public ExceptionWithManyConstructorsButOnlyOneThrowable(
+        String message, String a1, String a2, String a3, String a4, String a5, String a6) {
+      super(message);
+    }
+
+    public @Nullable Throwable getAntecedent() {
+      return antecedent;
     }
   }
 

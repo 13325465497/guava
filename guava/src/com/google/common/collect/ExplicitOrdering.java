@@ -16,18 +16,22 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Maps.indexMap;
+
 import com.google.common.annotations.GwtCompatible;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.io.Serializable;
 import java.util.List;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /** An ordering that compares objects according to a given order. */
-@GwtCompatible(serializable = true)
+@GwtCompatible
 final class ExplicitOrdering<T> extends Ordering<T> implements Serializable {
   final ImmutableMap<T, Integer> rankMap;
 
   ExplicitOrdering(List<T> valuesInOrder) {
-    this(Maps.indexMap(valuesInOrder));
+    this(indexMap(valuesInOrder));
   }
 
   ExplicitOrdering(ImmutableMap<T, Integer> rankMap) {
@@ -66,5 +70,5 @@ final class ExplicitOrdering<T> extends Ordering<T> implements Serializable {
     return "Ordering.explicit(" + rankMap.keySet() + ")";
   }
 
-  private static final long serialVersionUID = 0;
+  @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
 }

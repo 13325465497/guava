@@ -16,30 +16,34 @@
 
 package com.google.common.collect;
 
-import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.testing.SerializableTester.reserialize;
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonMap;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.collect.ClassToInstanceMapTesting.Impl;
+import com.google.common.collect.ClassToInstanceMapTesting.TestClassToInstanceMapGenerator;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
-import com.google.common.collect.testing.SampleElements;
-import com.google.common.collect.testing.TestMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
-import com.google.common.testing.SerializableTester;
-import java.io.Serializable;
-import java.util.Collections;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link ImmutableClassToInstanceMap}.
  *
  * @author Kevin Bourrillion
  */
+@NullUnmarked
 public class ImmutableClassToInstanceMapTest extends TestCase {
+  @AndroidIncompatible // test-suite builders
   public static Test suite() {
     TestSuite suite = new TestSuite();
     suite.addTestSuite(ImmutableClassToInstanceMapTest.class);
@@ -50,13 +54,13 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
                   // Other tests will verify what real, warning-free usage looks like
                   // but here we have to do some serious fudging
                   @Override
-                  @SuppressWarnings("unchecked")
-                  public Map<Class, Impl> create(Object... elements) {
+                  @SuppressWarnings({"unchecked", "rawtypes"})
+                  public Map<Class<?>, Impl> create(Object... elements) {
                     ImmutableClassToInstanceMap.Builder<Impl> builder =
                         ImmutableClassToInstanceMap.builder();
                     for (Object object : elements) {
-                      Entry<Class, Impl> entry = (Entry<Class, Impl>) object;
-                      builder.put(entry.getKey(), entry.getValue());
+                      Entry<?, ?> entry = (Entry<?, ?>) object;
+                      builder.put((Class) entry.getKey(), (Impl) entry.getValue());
                     }
                     return (Map) builder.build();
                   }
@@ -75,17 +79,16 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
   }
 
   public void testSerialization_empty() {
-    assertSame(
-        ImmutableClassToInstanceMap.of(),
-        SerializableTester.reserialize(ImmutableClassToInstanceMap.of()));
+    assertThat(reserialize(ImmutableClassToInstanceMap.of()))
+        .isSameInstanceAs(ImmutableClassToInstanceMap.of());
   }
 
   public void testCopyOf_map_empty() {
-    Map<Class<?>, Object> in = Collections.emptyMap();
+    Map<Class<?>, Object> in = emptyMap();
     ClassToInstanceMap<Object> map = ImmutableClassToInstanceMap.copyOf(in);
     assertTrue(map.isEmpty());
-    assertSame(map, ImmutableClassToInstanceMap.of());
-    assertSame(map, ImmutableClassToInstanceMap.copyOf(map));
+    assertThat(map).isSameInstanceAs(ImmutableClassToInstanceMap.of());
+    assertThat(ImmutableClassToInstanceMap.copyOf(map)).isSameInstanceAs(map);
   }
 
   public void testOf_zero() {
@@ -98,7 +101,7 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
   }
 
   public void testCopyOf_map_valid() {
-    Map<Class<? extends Number>, Number> in = Maps.newHashMap();
+    Map<Class<? extends Number>, Number> in = new HashMap<>();
     in.put(Number.class, 0);
     in.put(Double.class, Math.PI);
     ClassToInstanceMap<Number> map = ImmutableClassToInstanceMap.copyOf(in);
@@ -108,30 +111,21 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
     assertEquals(0, zero);
 
     Double pi = map.getInstance(Double.class);
-    assertEquals(Math.PI, pi, 0.0);
+    assertThat(pi).isEqualTo(Math.PI);
 
-    assertSame(map, ImmutableClassToInstanceMap.copyOf(map));
+    assertThat(ImmutableClassToInstanceMap.copyOf(map)).isSameInstanceAs(map);
   }
 
   public void testCopyOf_map_nulls() {
-    Map<Class<? extends Number>, Number> nullKey = Collections.singletonMap(null, (Number) 1.0);
-    try {
-      ImmutableClassToInstanceMap.copyOf(nullKey);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    Map<Class<? extends Number>, Number> nullKey = singletonMap(null, 1.0);
+    assertThrows(NullPointerException.class, () -> ImmutableClassToInstanceMap.copyOf(nullKey));
 
-    Map<? extends Class<? extends Number>, Number> nullValue =
-        Collections.singletonMap(Number.class, null);
-    try {
-      ImmutableClassToInstanceMap.copyOf(nullValue);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    Map<? extends Class<? extends Number>, Number> nullValue = singletonMap(Number.class, null);
+    assertThrows(NullPointerException.class, () -> ImmutableClassToInstanceMap.copyOf(nullValue));
   }
 
   public void testCopyOf_imap_empty() {
-    Map<Class<?>, Object> in = Collections.emptyMap();
+    Map<Class<?>, Object> in = emptyMap();
     ClassToInstanceMap<Object> map = ImmutableClassToInstanceMap.copyOf(in);
     assertTrue(map.isEmpty());
   }
@@ -146,7 +140,7 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
     assertEquals(0, zero);
 
     Double pi = map.getInstance(Double.class);
-    assertEquals(Math.PI, pi, 0.0);
+    assertThat(pi).isEqualTo(Math.PI);
   }
 
   public void testPrimitiveAndWrapper() {
@@ -159,72 +153,5 @@ public class ImmutableClassToInstanceMapTest extends TestCase {
 
     assertEquals(0, (int) ictim.getInstance(Integer.class));
     assertEquals(1, (int) ictim.getInstance(int.class));
-  }
-
-  abstract static class TestClassToInstanceMapGenerator implements TestMapGenerator<Class, Impl> {
-
-    @Override
-    public Class[] createKeyArray(int length) {
-      return new Class[length];
-    }
-
-    @Override
-    public Impl[] createValueArray(int length) {
-      return new Impl[length];
-    }
-
-    @Override
-    public SampleElements<Entry<Class, Impl>> samples() {
-      return new SampleElements<>(
-          immutableEntry((Class) One.class, new Impl(1)),
-          immutableEntry((Class) Two.class, new Impl(2)),
-          immutableEntry((Class) Three.class, new Impl(3)),
-          immutableEntry((Class) Four.class, new Impl(4)),
-          immutableEntry((Class) Five.class, new Impl(5)));
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public Entry<Class, Impl>[] createArray(int length) {
-      return new Entry[length];
-    }
-
-    @Override
-    public Iterable<Entry<Class, Impl>> order(List<Entry<Class, Impl>> insertionOrder) {
-      return insertionOrder;
-    }
-  }
-
-  private interface One {}
-
-  private interface Two {}
-
-  private interface Three {}
-
-  private interface Four {}
-
-  private interface Five {}
-
-  static final class Impl implements One, Two, Three, Four, Five, Serializable {
-    final int value;
-
-    Impl(int value) {
-      this.value = value;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      return obj instanceof Impl && value == ((Impl) obj).value;
-    }
-
-    @Override
-    public int hashCode() {
-      return value;
-    }
-
-    @Override
-    public String toString() {
-      return Integer.toString(value);
-    }
   }
 }

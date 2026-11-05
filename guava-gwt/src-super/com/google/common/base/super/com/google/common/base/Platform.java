@@ -16,14 +16,13 @@
 
 package com.google.common.base;
 
-import static jsinterop.annotations.JsPackage.GLOBAL;
-
-import java.util.concurrent.TimeUnit;
 import jsinterop.annotations.JsMethod;
-import jsinterop.annotations.JsType;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import jsinterop.annotations.JsPackage;
+import org.jspecify.annotations.Nullable;
 
-/** @author Jesse Wilson */
+/**
+ * @author Jesse Wilson
+ */
 final class Platform {
   static CharMatcher precomputeCharMatcher(CharMatcher matcher) {
     // CharMatcher.precomputed() produces CharMatchers that are maybe a little
@@ -33,24 +32,12 @@ final class Platform {
     return matcher;
   }
 
-  @SuppressWarnings("GoodTime") // reading system time without TimeSource
-  static long systemNanoTime() {
-    // System.nanoTime() is not available in GWT, so we get milliseconds
-    // and convert to nanos.
-    return TimeUnit.MILLISECONDS.toNanos(System.currentTimeMillis());
-  }
-
-  static <T extends Enum<T>> Optional<T> getEnumIfPresent(Class<T> enumClass, String value) {
-    try {
-      return Optional.of(Enum.valueOf(enumClass, value));
-    } catch (IllegalArgumentException iae) {
-      return Optional.absent();
-    }
-  }
-
   static String formatCompact4Digits(double value) {
-    return "" + ((Number) (Object) value).toPrecision(4);
+    return toPrecision(value, 4);
   }
+
+  @JsMethod(name = "Number.prototype.toPrecision.call", namespace = JsPackage.GLOBAL)
+  private static native String toPrecision(double value, int precision);
 
   @JsMethod
   static native boolean stringIsNullOrEmpty(@Nullable String string) /*-{
@@ -67,17 +54,20 @@ final class Platform {
     return string || null;
   }-*/;
 
-  @JsType(isNative = true, name = "number", namespace = GLOBAL)
-  private interface Number {
-    double toPrecision(int precision);
-  }
-
   static CommonPattern compilePattern(String pattern) {
     throw new UnsupportedOperationException();
   }
 
   static boolean patternCompilerIsPcreLike() {
     throw new UnsupportedOperationException();
+  }
+
+  static String lenientFormat(@Nullable String template, @Nullable Object @Nullable ... args) {
+    return Strings.lenientFormat(template, args);
+  }
+
+  static String stringValueOf(@Nullable Object o) {
+    return String.valueOf(o);
   }
 
   private Platform() {}

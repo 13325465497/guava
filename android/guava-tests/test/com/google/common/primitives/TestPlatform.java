@@ -17,10 +17,14 @@
 package com.google.common.primitives;
 
 import com.google.common.annotations.GwtCompatible;
+import org.jspecify.annotations.NullUnmarked;
 
-@GwtCompatible(emulated = true)
-class TestPlatform {
+@GwtCompatible
+@NullUnmarked
+final class TestPlatform {
   static int reduceIterationsIfGwt(int iterations) {
     return iterations;
   }
+
+  private TestPlatform() {}
 }

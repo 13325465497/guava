@@ -16,15 +16,22 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Lists.addAllImpl;
+import static com.google.common.collect.Lists.equalsImpl;
+import static com.google.common.collect.Lists.hashCodeImpl;
+import static com.google.common.collect.Lists.indexOfImpl;
+import static com.google.common.collect.Lists.lastIndexOfImpl;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singleton;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
@@ -32,9 +39,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Tests the package level *impl methods directly using various types of lists. */
-@GwtCompatible(emulated = true)
+@GwtCompatible
+@NullMarked
 public class ListsImplTest extends TestCase {
 
   /** Describes how a list is modifiable */
@@ -51,7 +61,7 @@ public class ListsImplTest extends TestCase {
     private final String name;
     private final Modifiability modifiability;
 
-    protected ListExample(String name, Modifiability modifiability) {
+    ListExample(String name, Modifiability modifiability) {
       this.name = name;
       this.modifiability = modifiability;
     }
@@ -64,12 +74,13 @@ public class ListsImplTest extends TestCase {
     /** Creates a new list with the given contents. */
     public abstract <T> List<T> createList(Class<T> listType, Collection<? extends T> contents);
 
-    /** The modifiablity of this list example. */
+    /** The modifiability of this list example. */
     public Modifiability modifiability() {
       return modifiability;
     }
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // suite
   public static Test suite() {
     TestSuite suite = new TestSuite();
@@ -82,6 +93,7 @@ public class ListsImplTest extends TestCase {
     return suite;
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // suite sub call
   private static TestSuite createExampleSuite(ListExample example) {
     TestSuite resultSuite = new TestSuite(ListsImplTest.class);
@@ -92,18 +104,22 @@ public class ListsImplTest extends TestCase {
     return resultSuite;
   }
 
-  private ListExample example;
+  private @Nullable ListExample example;
 
   private ListExample getExample() {
     // because sometimes one version with a null example is created.
     return example == null ? new ImmutableListExample("test") : example;
   }
 
+  @J2ktIncompatible
+  @GwtIncompatible // not used under GWT, and super.getName() is not available under J2CL
   @Override
   public String getName() {
     return example == null ? super.getName() : buildTestName();
   }
 
+  @J2ktIncompatible
+  @GwtIncompatible // not used under GWT, and super.getName() is not available under J2CL
   private String buildTestName() {
     return super.getName() + ":" + example.getName();
   }
@@ -116,12 +132,12 @@ public class ListsImplTest extends TestCase {
     List<Integer> diffLength = createList(Integer.class, 1, 2);
     List<Integer> empty = createList(Integer.class);
 
-    assertThat(Lists.hashCodeImpl(base)).isEqualTo(Lists.hashCodeImpl(copy));
+    assertThat(hashCodeImpl(base)).isEqualTo(hashCodeImpl(copy));
 
-    assertThat(Lists.hashCodeImpl(base)).isNotEqualTo(Lists.hashCodeImpl(outOfOrder));
-    assertThat(Lists.hashCodeImpl(base)).isNotEqualTo(Lists.hashCodeImpl(diffValue));
-    assertThat(Lists.hashCodeImpl(base)).isNotEqualTo(Lists.hashCodeImpl(diffLength));
-    assertThat(Lists.hashCodeImpl(base)).isNotEqualTo(Lists.hashCodeImpl(empty));
+    assertThat(hashCodeImpl(base)).isNotEqualTo(hashCodeImpl(outOfOrder));
+    assertThat(hashCodeImpl(base)).isNotEqualTo(hashCodeImpl(diffValue));
+    assertThat(hashCodeImpl(base)).isNotEqualTo(hashCodeImpl(diffLength));
+    assertThat(hashCodeImpl(base)).isNotEqualTo(hashCodeImpl(empty));
   }
 
   public void testEqualsImpl() {
@@ -133,13 +149,13 @@ public class ListsImplTest extends TestCase {
     List<Integer> diffLength = createList(Integer.class, 1, 2);
     List<Integer> empty = createList(Integer.class);
 
-    assertThat(Lists.equalsImpl(base, copy)).isTrue();
-    assertThat(Lists.equalsImpl(base, otherType)).isTrue();
+    assertThat(equalsImpl(base, copy)).isTrue();
+    assertThat(equalsImpl(base, otherType)).isTrue();
 
-    List<Object> unEqualItems =
-        Arrays.asList(outOfOrder, diffValue, diffLength, empty, null, new Object());
+    List<@Nullable Object> unEqualItems =
+        asList(outOfOrder, diffValue, diffLength, empty, null, new Object());
     for (Object other : unEqualItems) {
-      assertWithMessage("%s", other).that(Lists.equalsImpl(base, other)).isFalse();
+      assertWithMessage("%s", other).that(equalsImpl(base, other)).isFalse();
     }
   }
 
@@ -151,14 +167,14 @@ public class ListsImplTest extends TestCase {
 
     List<Iterable<String>> toAdd =
         ImmutableList.of(
-            (Iterable<String>) Collections.singleton("A"),
-            Collections.<String>emptyList(),
+            singleton("A"),
+            emptyList(),
             ImmutableList.of("A", "B", "C"),
             ImmutableList.of("D", "E"));
     List<Integer> indexes = ImmutableList.of(0, 0, 1, 3);
     List<List<String>> expected =
         ImmutableList.of(
-            Collections.singletonList("A"),
+            ImmutableList.of("A"),
             ImmutableList.of("A"),
             ImmutableList.of("A", "A", "B", "C"),
             ImmutableList.of("A", "A", "D", "E", "B", "C"));
@@ -169,7 +185,7 @@ public class ListsImplTest extends TestCase {
       Iterable<String> iterableToAdd = toAdd.get(i);
       boolean expectedChanged = iterableToAdd.iterator().hasNext();
       assertWithMessage(format, iterableToAdd, index)
-          .that(Lists.addAllImpl(toTest, index, iterableToAdd))
+          .that(addAllImpl(toTest, index, iterableToAdd))
           .isEqualTo(expectedChanged);
       assertWithMessage(format, iterableToAdd, index)
           .that(toTest)
@@ -213,33 +229,32 @@ public class ListsImplTest extends TestCase {
     checkLastIndexOf(toTest, expected);
   }
 
-  private void checkIndexOf(List<?> toTest, int[] expected) {
+  private static void checkIndexOf(List<?> toTest, int[] expected) {
     int index = 0;
     for (Object obj : toTest) {
       String name = "toTest[" + index + "] (" + obj + ")";
-      assertWithMessage(name).that(Lists.indexOfImpl(toTest, obj)).isEqualTo(expected[index]);
+      assertWithMessage(name).that(indexOfImpl(toTest, obj)).isEqualTo(expected[index]);
       index++;
     }
   }
 
-  private void checkLastIndexOf(List<?> toTest, int[] expected) {
+  private static void checkLastIndexOf(List<?> toTest, int[] expected) {
     int index = 0;
     for (Object obj : toTest) {
       String name = "toTest[" + index + "] (" + obj + ")";
-      assertWithMessage(name).that(Lists.lastIndexOfImpl(toTest, obj)).isEqualTo(expected[index]);
+      assertWithMessage(name).that(lastIndexOfImpl(toTest, obj)).isEqualTo(expected[index]);
       index++;
     }
   }
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
   private final <T> List<T> createList(Class<T> listType, T... contents) {
-    return getExample().createList(listType, Arrays.asList(contents));
+    return getExample().createList(listType, asList(contents));
   }
 
   private static final class ArrayListExample extends ListExample {
 
-    protected ArrayListExample(String name) {
+    ArrayListExample(String name) {
       super(name, Modifiability.ALL);
     }
 
@@ -251,11 +266,13 @@ public class ListsImplTest extends TestCase {
 
   private static final class LinkedListExample extends ListExample {
 
-    protected LinkedListExample(String name) {
+    LinkedListExample(String name) {
       super(name, Modifiability.ALL);
     }
 
     @Override
+    // We are testing our utilities on LinkedList.
+    @SuppressWarnings("JdkObsolete")
     public <T> List<T> createList(Class<T> listType, Collection<? extends T> contents) {
       return new LinkedList<>(contents);
     }
@@ -264,21 +281,20 @@ public class ListsImplTest extends TestCase {
   @GwtIncompatible // Iterables.toArray
   private static final class ArraysAsListExample extends ListExample {
 
-    protected ArraysAsListExample(String name) {
+    ArraysAsListExample(String name) {
       super(name, Modifiability.BY_ELEMENT);
     }
 
     @Override
     public <T> List<T> createList(Class<T> listType, Collection<? extends T> contents) {
-      @SuppressWarnings("unchecked") // safe by contract
       T[] array = Iterables.toArray(contents, listType);
-      return Arrays.asList(array);
+      return asList(array);
     }
   }
 
   private static final class ImmutableListExample extends ListExample {
 
-    protected ImmutableListExample(String name) {
+    ImmutableListExample(String name) {
       super(name, Modifiability.NONE);
     }
 
@@ -288,10 +304,11 @@ public class ListsImplTest extends TestCase {
     }
   }
 
+  @J2ktIncompatible
   @GwtIncompatible // CopyOnWriteArrayList
   private static final class CopyOnWriteListExample extends ListExample {
 
-    protected CopyOnWriteListExample(String name) {
+    CopyOnWriteListExample(String name) {
       super(name, Modifiability.DIRECT_ONLY);
     }
 

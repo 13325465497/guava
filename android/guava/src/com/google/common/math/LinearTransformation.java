@@ -18,9 +18,10 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.math.DoubleUtils.isFinite;
 import static java.lang.Double.NaN;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.concurrent.LazyInit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The representation of a linear transformation between real numbers {@code x} and {@code y}.
@@ -33,9 +34,16 @@ import com.google.errorprone.annotations.concurrent.LazyInit;
  * @author Pete Gillin
  * @since 20.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
 public abstract class LinearTransformation {
+  /**
+   * Constructor for use by subclasses inside Guava.
+   *
+   * @deprecated Create instances by using the static factory methods of the class.
+   */
+  @Deprecated
+  protected LinearTransformation() {}
 
   /**
    * Start building an instance which maps {@code x = x1} to {@code y = y1}. Both arguments must be
@@ -161,7 +169,7 @@ public abstract class LinearTransformation {
     final double slope;
     final double yIntercept;
 
-    @LazyInit LinearTransformation inverse;
+    @LazyInit @Nullable LinearTransformation inverse;
 
     RegularLinearTransformation(double slope, double yIntercept) {
       this.slope = slope;
@@ -182,7 +190,7 @@ public abstract class LinearTransformation {
 
     @Override
     public boolean isHorizontal() {
-      return (slope == 0.0);
+      return slope == 0.0;
     }
 
     @Override
@@ -198,7 +206,10 @@ public abstract class LinearTransformation {
     @Override
     public LinearTransformation inverse() {
       LinearTransformation result = inverse;
-      return (result == null) ? inverse = createInverse() : result;
+      if (result == null) {
+        result = inverse = createInverse();
+      }
+      return result;
     }
 
     @Override
@@ -219,7 +230,7 @@ public abstract class LinearTransformation {
 
     final double x;
 
-    @LazyInit LinearTransformation inverse;
+    @LazyInit @Nullable LinearTransformation inverse;
 
     VerticalLinearTransformation(double x) {
       this.x = x;
@@ -254,7 +265,10 @@ public abstract class LinearTransformation {
     @Override
     public LinearTransformation inverse() {
       LinearTransformation result = inverse;
-      return (result == null) ? inverse = createInverse() : result;
+      if (result == null) {
+        result = inverse = createInverse();
+      }
+      return result;
     }
 
     @Override

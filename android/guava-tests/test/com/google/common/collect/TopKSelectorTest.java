@@ -16,44 +16,35 @@
 
 package com.google.common.collect;
 
+import static com.google.common.collect.Collections2.permutations;
 import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.nCopies;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtCompatible;
 import com.google.common.math.IntMath;
 import com.google.common.primitives.Ints;
 import java.math.RoundingMode;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@code TopKSelector}.
  *
  * @author Louis Wasserman
  */
+@GwtCompatible
+@NullUnmarked
 public class TopKSelectorTest extends TestCase {
 
   public void testNegativeK() {
-    try {
-      TopKSelector.least(-1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      TopKSelector.greatest(-1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      TopKSelector.least(-1, Ordering.natural());
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      TopKSelector.greatest(-1, Ordering.natural());
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> TopKSelector.<String>least(-1));
+    assertThrows(IllegalArgumentException.class, () -> TopKSelector.<String>greatest(-1));
+    assertThrows(IllegalArgumentException.class, () -> TopKSelector.least(-1, Ordering.natural()));
+    assertThrows(
+        IllegalArgumentException.class, () -> TopKSelector.greatest(-1, Ordering.natural()));
   }
 
   public void testZeroK() {
@@ -78,7 +69,7 @@ public class TopKSelectorTest extends TestCase {
   }
 
   public void testOfferedKPlusOne() {
-    for (List<Integer> list : Collections2.permutations(Ints.asList(1, 2, 3, 4, 5))) {
+    for (List<Integer> list : permutations(Ints.asList(1, 2, 3, 4, 5))) {
       TopKSelector<Integer> top = TopKSelector.least(4);
       top.offerAll(list);
       assertThat(top.topK()).containsExactly(1, 2, 3, 4).inOrder();
@@ -86,7 +77,7 @@ public class TopKSelectorTest extends TestCase {
   }
 
   public void testOfferedThreeK() {
-    for (List<Integer> list : Collections2.permutations(Ints.asList(1, 2, 3, 4, 5, 6))) {
+    for (List<Integer> list : permutations(Ints.asList(1, 2, 3, 4, 5, 6))) {
       TopKSelector<Integer> top = TopKSelector.least(2);
       top.offerAll(list);
       assertThat(top.topK()).containsExactly(1, 2).inOrder();
@@ -102,7 +93,7 @@ public class TopKSelectorTest extends TestCase {
   public void testWorstCase() {
     int n = 2000000;
     int k = 200000;
-    final long[] compareCalls = {0};
+    long[] compareCalls = {0};
     Comparator<Integer> cmp =
         new Comparator<Integer>() {
           @Override
@@ -116,7 +107,16 @@ public class TopKSelectorTest extends TestCase {
     for (int i = 1; i < n; i++) {
       top.offer(0);
     }
-    assertThat(top.topK()).containsExactlyElementsIn(Collections.nCopies(k, 0));
+    assertThat(top.topK()).containsExactlyElementsIn(nCopies(k, 0));
     assertThat(compareCalls[0]).isAtMost(10L * n * IntMath.log2(k, RoundingMode.CEILING));
+  }
+
+  public void testExceedMaxIteration() {
+    /*
+     * Bug #5692 occurred when TopKSelector called Arrays.sort incorrectly.
+     */
+    TopKSelector<Integer> top = TopKSelector.least(7);
+    top.offerAll(Ints.asList(5, 7, 6, 2, 4, 3, 1, 0, 0, 0, 0, 0, 0, 0));
+    assertThat(top.topK()).isEqualTo(Ints.asList(0, 0, 0, 0, 0, 0, 0));
   }
 }

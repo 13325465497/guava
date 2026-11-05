@@ -16,25 +16,33 @@
 
 package com.google.common.hash;
 
-import static com.google.common.base.Charsets.UTF_16LE;
+import static com.google.common.collect.Iterables.concat;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.UTF_16LE;
+import static java.util.Collections.singleton;
+import static org.junit.Assert.assertThrows;
 
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.hash.HashTestUtils.RandomHasherAction;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for AbstractStreamingHasher.
  *
  * @author Dimitris Andreou
  */
+// All tests use Sink, which uses the currently J2KT-incompatible AbstractStreamingHasher
+// (Plus, testString in particular requires UTF_16LE support.)
+@J2ktIncompatible
+@NullUnmarked
 public class AbstractStreamingHasherTest extends TestCase {
   public void testBytes() {
     Sink sink = new Sink(4); // byte order insignificant here
@@ -113,21 +121,9 @@ public class AbstractStreamingHasherTest extends TestCase {
 
   public void testCorrectExceptions() {
     Sink sink = new Sink(4);
-    try {
-      sink.putBytes(new byte[8], -1, 4);
-      fail();
-    } catch (IndexOutOfBoundsException ok) {
-    }
-    try {
-      sink.putBytes(new byte[8], 0, 16);
-      fail();
-    } catch (IndexOutOfBoundsException ok) {
-    }
-    try {
-      sink.putBytes(new byte[8], 0, -1);
-      fail();
-    } catch (IndexOutOfBoundsException ok) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> sink.putBytes(new byte[8], -1, 4));
+    assertThrows(IndexOutOfBoundsException.class, () -> sink.putBytes(new byte[8], 0, 16));
+    assertThrows(IndexOutOfBoundsException.class, () -> sink.putBytes(new byte[8], 0, -1));
   }
 
   /**
@@ -135,12 +131,11 @@ public class AbstractStreamingHasherTest extends TestCase {
    * process it; all should produce the same answer, the only difference should be the number of
    * process()/processRemaining() invocations, due to alignment.
    */
-  @AndroidIncompatible // slow. TODO(cpovirk): Maybe just reduce iterations under Android.
-  public void testExhaustive() throws Exception {
+  public void testExhaustive() {
     Random random = new Random(0); // will iteratively make more debuggable, each time it breaks
     for (int totalInsertions = 0; totalInsertions < 200; totalInsertions++) {
 
-      List<Sink> sinks = Lists.newArrayList();
+      List<Sink> sinks = new ArrayList<>();
       for (int chunkSize = 4; chunkSize <= 32; chunkSize++) {
         for (int bufferSize = chunkSize; bufferSize <= chunkSize * 4; bufferSize += chunkSize) {
           // yes, that's a lot of sinks!
@@ -154,8 +149,7 @@ public class AbstractStreamingHasherTest extends TestCase {
       Control control = new Control();
       Hasher controlSink = control.newHasher(1024);
 
-      Iterable<Hasher> sinksAndControl =
-          Iterables.concat(sinks, Collections.singleton(controlSink));
+      Iterable<Hasher> sinksAndControl = concat(sinks, singleton(controlSink));
       for (int insertion = 0; insertion < totalInsertions; insertion++) {
         RandomHasherAction.pickAtRandom(random).performAction(random, sinksAndControl);
       }
@@ -206,7 +200,7 @@ public class AbstractStreamingHasherTest extends TestCase {
     protected void process(ByteBuffer bb) {
       processCalled++;
       assertEquals(ByteOrder.LITTLE_ENDIAN, bb.order());
-      assertTrue(bb.remaining() >= chunkSize);
+      assertThat(bb.remaining()).isAtLeast(chunkSize);
       for (int i = 0; i < chunkSize; i++) {
         out.write(bb.get());
       }
@@ -217,8 +211,8 @@ public class AbstractStreamingHasherTest extends TestCase {
       assertFalse(remainingCalled);
       remainingCalled = true;
       assertEquals(ByteOrder.LITTLE_ENDIAN, bb.order());
-      assertTrue(bb.remaining() > 0);
-      assertTrue(bb.remaining() < bufferSize);
+      assertThat(bb.remaining()).isGreaterThan(0);
+      assertThat(bb.remaining()).isLessThan(bufferSize);
       int before = processCalled;
       super.processRemaining(bb);
       int after = processCalled;

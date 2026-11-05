@@ -16,9 +16,13 @@
 
 package com.google.common.base;
 
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Unit test for {@link Ascii}.
@@ -26,6 +30,7 @@ import junit.framework.TestCase;
  * @author Craig Berry
  */
 @GwtCompatible
+@NullUnmarked
 public class AsciiTest extends TestCase {
 
   /**
@@ -38,24 +43,24 @@ public class AsciiTest extends TestCase {
   private static final String UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
   public void testToLowerCase() {
-    assertEquals(LOWER, Ascii.toLowerCase(UPPER));
-    assertSame(LOWER, Ascii.toLowerCase(LOWER));
-    assertEquals(IGNORED, Ascii.toLowerCase(IGNORED));
-    assertEquals("foobar", Ascii.toLowerCase("fOobaR"));
+    assertThat(Ascii.toLowerCase(UPPER)).isEqualTo(LOWER);
+    assertThat(Ascii.toLowerCase(LOWER)).isSameInstanceAs(LOWER);
+    assertThat(Ascii.toLowerCase(IGNORED)).isEqualTo(IGNORED);
+    assertThat(Ascii.toLowerCase("fOobaR")).isEqualTo("foobar");
   }
 
   public void testToUpperCase() {
-    assertEquals(UPPER, Ascii.toUpperCase(LOWER));
-    assertSame(UPPER, Ascii.toUpperCase(UPPER));
-    assertEquals(IGNORED, Ascii.toUpperCase(IGNORED));
-    assertEquals("FOOBAR", Ascii.toUpperCase("FoOBAr"));
+    assertThat(Ascii.toUpperCase(LOWER)).isEqualTo(UPPER);
+    assertThat(Ascii.toUpperCase(UPPER)).isSameInstanceAs(UPPER);
+    assertThat(Ascii.toUpperCase(IGNORED)).isEqualTo(IGNORED);
+    assertThat(Ascii.toUpperCase("FoOBAr")).isEqualTo("FOOBAR");
   }
 
   public void testCharsIgnored() {
     for (char c : IGNORED.toCharArray()) {
       String str = String.valueOf(c);
-      assertTrue(str, c == Ascii.toLowerCase(c));
-      assertTrue(str, c == Ascii.toUpperCase(c));
+      assertEquals(str, c, Ascii.toLowerCase(c));
+      assertEquals(str, c, Ascii.toUpperCase(c));
       assertFalse(str, Ascii.isLowerCase(c));
       assertFalse(str, Ascii.isUpperCase(c));
     }
@@ -82,46 +87,29 @@ public class AsciiTest extends TestCase {
   }
 
   public void testTruncate() {
-    assertEquals("foobar", Ascii.truncate("foobar", 10, "..."));
-    assertEquals("fo...", Ascii.truncate("foobar", 5, "..."));
-    assertEquals("foobar", Ascii.truncate("foobar", 6, "..."));
-    assertEquals("...", Ascii.truncate("foobar", 3, "..."));
-    assertEquals("foobar", Ascii.truncate("foobar", 10, "…"));
-    assertEquals("foo…", Ascii.truncate("foobar", 4, "…"));
-    assertEquals("fo--", Ascii.truncate("foobar", 4, "--"));
-    assertEquals("foobar", Ascii.truncate("foobar", 6, "…"));
-    assertEquals("foob…", Ascii.truncate("foobar", 5, "…"));
-    assertEquals("foo", Ascii.truncate("foobar", 3, ""));
-    assertEquals("", Ascii.truncate("", 5, ""));
-    assertEquals("", Ascii.truncate("", 5, "..."));
-    assertEquals("", Ascii.truncate("", 0, ""));
+    assertThat(Ascii.truncate("foobar", 10, "...")).isEqualTo("foobar");
+    assertThat(Ascii.truncate("foobar", 5, "...")).isEqualTo("fo...");
+    assertThat(Ascii.truncate("foobar", 6, "...")).isEqualTo("foobar");
+    assertThat(Ascii.truncate("foobar", 3, "...")).isEqualTo("...");
+    assertThat(Ascii.truncate("foobar", 10, "…")).isEqualTo("foobar");
+    assertThat(Ascii.truncate("foobar", 4, "…")).isEqualTo("foo…");
+    assertThat(Ascii.truncate("foobar", 4, "--")).isEqualTo("fo--");
+    assertThat(Ascii.truncate("foobar", 6, "…")).isEqualTo("foobar");
+    assertThat(Ascii.truncate("foobar", 5, "…")).isEqualTo("foob…");
+    assertThat(Ascii.truncate("foobar", 3, "")).isEqualTo("foo");
+    assertThat(Ascii.truncate("", 5, "")).isEqualTo("");
+    assertThat(Ascii.truncate("", 5, "...")).isEqualTo("");
+    assertThat(Ascii.truncate("", 0, "")).isEqualTo("");
   }
 
   public void testTruncateIllegalArguments() {
-    String truncated = null;
-    try {
-      truncated = Ascii.truncate("foobar", 2, "...");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Ascii.truncate("foobar", 2, "..."));
 
-    try {
-      truncated = Ascii.truncate("foobar", 8, "1234567890");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Ascii.truncate("foobar", 8, "1234567890"));
 
-    try {
-      truncated = Ascii.truncate("foobar", -1, "...");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Ascii.truncate("foobar", -1, "..."));
 
-    try {
-      truncated = Ascii.truncate("foobar", -1, "");
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Ascii.truncate("foobar", -1, ""));
   }
 
   public void testEqualsIgnoreCase() {
@@ -147,7 +135,7 @@ public class AsciiTest extends TestCase {
     // regards edge cases.
 
     // The Unicode point {@code 00df} is the lowercase form of sharp-S (ß), whose uppercase is "SS".
-    assertEquals("PASSWORD", "pa\u00dfword".toUpperCase()); // [*]
+    assertThat("pa\u00dfword".toUpperCase()).isEqualTo("PASSWORD"); // [*]
     assertFalse("pa\u00dfword".equalsIgnoreCase("PASSWORD")); // [*]
     assertFalse(Ascii.equalsIgnoreCase("pa\u00dfword", "PASSWORD"));
   }

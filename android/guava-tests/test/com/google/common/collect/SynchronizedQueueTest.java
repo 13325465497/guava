@@ -19,17 +19,21 @@ package com.google.common.collect;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.Queue;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tests for {@link Synchronized#queue} and {@link Queues#synchronizedQueue}.
  *
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
 public class SynchronizedQueueTest extends TestCase {
 
-  protected Queue<String> create() {
+  private Queue<String> create() {
     TestQueue<String> inner = new TestQueue<>();
     Queue<String> outer = Synchronized.queue(inner, inner.mutex);
     outer.add("foo"); // necessary because we try to remove elements later on
@@ -37,8 +41,8 @@ public class SynchronizedQueueTest extends TestCase {
   }
 
   private static final class TestQueue<E> implements Queue<E> {
-    private final Queue<E> delegate = Lists.newLinkedList();
-    public final Object mutex = new Integer(1); // something Serializable
+    private final Queue<E> delegate = new LinkedList<>();
+    private final Object mutex = new Object[0]; // something Serializable
 
     @Override
     public boolean offer(E o) {
@@ -47,7 +51,7 @@ public class SynchronizedQueueTest extends TestCase {
     }
 
     @Override
-    public E poll() {
+    public @Nullable E poll() {
       assertTrue(Thread.holdsLock(mutex));
       return delegate.poll();
     }
@@ -65,7 +69,7 @@ public class SynchronizedQueueTest extends TestCase {
     }
 
     @Override
-    public E peek() {
+    public @Nullable E peek() {
       assertTrue(Thread.holdsLock(mutex));
       return delegate.peek();
     }
@@ -152,6 +156,7 @@ public class SynchronizedQueueTest extends TestCase {
     private static final long serialVersionUID = 0;
   }
 
+  @SuppressWarnings("CheckReturnValue")
   public void testHoldsLockOnAllOperations() {
     create().element();
     create().offer("foo");

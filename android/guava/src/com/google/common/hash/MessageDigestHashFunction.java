@@ -18,7 +18,10 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.errorprone.annotations.Immutable;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -60,7 +63,7 @@ final class MessageDigestHashFunction extends AbstractHashFunction implements Se
 
   private static boolean supportsClone(MessageDigest digest) {
     try {
-      digest.clone();
+      Object unused = Platform.clone(digest);
       return true;
     } catch (CloneNotSupportedException e) {
       return false;
@@ -89,7 +92,7 @@ final class MessageDigestHashFunction extends AbstractHashFunction implements Se
   public Hasher newHasher() {
     if (supportsClone) {
       try {
-        return new MessageDigestHasher((MessageDigest) prototype.clone(), bytes);
+        return new MessageDigestHasher((MessageDigest) Platform.clone(prototype), bytes);
       } catch (CloneNotSupportedException e) {
         // falls through
       }
@@ -119,6 +122,11 @@ final class MessageDigestHashFunction extends AbstractHashFunction implements Se
     return new SerializedForm(prototype.getAlgorithm(), bytes, toString);
   }
 
+  @J2ktIncompatible
+  private void readObject(ObjectInputStream stream) throws InvalidObjectException {
+    throw new InvalidObjectException("Use SerializedForm");
+  }
+
   /** Hasher that updates a message digest. */
   private static final class MessageDigestHasher extends AbstractByteHasher {
     private final MessageDigest digest;
@@ -143,6 +151,7 @@ final class MessageDigestHashFunction extends AbstractHashFunction implements Se
     }
 
     @Override
+    @J2ktIncompatible
     protected void update(ByteBuffer bytes) {
       checkNotDone();
       digest.update(bytes);

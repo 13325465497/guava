@@ -18,12 +18,14 @@ package com.google.common.graph;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.jspecify.annotations.NullUnmarked;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /** Tests for {@link ImmutableNetwork}. */
 @RunWith(JUnit4.class)
+@NullUnmarked
 public class ImmutableNetworkTest {
 
   @Test
@@ -32,7 +34,6 @@ public class ImmutableNetworkTest {
     mutableNetwork.addNode("A");
     ImmutableNetwork<String, Integer> immutableNetwork = ImmutableNetwork.copyOf(mutableNetwork);
 
-    assertThat(immutableNetwork.asGraph()).isInstanceOf(ImmutableGraph.class);
     assertThat(immutableNetwork).isNotInstanceOf(MutableNetwork.class);
     assertThat(immutableNetwork).isEqualTo(mutableNetwork);
 

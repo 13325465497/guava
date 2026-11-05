@@ -16,6 +16,7 @@
 
 package com.google.common.hash;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableList;
 import com.google.common.hash.HashTestUtils.RandomHasherAction;
 import java.io.ByteArrayOutputStream;
@@ -24,20 +25,32 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /** Tests for AbstractNonStreamingHashFunction. */
+@NullUnmarked
 public class AbstractNonStreamingHashFunctionTest extends TestCase {
   /**
    * Constructs two trivial HashFunctions (output := input), one streaming and one non-streaming,
    * and checks that their results are identical, no matter which newHasher version we used.
    */
+  @J2ktIncompatible
   public void testExhaustive() {
-    List<Hasher> hashers =
+    runExhaustive(
         ImmutableList.of(
             new StreamingVersion().newHasher(),
             new StreamingVersion().newHasher(52),
             new NonStreamingVersion().newHasher(),
-            new NonStreamingVersion().newHasher(123));
+            new NonStreamingVersion().newHasher(123)));
+  }
+
+  public void testExhaustiveNonStreaming() {
+    runExhaustive(
+        ImmutableList.of(
+            new NonStreamingVersion().newHasher(), new NonStreamingVersion().newHasher(123)));
+  }
+
+  private static void runExhaustive(List<Hasher> hashers) {
     Random random = new Random(0);
     for (int i = 0; i < 200; i++) {
       RandomHasherAction.pickAtRandom(random).performAction(random, hashers);
@@ -91,6 +104,7 @@ public class AbstractNonStreamingHashFunctionTest extends TestCase {
     assertEquals(h1.hash(), h2.hash());
   }
 
+  @J2ktIncompatible // AbstractStreamingHasher
   static class StreamingVersion extends AbstractHashFunction {
     @Override
     public int bits() {

@@ -14,8 +14,12 @@
 
 package com.google.common.base;
 
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.internal.Finalizer;
 import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -27,23 +31,24 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A reference queue with an associated background thread that dequeues references and invokes
- * {@link FinalizableReference#finalizeReferent()} on them.
+ * {@link FinalizableReference#finalizeReferent()} on them. Java 9+ users should prefer {@link
+ * java.lang.ref.Cleaner Cleaner}; see example <a href="#cleaner">below</a>.
  *
  * <p>Keep a strong reference to this object until all of the associated referents have been
  * finalized. If this object is garbage collected earlier, the backing thread will not invoke {@code
  * finalizeReferent()} on the remaining references.
  *
- * <p>As an example of how this is used, imagine you have a class {@code MyServer} that creates a a
+ * <p>As an example of how this is used, imagine you have a class {@code MyServer} that creates a
  * {@link java.net.ServerSocket ServerSocket}, and you would like to ensure that the {@code
  * ServerSocket} is closed even if the {@code MyServer} object is garbage-collected without calling
  * its {@code close} method. You <em>could</em> use a finalizer to accomplish this, but that has a
  * number of well-known problems. Here is how you might use this class instead:
  *
- * <pre>{@code
+ * {@snippet :
  * public class MyServer implements Closeable {
  *   private static final FinalizableReferenceQueue frq = new FinalizableReferenceQueue();
  *   // You might also share this between several objects.
@@ -61,33 +66,84 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  *
  *   public static MyServer create(...) {
  *     MyServer myServer = new MyServer(...);
- *     final ServerSocket serverSocket = myServer.serverSocket;
- *     Reference<?> reference = new FinalizablePhantomReference<MyServer>(myServer, frq) {
- *       public void finalizeReferent() {
- *         references.remove(this):
- *         if (!serverSocket.isClosed()) {
- *           ...log a message about how nobody called close()...
- *           try {
- *             serverSocket.close();
- *           } catch (IOException e) {
- *             ...
+ *     ServerSocket serverSocket = myServer.serverSocket;
+ *     try {
+ *       Reference<?> reference = new FinalizablePhantomReference<MyServer>(myServer, frq) {
+ *         @Override
+ *         public void finalizeReferent() {
+ *           references.remove(this);
+ *           if (!serverSocket.isClosed()) {
+ *             ...log a message about how nobody called close()...
+ *             try {
+ *               serverSocket.close();
+ *             } catch (IOException e) {
+ *               ...
+ *             }
  *           }
  *         }
- *       }
- *     };
- *     references.add(reference);
+ *       };
+ *       references.add(reference);
+ *     } finally {
+ *       Reference.reachabilityFence(myServer);
+ *     }
  *     return myServer;
  *   }
  *
- *   public void close() {
+ *   @Override
+ *   public void close() throws IOException {
  *     serverSocket.close();
  *   }
  * }
- * }</pre>
+ * }
+ *
+ * <p id="cleaner">Here is how you might achieve the same thing using {@link java.lang.ref.Cleaner
+ * Cleaner}, if you are using a Java version where that is available:
+ *
+ * {@snippet :
+ * public class MyServer implements Closeable {
+ *   private static final Cleaner cleaner = Cleaner.create();
+ *   // You might also share this between several objects.
+ *
+ *   private final ServerSocket serverSocket;
+ *   private final Cleaner.Cleanable cleanable;
+ *
+ *   public MyServer(...) {
+ *     ...
+ *     this.serverSocket = new ServerSocket(...);
+ *     this.cleanable = cleaner.register(this, closeServerSocketRunnable(serverSocket));
+ *     ...
+ *   }
+ *
+ *   private static Runnable closeServerSocketRunnable(ServerSocket serverSocket) {
+ *     return () -> {
+ *       if (!serverSocket.isClosed()) {
+ *         ...log a message about how nobody called close()...
+ *         try {
+ *           serverSocket.close();
+ *         } catch (IOException e) {
+ *           ...
+ *         }
+ *       }
+ *     };
+ *   }
+ *
+ *   @Override
+ *   public void close() throws IOException {
+ *     serverSocket.close();
+ *     cleanable.clean();
+ *   }
+ * }
+ * }
+ *
+ * <p>Some care is needed when using {@code Cleaner} to ensure that the callback passed to {@code
+ * register} does not have a reference to the object (in this case, {@code MyServer}) that may be
+ * garbage-collected. That's why we are careful to make a {@code Runnable} that does not have a
+ * reference to any {@code MyServer} instance.
  *
  * @author Bob Lee
  * @since 2.0
  */
+@J2ktIncompatible
 @GwtIncompatible
 public class FinalizableReferenceQueue implements Closeable {
   /*
@@ -135,12 +191,14 @@ public class FinalizableReferenceQueue implements Closeable {
   private static final String FINALIZER_CLASS_NAME = "com.google.common.base.internal.Finalizer";
 
   /** Reference to Finalizer.startFinalizer(). */
-  private static final Method startFinalizer;
+  private static final FinalizerStarter finalizerStarter;
 
   static {
-    Class<?> finalizer =
-        loadFinalizer(new SystemLoader(), new DecoupledLoader(), new DirectLoader());
-    startFinalizer = getStartFinalizer(finalizer);
+    Class<?> finalizer = loadFinalizer(new SystemLoader(), new DecoupledLoader());
+    finalizerStarter =
+        finalizer != null
+            ? new ReflectiveStarter(getStartFinalizer(finalizer))
+            : new DirectStarter();
   }
 
   /** The actual reference queue that our background thread will poll. */
@@ -155,13 +213,11 @@ public class FinalizableReferenceQueue implements Closeable {
   public FinalizableReferenceQueue() {
     // We could start the finalizer lazily, but I'd rather it blow up early.
     queue = new ReferenceQueue<>();
-    frqRef = new PhantomReference<Object>(this, queue);
+    frqRef = new PhantomReference<>(this, queue);
     boolean threadStarted = false;
     try {
-      startFinalizer.invoke(null, FinalizableReference.class, queue, frqRef);
+      finalizerStarter.startFinalizer(FinalizableReference.class, queue, frqRef);
       threadStarted = true;
-    } catch (IllegalAccessException impossible) {
-      throw new AssertionError(impossible); // startFinalizer() is public
     } catch (Throwable t) {
       logger.log(
           Level.INFO,
@@ -184,7 +240,7 @@ public class FinalizableReferenceQueue implements Closeable {
    * FinalizableReference#finalizeReferent()} on them until the queue is empty. This method is a
    * no-op if the background thread was created successfully.
    */
-  void cleanUp() {
+  final void cleanUp() {
     if (threadStarted) {
       return;
     }
@@ -205,11 +261,11 @@ public class FinalizableReferenceQueue implements Closeable {
   }
 
   /**
-   * Iterates through the given loaders until it finds one that can load Finalizer.
+   * Iterates through the given loaders until it finds one that will load Finalizer.
    *
-   * @return Finalizer.class
+   * @return a {@link Class} for {@link Finalizer} or {@code null} if none of the loaders load it
    */
-  private static Class<?> loadFinalizer(FinalizerLoader... loaders) {
+  private static @Nullable Class<?> loadFinalizer(FinalizerLoader... loaders) {
     for (FinalizerLoader loader : loaders) {
       Class<?> finalizer = loader.loadFinalizer();
       if (finalizer != null) {
@@ -217,26 +273,26 @@ public class FinalizableReferenceQueue implements Closeable {
       }
     }
 
-    throw new AssertionError();
+    return null;
   }
 
   /** Loads Finalizer.class. */
   interface FinalizerLoader {
 
     /**
-     * Returns Finalizer.class or null if this loader shouldn't or can't load it.
+     * Returns a {@link Class} for {@link Finalizer} or {@code null} if this loader shouldn't or
+     * can't load it.
      *
      * @throws SecurityException if we don't have the appropriate privileges
      */
-    @Nullable
-    Class<?> loadFinalizer();
+    @Nullable Class<?> loadFinalizer();
   }
 
   /**
    * Tries to load Finalizer from the system class loader. If Finalizer is in the system class path,
    * we needn't create a separate loader.
    */
-  static class SystemLoader implements FinalizerLoader {
+  static final class SystemLoader implements FinalizerLoader {
     // This is used by the ClassLoader-leak test in FinalizableReferenceQueueTest to disable
     // finding Finalizer on the system class path even if it is there.
     @VisibleForTesting static boolean disabled;
@@ -244,6 +300,10 @@ public class FinalizableReferenceQueue implements Closeable {
     @Override
     public @Nullable Class<?> loadFinalizer() {
       if (disabled) {
+        return null;
+      }
+      if (isAndroid()) {
+        // We need not worry about class unloading under Android. Plus, this approach wouldn't work.
         return null;
       }
       ClassLoader systemLoader;
@@ -280,17 +340,20 @@ public class FinalizableReferenceQueue implements Closeable {
 
     @Override
     public @Nullable Class<?> loadFinalizer() {
-      try {
-        /*
-         * We use URLClassLoader because it's the only concrete class loader implementation in the
-         * JDK. If we used our own ClassLoader subclass, Finalizer would indirectly reference this
-         * class loader:
-         *
-         * Finalizer.class -> CustomClassLoader -> CustomClassLoader.class -> This class loader
-         *
-         * System class loader will (and must) be the parent.
-         */
-        ClassLoader finalizerLoader = newLoader(getBaseUrl());
+      if (isAndroid()) {
+        // We need not worry about class unloading under Android. Plus, this approach wouldn't work.
+        return null;
+      }
+      /*
+       * We use URLClassLoader because it's the only concrete class loader implementation in the
+       * JDK. If we used our own ClassLoader subclass, Finalizer would indirectly reference this
+       * class loader:
+       *
+       * Finalizer.class -> CustomClassLoader -> CustomClassLoader.class -> This class loader
+       *
+       * System class loader will (and must) be the parent.
+       */
+      try (URLClassLoader finalizerLoader = newLoader(getBaseUrl())) {
         return finalizerLoader.loadClass(FINALIZER_CLASS_NAME);
       } catch (Exception e) {
         logger.log(Level.WARNING, LOADING_ERROR, e);
@@ -299,7 +362,7 @@ public class FinalizableReferenceQueue implements Closeable {
     }
 
     /** Gets URL for base of path containing Finalizer.class. */
-    URL getBaseUrl() throws IOException {
+    final URL getBaseUrl() throws IOException {
       // Find URL pointing to Finalizer.class file.
       String finalizerPath = FINALIZER_CLASS_NAME.replace('.', '/') + ".class";
       URL finalizerUrl = getClass().getClassLoader().getResource(finalizerPath);
@@ -325,18 +388,38 @@ public class FinalizableReferenceQueue implements Closeable {
     }
   }
 
-  /**
-   * Loads Finalizer directly using the current class loader. We won't be able to garbage collect
-   * this class loader, but at least the world doesn't end.
-   */
-  static class DirectLoader implements FinalizerLoader {
+  private interface FinalizerStarter {
+    void startFinalizer(
+        Class<?> finalizableReferenceClass,
+        ReferenceQueue<Object> queue,
+        PhantomReference<Object> frqRef)
+        throws Throwable;
+  }
+
+  private static final class ReflectiveStarter implements FinalizerStarter {
+    final Method startFinalizer;
+
+    ReflectiveStarter(Method startFinalizer) {
+      this.startFinalizer = startFinalizer;
+    }
+
     @Override
-    public Class<?> loadFinalizer() {
-      try {
-        return Class.forName(FINALIZER_CLASS_NAME);
-      } catch (ClassNotFoundException e) {
-        throw new AssertionError(e);
-      }
+    public void startFinalizer(
+        Class<?> finalizableReferenceClass,
+        ReferenceQueue<Object> queue,
+        PhantomReference<Object> frqRef)
+        throws Throwable {
+      startFinalizer.invoke(null, finalizableReferenceClass, queue, frqRef);
+    }
+  }
+
+  private static final class DirectStarter implements FinalizerStarter {
+    @Override
+    public void startFinalizer(
+        Class<?> finalizableReferenceClass,
+        ReferenceQueue<Object> queue,
+        PhantomReference<Object> frqRef) {
+      Finalizer.startFinalizer(finalizableReferenceClass, queue, frqRef);
     }
   }
 
@@ -348,5 +431,9 @@ public class FinalizableReferenceQueue implements Closeable {
     } catch (NoSuchMethodException e) {
       throw new AssertionError(e);
     }
+  }
+
+  private static boolean isAndroid() {
+    return requireNonNull(System.getProperty("java.runtime.name", "")).contains("Android");
   }
 }

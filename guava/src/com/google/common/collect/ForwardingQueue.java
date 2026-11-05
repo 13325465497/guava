@@ -16,10 +16,13 @@
 
 package com.google.common.collect;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.common.annotations.GwtCompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.NoSuchElementException;
 import java.util.Queue;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A queue which forwards all its method calls to another queue. Subclasses should override one or
@@ -44,7 +47,8 @@ import java.util.Queue;
  * @since 2.0
  */
 @GwtCompatible
-public abstract class ForwardingQueue<E> extends ForwardingCollection<E> implements Queue<E> {
+public abstract class ForwardingQueue<E extends @Nullable Object> extends ForwardingCollection<E>
+    implements Queue<E> {
 
   /** Constructor for use by subclasses. */
   protected ForwardingQueue() {}
@@ -54,28 +58,30 @@ public abstract class ForwardingQueue<E> extends ForwardingCollection<E> impleme
 
   @CanIgnoreReturnValue // TODO(cpovirk): Consider removing this?
   @Override
-  public boolean offer(E o) {
+  public boolean offer(@ParametricNullness E o) {
     return delegate().offer(o);
   }
 
   @CanIgnoreReturnValue // TODO(cpovirk): Consider removing this?
   @Override
-  public E poll() {
+  public @Nullable E poll() {
     return delegate().poll();
   }
 
   @CanIgnoreReturnValue
   @Override
+  @ParametricNullness
   public E remove() {
     return delegate().remove();
   }
 
   @Override
-  public E peek() {
+  public @Nullable E peek() {
     return delegate().peek();
   }
 
   @Override
+  @ParametricNullness
   public E element() {
     return delegate().element();
   }
@@ -86,7 +92,7 @@ public abstract class ForwardingQueue<E> extends ForwardingCollection<E> impleme
    *
    * @since 7.0
    */
-  protected boolean standardOffer(E e) {
+  protected boolean standardOffer(@ParametricNullness E e) {
     try {
       return add(e);
     } catch (IllegalStateException caught) {
@@ -100,7 +106,7 @@ public abstract class ForwardingQueue<E> extends ForwardingCollection<E> impleme
    *
    * @since 7.0
    */
-  protected E standardPeek() {
+  protected @Nullable E standardPeek() {
     try {
       return element();
     } catch (NoSuchElementException caught) {
@@ -114,11 +120,33 @@ public abstract class ForwardingQueue<E> extends ForwardingCollection<E> impleme
    *
    * @since 7.0
    */
-  protected E standardPoll() {
+  protected @Nullable E standardPoll() {
     try {
       return remove();
     } catch (NoSuchElementException caught) {
       return null;
+    }
+  }
+
+  /**
+   * A simplified version of {@link ForwardingQueue} where subclasses can pass in an already
+   * constructed {@link Queue} as the delegate.
+   *
+   * <p>TODO(b/3417232): Consider making this public, but take into consideration whether it would
+   * then appear as a user-visible supertype for any classes.
+   */
+  abstract static class SimpleForwardingQueue<E extends @Nullable Object>
+      extends ForwardingQueue<E> {
+    private final Queue<E> delegate;
+
+    /** Constructor for use by subclasses. */
+    SimpleForwardingQueue(Queue<E> delegate) {
+      this.delegate = checkNotNull(delegate);
+    }
+
+    @Override
+    protected final Queue<E> delegate() {
+      return delegate;
     }
   }
 }

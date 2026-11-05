@@ -16,12 +16,12 @@ package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.Multiset.Entry;
 import com.google.common.primitives.Ints;
-import com.google.errorprone.annotations.concurrent.LazyInit;
 import com.google.j2objc.annotations.WeakOuter;
 import java.io.Serializable;
-import org.checkerframework.checker.nullness.compatqual.NullableDecl;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Implementation of {@link ImmutableMultiset} with zero or more elements.
@@ -29,16 +29,14 @@ import org.checkerframework.checker.nullness.compatqual.NullableDecl;
  * @author Jared Levy
  * @author Louis Wasserman
  */
-@GwtCompatible(emulated = true, serializable = true)
+@GwtCompatible
 @SuppressWarnings("serial") // uses writeReplace(), not default serialization
-class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
+final class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
   static final RegularImmutableMultiset<Object> EMPTY =
       new RegularImmutableMultiset<>(ObjectCountHashMap.create());
 
   final transient ObjectCountHashMap<E> contents;
   private final transient int size;
-
-  @LazyInit private transient ImmutableSet<E> elementSet;
 
   RegularImmutableMultiset(ObjectCountHashMap<E> contents) {
     this.contents = contents;
@@ -55,7 +53,7 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
   }
 
   @Override
-  public int count(@NullableDecl Object element) {
+  public int count(@Nullable Object element) {
     return contents.get(element);
   }
 
@@ -66,8 +64,7 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
 
   @Override
   public ImmutableSet<E> elementSet() {
-    ImmutableSet<E> result = elementSet;
-    return (result == null) ? elementSet = new ElementSet() : result;
+    return new ElementSet();
   }
 
   @WeakOuter
@@ -79,7 +76,7 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
     }
 
     @Override
-    public boolean contains(@NullableDecl Object object) {
+    public boolean contains(@Nullable Object object) {
       return RegularImmutableMultiset.this.contains(object);
     }
 
@@ -91,6 +88,15 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
     @Override
     public int size() {
       return contents.size();
+    }
+
+    // redeclare to help optimizers with b/310253115
+    @SuppressWarnings("RedundantOverride")
+    @Override
+    @GwtIncompatible
+    @J2ktIncompatible
+        Object writeReplace() {
+      return super.writeReplace();
     }
   }
 
@@ -104,12 +110,13 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
     final Object[] elements;
     final int[] counts;
 
-    SerializedForm(Multiset<?> multiset) {
+    // "extends Object" works around https://github.com/typetools/checker-framework/issues/3013
+    SerializedForm(Multiset<? extends Object> multiset) {
       int distinct = multiset.entrySet().size();
       elements = new Object[distinct];
       counts = new int[distinct];
       int i = 0;
-      for (Entry<?> entry : multiset.entrySet()) {
+      for (Entry<? extends Object> entry : multiset.entrySet()) {
         elements[i] = entry.getElement();
         counts[i] = entry.getCount();
         i++;
@@ -125,12 +132,13 @@ class RegularImmutableMultiset<E> extends ImmutableMultiset<E> {
       return builder.build();
     }
 
-    private static final long serialVersionUID = 0;
+    @GwtIncompatible @J2ktIncompatible private static final long serialVersionUID = 0;
   }
 
-  @GwtIncompatible
   @Override
-  Object writeReplace() {
+  @J2ktIncompatible
+  @GwtIncompatible
+    Object writeReplace() {
     return new SerializedForm(this);
   }
 }

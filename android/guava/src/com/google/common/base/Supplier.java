@@ -15,7 +15,7 @@
 package com.google.common.base;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A class that can supply objects of a single type; a pre-Java-8 version of {@link
@@ -45,13 +45,27 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
  * @since 2.0
  */
 @GwtCompatible
-public interface Supplier<T> {
+public interface Supplier<T extends @Nullable Object> {
   /**
    * Retrieves an instance of the appropriate type. The returned object may or may not be a new
    * instance, depending on the implementation.
    *
    * @return an instance of the appropriate type
    */
-  @CanIgnoreReturnValue
+  @ParametricNullness
   T get();
+
+  /**
+   * <i>May</i> return {@code true} if {@code object} is a {@code Supplier} that behaves identically
+   * to this supplier.
+   *
+   * <p><b>Warning: do not depend</b> on the behavior of this method.
+   *
+   * <p>Historically, {@code Supplier} instances in this library have implemented this method to
+   * recognize certain cases where distinct {@code Supplier} instances would in fact behave
+   * identically. However, as code migrates to {@code java.util.function}, that behavior will
+   * disappear. It is best not to depend on it.
+   */
+  @Override
+  boolean equals(@Nullable Object object);
 }

@@ -17,7 +17,9 @@
 package com.google.common.collect;
 
 import com.google.common.annotations.GwtCompatible;
+import com.google.errorprone.annotations.DoNotCall;
 import java.util.Iterator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An iterator that does not support {@link #remove}.
@@ -30,7 +32,7 @@ import java.util.Iterator;
  * @since 2.0
  */
 @GwtCompatible
-public abstract class UnmodifiableIterator<E> implements Iterator<E> {
+public abstract class UnmodifiableIterator<E extends @Nullable Object> implements Iterator<E> {
   /** Constructor for use by subclasses. */
   protected UnmodifiableIterator() {}
 
@@ -42,6 +44,7 @@ public abstract class UnmodifiableIterator<E> implements Iterator<E> {
    */
   @Deprecated
   @Override
+  @DoNotCall("Always throws UnsupportedOperationException")
   public final void remove() {
     throw new UnsupportedOperationException();
   }

@@ -19,18 +19,23 @@ package com.google.common.collect;
 import static com.google.common.collect.BoundType.CLOSED;
 import static com.google.common.collect.BoundType.OPEN;
 import static com.google.common.collect.DiscreteDomain.integers;
+import static com.google.common.collect.Lists.newArrayList;
+import static com.google.common.collect.testing.Helpers.testCompareToAndEquals;
 import static com.google.common.testing.SerializableTester.reserializeAndAssert;
+import static com.google.common.truth.Truth.assertThat;
 import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtCompatible;
-import com.google.common.base.Predicate;
-import com.google.common.collect.testing.Helpers;
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.testing.EqualsTester;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unit test for {@link Range}.
@@ -38,32 +43,25 @@ import junit.framework.TestCase;
  * @author Kevin Bourrillion
  */
 @GwtCompatible
+@NullMarked
 public class RangeTest extends TestCase {
   public void testOpen() {
     Range<Integer> range = Range.open(4, 8);
     checkContains(range);
     assertTrue(range.hasLowerBound());
     assertEquals(4, (int) range.lowerEndpoint());
-    assertEquals(OPEN, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(OPEN);
     assertTrue(range.hasUpperBound());
     assertEquals(8, (int) range.upperEndpoint());
-    assertEquals(OPEN, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(OPEN);
     assertFalse(range.isEmpty());
-    assertEquals("(4..8)", range.toString());
+    assertThat(range.toString()).isEqualTo("(4..8)");
     reserializeAndAssert(range);
   }
 
   public void testOpen_invalid() {
-    try {
-      Range.open(4, 3);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      Range.open(3, 3);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Range.open(4, 3));
+    assertThrows(IllegalArgumentException.class, () -> Range.open(3, 3));
   }
 
   public void testClosed() {
@@ -71,21 +69,17 @@ public class RangeTest extends TestCase {
     checkContains(range);
     assertTrue(range.hasLowerBound());
     assertEquals(5, (int) range.lowerEndpoint());
-    assertEquals(CLOSED, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(CLOSED);
     assertTrue(range.hasUpperBound());
     assertEquals(7, (int) range.upperEndpoint());
-    assertEquals(CLOSED, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(CLOSED);
     assertFalse(range.isEmpty());
-    assertEquals("[5..7]", range.toString());
+    assertThat(range.toString()).isEqualTo("[5..7]");
     reserializeAndAssert(range);
   }
 
   public void testClosed_invalid() {
-    try {
-      Range.closed(4, 3);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> Range.closed(4, 3));
   }
 
   public void testOpenClosed() {
@@ -93,12 +87,12 @@ public class RangeTest extends TestCase {
     checkContains(range);
     assertTrue(range.hasLowerBound());
     assertEquals(4, (int) range.lowerEndpoint());
-    assertEquals(OPEN, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(OPEN);
     assertTrue(range.hasUpperBound());
     assertEquals(7, (int) range.upperEndpoint());
-    assertEquals(CLOSED, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(CLOSED);
     assertFalse(range.isEmpty());
-    assertEquals("(4..7]", range.toString());
+    assertThat(range.toString()).isEqualTo("(4..7]");
     reserializeAndAssert(range);
   }
 
@@ -107,17 +101,19 @@ public class RangeTest extends TestCase {
     checkContains(range);
     assertTrue(range.hasLowerBound());
     assertEquals(5, (int) range.lowerEndpoint());
-    assertEquals(CLOSED, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(CLOSED);
     assertTrue(range.hasUpperBound());
     assertEquals(8, (int) range.upperEndpoint());
-    assertEquals(OPEN, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(OPEN);
     assertFalse(range.isEmpty());
-    assertEquals("[5..8)", range.toString());
+    assertThat(range.toString()).isEqualTo("[5..8)");
     reserializeAndAssert(range);
   }
 
   public void testIsConnected() {
     assertTrue(Range.closed(3, 5).isConnected(Range.open(5, 6)));
+    assertTrue(Range.closed(3, 5).isConnected(Range.closed(5, 6)));
+    assertTrue(Range.closed(5, 6).isConnected(Range.closed(3, 5)));
     assertTrue(Range.closed(3, 5).isConnected(Range.openClosed(5, 5)));
     assertTrue(Range.open(3, 5).isConnected(Range.closed(5, 6)));
     assertTrue(Range.closed(3, 7).isConnected(Range.open(6, 8)));
@@ -140,12 +136,12 @@ public class RangeTest extends TestCase {
     assertFalse(range.contains(5));
     assertTrue(range.hasLowerBound());
     assertEquals(4, (int) range.lowerEndpoint());
-    assertEquals(CLOSED, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(CLOSED);
     assertTrue(range.hasUpperBound());
     assertEquals(4, (int) range.upperEndpoint());
-    assertEquals(CLOSED, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(CLOSED);
     assertFalse(range.isEmpty());
-    assertEquals("[4..4]", range.toString());
+    assertThat(range.toString()).isEqualTo("[4..4]");
     reserializeAndAssert(range);
   }
 
@@ -156,12 +152,12 @@ public class RangeTest extends TestCase {
     assertFalse(range.contains(5));
     assertTrue(range.hasLowerBound());
     assertEquals(4, (int) range.lowerEndpoint());
-    assertEquals(CLOSED, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(CLOSED);
     assertTrue(range.hasUpperBound());
     assertEquals(4, (int) range.upperEndpoint());
-    assertEquals(OPEN, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(OPEN);
     assertTrue(range.isEmpty());
-    assertEquals("[4..4)", range.toString());
+    assertThat(range.toString()).isEqualTo("[4..4)");
     reserializeAndAssert(range);
   }
 
@@ -172,12 +168,12 @@ public class RangeTest extends TestCase {
     assertFalse(range.contains(5));
     assertTrue(range.hasLowerBound());
     assertEquals(4, (int) range.lowerEndpoint());
-    assertEquals(OPEN, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(OPEN);
     assertTrue(range.hasUpperBound());
     assertEquals(4, (int) range.upperEndpoint());
-    assertEquals(CLOSED, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(CLOSED);
     assertTrue(range.isEmpty());
-    assertEquals("(4..4]", range.toString());
+    assertThat(range.toString()).isEqualTo("(4..4]");
     reserializeAndAssert(range);
   }
 
@@ -189,9 +185,9 @@ public class RangeTest extends TestCase {
     assertUnboundedBelow(range);
     assertTrue(range.hasUpperBound());
     assertEquals(5, (int) range.upperEndpoint());
-    assertEquals(OPEN, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(OPEN);
     assertFalse(range.isEmpty());
-    assertEquals("(-\u221e..5)", range.toString());
+    assertThat(range.toString()).isEqualTo("(-\u221e..5)");
     reserializeAndAssert(range);
   }
 
@@ -202,10 +198,10 @@ public class RangeTest extends TestCase {
     assertTrue(range.contains(Integer.MAX_VALUE));
     assertTrue(range.hasLowerBound());
     assertEquals(5, (int) range.lowerEndpoint());
-    assertEquals(OPEN, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(OPEN);
     assertUnboundedAbove(range);
     assertFalse(range.isEmpty());
-    assertEquals("(5..+\u221e)", range.toString());
+    assertThat(range.toString()).isEqualTo("(5..+\u221e)");
     reserializeAndAssert(range);
   }
 
@@ -216,10 +212,10 @@ public class RangeTest extends TestCase {
     assertTrue(range.contains(Integer.MAX_VALUE));
     assertTrue(range.hasLowerBound());
     assertEquals(6, (int) range.lowerEndpoint());
-    assertEquals(CLOSED, range.lowerBoundType());
+    assertThat(range.lowerBoundType()).isEqualTo(CLOSED);
     assertUnboundedAbove(range);
     assertFalse(range.isEmpty());
-    assertEquals("[6..+\u221e)", range.toString());
+    assertThat(range.toString()).isEqualTo("[6..+\u221e)");
     reserializeAndAssert(range);
   }
 
@@ -231,9 +227,9 @@ public class RangeTest extends TestCase {
     assertUnboundedBelow(range);
     assertTrue(range.hasUpperBound());
     assertEquals(4, (int) range.upperEndpoint());
-    assertEquals(CLOSED, range.upperBoundType());
+    assertThat(range.upperBoundType()).isEqualTo(CLOSED);
     assertFalse(range.isEmpty());
-    assertEquals("(-\u221e..4]", range.toString());
+    assertThat(range.toString()).isEqualTo("(-\u221e..4]");
     reserializeAndAssert(range);
   }
 
@@ -244,37 +240,21 @@ public class RangeTest extends TestCase {
     assertUnboundedBelow(range);
     assertUnboundedAbove(range);
     assertFalse(range.isEmpty());
-    assertEquals("(-\u221e..+\u221e)", range.toString());
-    assertSame(range, reserializeAndAssert(range));
-    assertSame(range, Range.all());
+    assertThat(range.toString()).isEqualTo("(-\u221e..+\u221e)");
+    assertThat(reserializeAndAssert(range)).isSameInstanceAs(range);
+    assertThat(Range.all()).isSameInstanceAs(range);
   }
 
   private static void assertUnboundedBelow(Range<Integer> range) {
     assertFalse(range.hasLowerBound());
-    try {
-      range.lowerEndpoint();
-      fail();
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      range.lowerBoundType();
-      fail();
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> range.lowerEndpoint());
+    assertThrows(IllegalStateException.class, () -> range.lowerBoundType());
   }
 
   private static void assertUnboundedAbove(Range<Integer> range) {
     assertFalse(range.hasUpperBound());
-    try {
-      range.upperEndpoint();
-      fail();
-    } catch (IllegalStateException expected) {
-    }
-    try {
-      range.upperBoundType();
-      fail();
-    } catch (IllegalStateException expected) {
-    }
+    assertThrows(IllegalStateException.class, () -> range.upperEndpoint());
+    assertThrows(IllegalStateException.class, () -> range.upperBoundType());
   }
 
   public void testOrderingCuts() {
@@ -285,9 +265,10 @@ public class RangeTest extends TestCase {
     Cut<Integer> e = Range.greaterThan(1).lowerBound;
     Cut<Integer> f = Range.greaterThan(1).upperBound;
 
-    Helpers.testCompareToAndEquals(ImmutableList.of(a, b, c, d, e, f));
+    testCompareToAndEquals(ImmutableList.of(a, b, c, d, e, f));
   }
 
+  @SuppressWarnings("DistinctVarargsChecker")
   public void testContainsAll() {
     Range<Integer> range = Range.closed(3, 5);
     assertTrue(range.containsAll(asList(3, 3, 4, 5)));
@@ -297,10 +278,10 @@ public class RangeTest extends TestCase {
     // path, so we test that separately
     assertTrue(range.containsAll(ImmutableSortedSet.of(3, 3, 4, 5)));
     assertTrue(range.containsAll(ImmutableSortedSet.of(3)));
-    assertTrue(range.containsAll(ImmutableSortedSet.<Integer>of()));
+    assertTrue(range.containsAll(ImmutableSortedSet.of()));
     assertFalse(range.containsAll(ImmutableSortedSet.of(3, 3, 4, 5, 6)));
 
-    assertTrue(Range.openClosed(3, 3).containsAll(Collections.<Integer>emptySet()));
+    assertTrue(Range.openClosed(3, 3).containsAll(Collections.emptySet()));
   }
 
   public void testEncloses_open() {
@@ -318,7 +299,7 @@ public class RangeTest extends TestCase {
     assertFalse(range.encloses(Range.lessThan(3)));
     assertFalse(range.encloses(Range.atLeast(3)));
     assertFalse(range.encloses(Range.atMost(3)));
-    assertFalse(range.encloses(Range.<Integer>all()));
+    assertFalse(range.encloses(Range.all()));
   }
 
   public void testEncloses_closed() {
@@ -335,45 +316,42 @@ public class RangeTest extends TestCase {
     assertFalse(range.encloses(Range.lessThan(3)));
     assertFalse(range.encloses(Range.atLeast(3)));
     assertFalse(range.encloses(Range.atMost(3)));
-    assertFalse(range.encloses(Range.<Integer>all()));
+    assertFalse(range.encloses(Range.all()));
   }
 
   public void testIntersection_empty() {
     Range<Integer> range = Range.closedOpen(3, 3);
     assertEquals(range, range.intersection(range));
 
-    try {
-      range.intersection(Range.open(3, 5));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      range.intersection(Range.closed(0, 2));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    IllegalArgumentException expected =
+        assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.open(3, 5)));
+    assertThat(expected).hasMessageThat().contains("connected");
+    expected =
+        assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.closed(0, 2)));
+    assertThat(expected).hasMessageThat().contains("connected");
   }
 
   public void testIntersection_deFactoEmpty() {
-    Range<Integer> range = Range.open(3, 4);
-    assertEquals(range, range.intersection(range));
+    {
+      Range<Integer> range = Range.open(3, 4);
+      assertEquals(range, range.intersection(range));
 
-    assertEquals(Range.openClosed(3, 3), range.intersection(Range.atMost(3)));
-    assertEquals(Range.closedOpen(4, 4), range.intersection(Range.atLeast(4)));
+      assertEquals(Range.openClosed(3, 3), range.intersection(Range.atMost(3)));
+      assertEquals(Range.closedOpen(4, 4), range.intersection(Range.atLeast(4)));
 
-    try {
-      range.intersection(Range.lessThan(3));
-      fail();
-    } catch (IllegalArgumentException expected) {
+      IllegalArgumentException expected =
+          assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.lessThan(3)));
+      assertThat(expected).hasMessageThat().contains("connected");
+      expected =
+          assertThrows(
+              IllegalArgumentException.class, () -> range.intersection(Range.greaterThan(4)));
+      assertThat(expected).hasMessageThat().contains("connected");
     }
-    try {
-      range.intersection(Range.greaterThan(4));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
 
-    range = Range.closed(3, 4);
-    assertEquals(Range.openClosed(4, 4), range.intersection(Range.greaterThan(4)));
+    {
+      Range<Integer> range = Range.closed(3, 4);
+      assertEquals(Range.openClosed(4, 4), range.intersection(Range.greaterThan(4)));
+    }
   }
 
   public void testIntersection_singleton() {
@@ -388,27 +366,21 @@ public class RangeTest extends TestCase {
     assertEquals(Range.closedOpen(3, 3), range.intersection(Range.lessThan(3)));
     assertEquals(Range.openClosed(3, 3), range.intersection(Range.greaterThan(3)));
 
-    try {
-      range.intersection(Range.atLeast(4));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      range.intersection(Range.atMost(2));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    IllegalArgumentException expected =
+        assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.atLeast(4)));
+    assertThat(expected).hasMessageThat().contains("connected");
+    expected =
+        assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.atMost(2)));
+    assertThat(expected).hasMessageThat().contains("connected");
   }
 
   public void testIntersection_general() {
     Range<Integer> range = Range.closed(4, 8);
 
     // separate below
-    try {
-      range.intersection(Range.closed(0, 2));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    IllegalArgumentException expected =
+        assertThrows(IllegalArgumentException.class, () -> range.intersection(Range.closed(0, 2)));
+    assertThat(expected).hasMessageThat().contains("connected");
 
     // adjacent below
     assertEquals(Range.closedOpen(4, 4), range.intersection(Range.closedOpen(2, 4)));
@@ -444,31 +416,28 @@ public class RangeTest extends TestCase {
     assertEquals(Range.openClosed(8, 8), range.intersection(Range.openClosed(8, 10)));
 
     // separate above
-    try {
-      range.intersection(Range.closed(10, 12));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    expected =
+        assertThrows(
+            IllegalArgumentException.class, () -> range.intersection(Range.closed(10, 12)));
+    assertThat(expected).hasMessageThat().contains("connected");
   }
 
   public void testGap_overlapping() {
     Range<Integer> range = Range.closedOpen(3, 5);
 
-    try {
-      range.gap(Range.closed(4, 6));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      range.gap(Range.closed(2, 4));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
-    try {
-      range.gap(Range.closed(2, 3));
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> range.gap(Range.closed(4, 6)));
+    assertThrows(IllegalArgumentException.class, () -> range.gap(Range.closed(2, 4)));
+    assertThrows(IllegalArgumentException.class, () -> range.gap(Range.closed(2, 3)));
+  }
+
+  public void testGap_invalidRangesWithInfinity() {
+    assertThrows(IllegalArgumentException.class, () -> Range.atLeast(1).gap(Range.atLeast(2)));
+
+    assertThrows(IllegalArgumentException.class, () -> Range.atLeast(2).gap(Range.atLeast(1)));
+
+    assertThrows(IllegalArgumentException.class, () -> Range.atMost(1).gap(Range.atMost(2)));
+
+    assertThrows(IllegalArgumentException.class, () -> Range.atMost(2).gap(Range.atMost(1)));
   }
 
   public void testGap_connectedAdjacentYieldsEmpty() {
@@ -498,6 +467,8 @@ public class RangeTest extends TestCase {
     assertEquals(Range.open(2, 4), Range.atMost(2).gap(closedRange));
     assertEquals(Range.open(2, 4), closedRange.gap(Range.atMost(2)));
   }
+
+  // TODO(cpovirk): More extensive testing of gap().
 
   public void testSpan_general() {
     Range<Integer> range = Range.closed(4, 8);
@@ -536,7 +507,7 @@ public class RangeTest extends TestCase {
 
     // enclosing, exterior
     assertEquals(Range.closed(2, 10), range.span(Range.closed(2, 10)));
-    assertEquals(Range.<Integer>all(), range.span(Range.<Integer>all()));
+    assertEquals(Range.<Integer>all(), range.span(Range.all()));
 
     // overlap above
     assertEquals(Range.closed(4, 10), range.span(Range.closed(6, 10)));
@@ -551,12 +522,19 @@ public class RangeTest extends TestCase {
     assertEquals(Range.atLeast(4), range.span(Range.atLeast(10)));
   }
 
-  public void testApply() {
-    Predicate<Integer> predicate = Range.closed(2, 3);
+  @SuppressWarnings({"InlineMeInliner", "deprecation"}) // intentional test of depecated method
+  public void testPredicateMethods() {
+    Range<Integer> predicate = Range.closed(2, 3);
+
     assertFalse(predicate.apply(1));
     assertTrue(predicate.apply(2));
     assertTrue(predicate.apply(3));
     assertFalse(predicate.apply(4));
+
+    assertFalse(predicate.test(1));
+    assertTrue(predicate.test(2));
+    assertTrue(predicate.test(3));
+    assertFalse(predicate.test(4));
   }
 
   public void testEquals() {
@@ -568,11 +546,13 @@ public class RangeTest extends TestCase {
         .testEquals();
   }
 
+  @GwtIncompatible // TODO(b/148207871): Restore once Eclipse compiler no longer flakes for this.
+  @J2ktIncompatible // TODO(b/148207871): Likewise, or once J2KT uses javac instead of Eclipse.
   public void testLegacyComparable() {
-    Range<LegacyComparable> range = Range.closed(LegacyComparable.X, LegacyComparable.Y);
+    Range<LegacyComparable> unused = Range.closed(LegacyComparable.X, LegacyComparable.Y);
   }
 
-  static final DiscreteDomain<Integer> UNBOUNDED_DOMAIN =
+  private static final DiscreteDomain<Integer> UNBOUNDED_DOMAIN =
       new DiscreteDomain<Integer>() {
         @Override
         public Integer next(Integer value) {
@@ -618,32 +598,20 @@ public class RangeTest extends TestCase {
   }
 
   public void testEncloseAll() {
-    assertEquals(Range.closed(0, 0), Range.encloseAll(Arrays.asList(0)));
-    assertEquals(Range.closed(-3, 5), Range.encloseAll(Arrays.asList(5, -3)));
-    assertEquals(Range.closed(-3, 5), Range.encloseAll(Arrays.asList(1, 2, 2, 2, 5, -3, 0, -1)));
+    assertEquals(Range.closed(0, 0), Range.encloseAll(asList(0)));
+    assertEquals(Range.closed(-3, 5), Range.encloseAll(asList(5, -3)));
+    assertEquals(Range.closed(-3, 5), Range.encloseAll(asList(1, 2, 2, 2, 5, -3, 0, -1)));
   }
 
   public void testEncloseAll_empty() {
-    try {
-      Range.encloseAll(ImmutableSet.<Integer>of());
-      fail();
-    } catch (NoSuchElementException expected) {
-    }
+    assertThrows(NoSuchElementException.class, () -> Range.encloseAll(ImmutableSet.<Integer>of()));
   }
 
   public void testEncloseAll_nullValue() {
-    List<Integer> nullFirst = Lists.newArrayList(null, 0);
-    try {
-      Range.encloseAll(nullFirst);
-      fail();
-    } catch (NullPointerException expected) {
-    }
-    List<Integer> nullNotFirst = Lists.newArrayList(0, null);
-    try {
-      Range.encloseAll(nullNotFirst);
-      fail();
-    } catch (NullPointerException expected) {
-    }
+    List<@Nullable Integer> nullFirst = newArrayList(null, 0);
+    assertThrows(NullPointerException.class, () -> Range.encloseAll(nullFirst));
+    List<@Nullable Integer> nullNotFirst = newArrayList(0, null);
+    assertThrows(NullPointerException.class, () -> Range.encloseAll(nullNotFirst));
   }
 
   public void testEquivalentFactories() {

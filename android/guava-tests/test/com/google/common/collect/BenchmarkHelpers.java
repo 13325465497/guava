@@ -17,11 +17,15 @@
 package com.google.common.collect;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.Maps.newTreeMap;
+import static java.util.Collections.synchronizedSet;
+import static java.util.Collections.unmodifiableSet;
 
 import com.google.common.base.Equivalence;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Queue;
@@ -32,12 +36,14 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Helper classes for various benchmarks.
  *
  * @author Christopher Swenson
  */
+@NullUnmarked
 final class BenchmarkHelpers {
   /** So far, this is the best way to test various implementations of {@link Set} subclasses. */
   public interface CollectionsImplEnum {
@@ -80,13 +86,13 @@ final class BenchmarkHelpers {
     UnmodifiableSetImpl {
       @Override
       public <E extends Comparable<E>> Set<E> create(Collection<E> contents) {
-        return Collections.unmodifiableSet(new HashSet<E>(contents));
+        return unmodifiableSet(new HashSet<E>(contents));
       }
     },
     SynchronizedSetImpl {
       @Override
       public <E extends Comparable<E>> Set<E> create(Collection<E> contents) {
-        return Collections.synchronizedSet(new HashSet<E>(contents));
+        return synchronizedSet(new HashSet<E>(contents));
       }
     },
     ImmutableSetImpl {
@@ -107,21 +113,7 @@ final class BenchmarkHelpers {
         return ContiguousSet.copyOf(contents);
       }
     },
-  //    @GoogleInternal
-  //    CompactHashSetImpl {
-  //      @Override
-  //      public <E extends Comparable<E>> Set<E> create(Collection<E> contents) {
-  //        return CompactHashSet.create(contents);
-  //      }
-  //    },
-  //    @GoogleInternal
-  //    CompactLinkedHashSetImpl {
-  //      @Override
-  //      public <E extends Comparable<E>> Set<E> create(Collection<E> contents) {
-  //        return CompactLinkedHashSet.create(contents);
-  //      }
-  //    },
-  ;
+    ;
   }
 
   public enum ListMultimapImpl {
@@ -202,13 +194,13 @@ final class BenchmarkHelpers {
     HashMapImpl {
       @Override
       public <K extends Comparable<K>, V> Map<K, V> create(Map<K, V> map) {
-        return Maps.newHashMap(map);
+        return new HashMap<>(map);
       }
     },
     LinkedHashMapImpl {
       @Override
       public <K extends Comparable<K>, V> Map<K, V> create(Map<K, V> map) {
-        return Maps.newLinkedHashMap(map);
+        return new LinkedHashMap<>(map);
       }
     },
     ConcurrentHashMapImpl {
@@ -217,24 +209,6 @@ final class BenchmarkHelpers {
         return new ConcurrentHashMap<>(map);
       }
     },
-    //    @GoogleInternal
-    //    CompactHashmapImpl {
-    //      @Override
-    //      public <K extends Comparable<K>, V> Map<K, V> create(Map<K, V> map) {
-    //        Map<K, V> result = CompactHashMap.createWithExpectedSize(map.size());
-    //        result.putAll(map);
-    //        return result;
-    //      }
-    //    },
-    //    @GoogleInternal
-    //    CompactLinkedHashmapImpl {
-    //      @Override
-    //      public <K extends Comparable<K>, V> Map<K, V> create(Map<K, V> map) {
-    //        Map<K, V> result = CompactLinkedHashMap.createWithExpectedSize(map.size());
-    //        result.putAll(map);
-    //        return result;
-    //      }
-    //    },
     ImmutableMapImpl {
       @Override
       public <K extends Comparable<K>, V> Map<K, V> create(Map<K, V> map) {
@@ -284,7 +258,7 @@ final class BenchmarkHelpers {
     TreeMapImpl {
       @Override
       public <K extends Comparable<K>, V> SortedMap<K, V> create(Map<K, V> map) {
-        SortedMap<K, V> result = Maps.newTreeMap();
+        SortedMap<K, V> result = newTreeMap();
         result.putAll(map);
         return result;
       }
@@ -418,7 +392,7 @@ final class BenchmarkHelpers {
       public <E> Interner<E> create(Collection<E> contents) {
         Interner<E> interner = Interners.newWeakInterner();
         for (E e : contents) {
-          interner.intern(e);
+          E unused = interner.intern(e);
         }
         return interner;
       }
@@ -428,7 +402,7 @@ final class BenchmarkHelpers {
       public <E> Interner<E> create(Collection<E> contents) {
         Interner<E> interner = Interners.newStrongInterner();
         for (E e : contents) {
-          interner.intern(e);
+          E unused = interner.intern(e);
         }
         return interner;
       }
@@ -448,7 +422,7 @@ final class BenchmarkHelpers {
     final int min;
     final int max;
 
-    private ListSizeDistribution(int min, int max) {
+    ListSizeDistribution(int min, int max) {
       this.min = min;
       this.max = max;
     }
@@ -457,4 +431,6 @@ final class BenchmarkHelpers {
       return random.nextInt(max - min + 1) + min;
     }
   }
+
+  private BenchmarkHelpers() {}
 }

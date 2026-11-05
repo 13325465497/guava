@@ -16,24 +16,32 @@
 
 package com.google.common.util.concurrent;
 
+import static org.junit.Assert.assertThrows;
+
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ForwardingObject;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link ForwardingObjectTester}.
  *
  * @author Ben Yu
  */
+@NullUnmarked
+@GwtIncompatible
+@J2ktIncompatible
 public class ForwardingObjectTesterTest extends TestCase {
 
   public void testFailsToForward() {
-    try {
-      ForwardingObjectTester.testForwardingObject(FailToForward.class);
-    } catch (AssertionError | UnsupportedOperationException expected) {
-      // UnsupportedOperationException is what we see on Android.
-      return;
-    }
-    fail("Should have thrown");
+    Throwable expected =
+        assertThrows(
+            Throwable.class,
+            () -> ForwardingObjectTester.testForwardingObject(FailToForward.class));
+    assertTrue(
+        "Expected AssertionError or UnsupportedOperationException",
+        expected instanceof AssertionError || expected instanceof UnsupportedOperationException);
   }
 
   @AndroidIncompatible // TODO(cpovirk): java.lang.IllegalAccessError: superclass not accessible

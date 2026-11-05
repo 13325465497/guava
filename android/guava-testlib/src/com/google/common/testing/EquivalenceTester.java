@@ -17,16 +17,18 @@
 package com.google.common.testing;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Lists.asList;
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertTrue;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.base.Equivalence;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.testing.RelationshipTester.ItemReporter;
+import com.google.common.testing.RelationshipTester.Item;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Tester for {@link Equivalence} relationships between groups of objects.
@@ -35,12 +37,12 @@ import java.util.List;
  * contains objects that are supposed to be equal to each other. Objects of different groups are
  * expected to be unequal. For example:
  *
- * <pre>{@code
+ * {@snippet :
  * EquivalenceTester.of(someStringEquivalence)
  *     .addEquivalenceGroup("hello", "h" + "ello")
  *     .addEquivalenceGroup("world", "wor" + "ld")
  *     .test();
- * }</pre>
+ * }
  *
  * <p>Note that testing {@link Object#equals(Object)} is more simply done using the {@link
  * EqualsTester}. It includes an extra test against an instance of an arbitrary class without having
@@ -49,34 +51,41 @@ import java.util.List;
  * @author Gregory Kick
  * @since 10.0
  */
-@Beta
 @GwtCompatible
+@NullMarked
 public final class EquivalenceTester<T> {
   private static final int REPETITIONS = 3;
 
   private final Equivalence<? super T> equivalence;
   private final RelationshipTester<T> delegate;
-  private final List<T> items = Lists.newArrayList();
+  private final List<T> items = new ArrayList<>();
 
   private EquivalenceTester(Equivalence<? super T> equivalence) {
     this.equivalence = checkNotNull(equivalence);
     this.delegate =
-        new RelationshipTester<T>(equivalence, "equivalent", "hash", new ItemReporter());
+        new RelationshipTester<>(
+            equivalence, "equivalent", "hash", /* itemReporter= */ Item::toString);
   }
 
   public static <T> EquivalenceTester<T> of(Equivalence<? super T> equivalence) {
-    return new EquivalenceTester<T>(equivalence);
+    return new EquivalenceTester<>(equivalence);
   }
 
   /**
    * Adds a group of objects that are supposed to be equivalent to each other and not equivalent to
    * objects in any other equivalence group added to this tester.
    */
+  @CanIgnoreReturnValue
   public EquivalenceTester<T> addEquivalenceGroup(T first, T... rest) {
-    addEquivalenceGroup(Lists.asList(first, rest));
+    addEquivalenceGroup(asList(first, rest));
     return this;
   }
 
+  /**
+   * Adds a group of objects that are supposed to be equivalent to each other and not equivalent to
+   * objects in any other equivalence group added to this tester.
+   */
+  @CanIgnoreReturnValue
   public EquivalenceTester<T> addEquivalenceGroup(Iterable<T> group) {
     delegate.addRelatedGroup(group);
     items.addAll(ImmutableList.copyOf(group));
@@ -84,6 +93,7 @@ public final class EquivalenceTester<T> {
   }
 
   /** Run tests on equivalence methods, throwing a failure on an invalid test */
+  @CanIgnoreReturnValue
   public EquivalenceTester<T> test() {
     for (int run = 0; run < REPETITIONS; run++) {
       testItems();

@@ -16,9 +16,16 @@
 
 package com.google.common.hash;
 
-import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.hash.Hashing.hmacMd5;
+import static com.google.common.hash.Hashing.hmacSha1;
+import static com.google.common.hash.Hashing.hmacSha256;
+import static com.google.common.hash.Hashing.hmacSha512;
 import static com.google.common.io.BaseEncoding.base16;
+import static com.google.common.truth.Truth.assertThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Table;
@@ -29,6 +36,8 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 import sun.security.jca.ProviderList;
 import sun.security.jca.Providers;
 
@@ -37,6 +46,8 @@ import sun.security.jca.Providers;
  *
  * @author Kurt Alfred Kluever
  */
+@NullUnmarked
+@J2ktIncompatible
 public class MacHashFunctionTest extends TestCase {
 
   private static final ImmutableSet<String> INPUTS = ImmutableSet.of("", "Z", "foobar");
@@ -50,14 +61,16 @@ public class MacHashFunctionTest extends TestCase {
   private static final SecretKey SHA512_KEY =
       new SecretKeySpec("secret key".getBytes(UTF_8), "HmacSHA512");
 
-  // From http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#Mac
+  // From https://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#Mac
+  // TODO(cpovirk): Evaluate newer list:
+  // https://docs.oracle.com/en/java/javase/27/docs/specs/security/standard-names.html#mac-algorithms
   private static final ImmutableTable<String, SecretKey, HashFunction> ALGORITHMS =
       new ImmutableTable.Builder<String, SecretKey, HashFunction>()
-          .put("HmacMD5", MD5_KEY, Hashing.hmacMd5(MD5_KEY))
-          .put("HmacSHA1", SHA1_KEY, Hashing.hmacSha1(SHA1_KEY))
-          .put("HmacSHA256", SHA256_KEY, Hashing.hmacSha256(SHA256_KEY))
-          .put("HmacSHA512", SHA512_KEY, Hashing.hmacSha512(SHA512_KEY))
-          .build();
+          .put("HmacMD5", MD5_KEY, hmacMd5(MD5_KEY))
+          .put("HmacSHA1", SHA1_KEY, hmacSha1(SHA1_KEY))
+          .put("HmacSHA256", SHA256_KEY, hmacSha256(SHA256_KEY))
+          .put("HmacSHA512", SHA512_KEY, hmacSha512(SHA512_KEY))
+          .buildOrThrow();
 
   public void testNulls() {
     NullPointerTester tester =
@@ -82,9 +95,7 @@ public class MacHashFunctionTest extends TestCase {
     ProviderList providers = Providers.getProviderList();
     Providers.setProviderList(ProviderList.newList());
     try {
-      Hashing.hmacMd5(MD5_KEY);
-      fail("expected ISE");
-    } catch (IllegalStateException expected) {
+      assertThrows(IllegalStateException.class, () -> hmacMd5(MD5_KEY));
     } finally {
       Providers.setProviderList(providers);
     }
@@ -98,11 +109,7 @@ public class MacHashFunctionTest extends TestCase {
 
     assertEquals(
         HashCode.fromBytes(mac.doFinal()),
-        Hashing.hmacSha1(SHA1_KEY)
-            .newHasher()
-            .putString("hello", UTF_8)
-            .putString("world", UTF_8)
-            .hash());
+        hmacSha1(SHA1_KEY).newHasher().putString("hello", UTF_8).putString("world", UTF_8).hash());
   }
 
   public void testMultipleUpdatesDoFinal() throws Exception {
@@ -113,7 +120,7 @@ public class MacHashFunctionTest extends TestCase {
 
     assertEquals(
         HashCode.fromBytes(mac.doFinal("!!!".getBytes(UTF_8))),
-        Hashing.hmacSha1(SHA1_KEY)
+        hmacSha1(SHA1_KEY)
             .newHasher()
             .putString("hello", UTF_8)
             .putString("world", UTF_8)
@@ -121,7 +128,7 @@ public class MacHashFunctionTest extends TestCase {
             .hash());
   }
 
-  public void testCustomKey() throws Exception {
+  public void testCustomKey() {
     SecretKey customKey =
         new SecretKey() {
           @Override
@@ -139,14 +146,14 @@ public class MacHashFunctionTest extends TestCase {
             return "RAW";
           }
         };
-    assertEquals(
-        "ad262969c53bc16032f160081c4a07a0",
-        Hashing.hmacMd5(customKey)
-            .hashString("The quick brown fox jumps over the lazy dog", UTF_8)
-            .toString());
+    assertThat(
+            hmacMd5(customKey)
+                .hashString("The quick brown fox jumps over the lazy dog", UTF_8)
+                .toString())
+        .isEqualTo("ad262969c53bc16032f160081c4a07a0");
   }
 
-  public void testBadKey_emptyKey() throws Exception {
+  public void testBadKey_emptyKey() {
     SecretKey badKey =
         new SecretKey() {
           @Override
@@ -155,7 +162,7 @@ public class MacHashFunctionTest extends TestCase {
           }
 
           @Override
-          public byte[] getEncoded() {
+          public byte @Nullable [] getEncoded() {
             return null;
           }
 
@@ -164,12 +171,11 @@ public class MacHashFunctionTest extends TestCase {
             return "RAW";
           }
         };
-    try {
-      Hashing.hmacMd5(badKey);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    } catch (NullPointerException toleratedOnAndroid) {
-      // TODO(cpovirk): In an ideal world, we'd check here that we're running on Android.
+    RuntimeException expected = assertThrows(RuntimeException.class, () -> hmacMd5(badKey));
+    if (!(expected instanceof IllegalArgumentException
+        || expected instanceof NullPointerException)) {
+      // TODO(cpovirk): In an ideal world, allow NPE only under Android.
+      throw expected;
     }
   }
 
@@ -178,8 +184,8 @@ public class MacHashFunctionTest extends TestCase {
 
     Mac mac = Mac.getInstance("HmacMD5");
     mac.init(MD5_KEY);
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal()).toString());
-    assertEquals(knownOutput, Hashing.hmacMd5(MD5_KEY).newHasher().hash().toString());
+    assertThat(HashCode.fromBytes(mac.doFinal()).toString()).isEqualTo(knownOutput);
+    assertThat(hmacMd5(MD5_KEY).newHasher().hash().toString()).isEqualTo(knownOutput);
   }
 
   public void testEmptyInputs_mixedAlgorithms() throws Exception {
@@ -187,8 +193,8 @@ public class MacHashFunctionTest extends TestCase {
 
     Mac mac = Mac.getInstance("HmacMD5");
     mac.init(SHA1_KEY);
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal()).toString());
-    assertEquals(knownOutput, Hashing.hmacMd5(SHA1_KEY).newHasher().hash().toString());
+    assertThat(HashCode.fromBytes(mac.doFinal()).toString()).isEqualTo(knownOutput);
+    assertThat(hmacMd5(SHA1_KEY).newHasher().hash().toString()).isEqualTo(knownOutput);
   }
 
   public void testKnownInputs() throws Exception {
@@ -198,10 +204,11 @@ public class MacHashFunctionTest extends TestCase {
     Mac mac = Mac.getInstance("HmacMD5");
     mac.init(MD5_KEY);
     mac.update(input.getBytes(UTF_8));
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal()).toString());
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal(input.getBytes(UTF_8))).toString());
-    assertEquals(knownOutput, Hashing.hmacMd5(MD5_KEY).hashString(input, UTF_8).toString());
-    assertEquals(knownOutput, Hashing.hmacMd5(MD5_KEY).hashBytes(input.getBytes(UTF_8)).toString());
+    assertThat(HashCode.fromBytes(mac.doFinal()).toString()).isEqualTo(knownOutput);
+    assertThat(HashCode.fromBytes(mac.doFinal(input.getBytes(UTF_8))).toString())
+        .isEqualTo(knownOutput);
+    assertThat(hmacMd5(MD5_KEY).hashString(input, UTF_8).toString()).isEqualTo(knownOutput);
+    assertThat(hmacMd5(MD5_KEY).hashBytes(input.getBytes(UTF_8)).toString()).isEqualTo(knownOutput);
   }
 
   public void testKnownInputs_mixedAlgorithms() throws Exception {
@@ -211,67 +218,60 @@ public class MacHashFunctionTest extends TestCase {
     Mac mac = Mac.getInstance("HmacMD5");
     mac.init(SHA1_KEY);
     mac.update(input.getBytes(UTF_8));
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal()).toString());
-    assertEquals(knownOutput, HashCode.fromBytes(mac.doFinal(input.getBytes(UTF_8))).toString());
-    assertEquals(knownOutput, Hashing.hmacMd5(SHA1_KEY).hashString(input, UTF_8).toString());
-    assertEquals(
-        knownOutput, Hashing.hmacMd5(SHA1_KEY).hashBytes(input.getBytes(UTF_8)).toString());
+    assertThat(HashCode.fromBytes(mac.doFinal()).toString()).isEqualTo(knownOutput);
+    assertThat(HashCode.fromBytes(mac.doFinal(input.getBytes(UTF_8))).toString())
+        .isEqualTo(knownOutput);
+    assertThat(hmacMd5(SHA1_KEY).hashString(input, UTF_8).toString()).isEqualTo(knownOutput);
+    assertThat(hmacMd5(SHA1_KEY).hashBytes(input.getBytes(UTF_8)).toString())
+        .isEqualTo(knownOutput);
   }
 
   public void testPutAfterHash() {
-    Hasher hasher = Hashing.hmacMd5(MD5_KEY).newHasher();
+    Hasher hasher = hmacMd5(MD5_KEY).newHasher();
 
-    assertEquals(
-        "9753980fe94daa8ecaa82216519393a9",
-        hasher.putString("The quick brown fox jumps over the lazy dog", UTF_8).hash().toString());
-    try {
-      hasher.putInt(42);
-      fail();
-    } catch (IllegalStateException expected) {
-    }
+    assertThat(
+            hasher
+                .putString("The quick brown fox jumps over the lazy dog", UTF_8)
+                .hash()
+                .toString())
+        .isEqualTo("9753980fe94daa8ecaa82216519393a9");
+    assertThrows(IllegalStateException.class, () -> hasher.putInt(42));
   }
 
   public void testHashTwice() {
-    Hasher hasher = Hashing.hmacMd5(MD5_KEY).newHasher();
+    Hasher hasher = hmacMd5(MD5_KEY).newHasher();
 
-    assertEquals(
-        "9753980fe94daa8ecaa82216519393a9",
-        hasher.putString("The quick brown fox jumps over the lazy dog", UTF_8).hash().toString());
-    try {
-      hasher.hash();
-      fail();
-    } catch (IllegalStateException expected) {
-    }
+    assertThat(
+            hasher
+                .putString("The quick brown fox jumps over the lazy dog", UTF_8)
+                .hash()
+                .toString())
+        .isEqualTo("9753980fe94daa8ecaa82216519393a9");
+    assertThrows(IllegalStateException.class, hasher::hash);
   }
 
   public void testToString() {
     byte[] keyData = "secret key".getBytes(UTF_8);
 
-    assertEquals(
-        "Hashing.hmacMd5(Key[algorithm=HmacMD5, format=RAW])", Hashing.hmacMd5(MD5_KEY).toString());
-    assertEquals(
-        "Hashing.hmacMd5(Key[algorithm=HmacMD5, format=RAW])", Hashing.hmacMd5(keyData).toString());
+    assertThat(hmacMd5(MD5_KEY).toString())
+        .isEqualTo("Hashing.hmacMd5(Key[algorithm=HmacMD5, format=RAW])");
+    assertThat(hmacMd5(keyData).toString())
+        .isEqualTo("Hashing.hmacMd5(Key[algorithm=HmacMD5, format=RAW])");
 
-    assertEquals(
-        "Hashing.hmacSha1(Key[algorithm=HmacSHA1, format=RAW])",
-        Hashing.hmacSha1(SHA1_KEY).toString());
-    assertEquals(
-        "Hashing.hmacSha1(Key[algorithm=HmacSHA1, format=RAW])",
-        Hashing.hmacSha1(keyData).toString());
+    assertThat(hmacSha1(SHA1_KEY).toString())
+        .isEqualTo("Hashing.hmacSha1(Key[algorithm=HmacSHA1, format=RAW])");
+    assertThat(hmacSha1(keyData).toString())
+        .isEqualTo("Hashing.hmacSha1(Key[algorithm=HmacSHA1, format=RAW])");
 
-    assertEquals(
-        "Hashing.hmacSha256(Key[algorithm=HmacSHA256, format=RAW])",
-        Hashing.hmacSha256(SHA256_KEY).toString());
-    assertEquals(
-        "Hashing.hmacSha256(Key[algorithm=HmacSHA256, format=RAW])",
-        Hashing.hmacSha256(keyData).toString());
+    assertThat(hmacSha256(SHA256_KEY).toString())
+        .isEqualTo("Hashing.hmacSha256(Key[algorithm=HmacSHA256, format=RAW])");
+    assertThat(hmacSha256(keyData).toString())
+        .isEqualTo("Hashing.hmacSha256(Key[algorithm=HmacSHA256, format=RAW])");
 
-    assertEquals(
-        "Hashing.hmacSha512(Key[algorithm=HmacSHA512, format=RAW])",
-        Hashing.hmacSha512(SHA512_KEY).toString());
-    assertEquals(
-        "Hashing.hmacSha512(Key[algorithm=HmacSHA512, format=RAW])",
-        Hashing.hmacSha512(keyData).toString());
+    assertThat(hmacSha512(SHA512_KEY).toString())
+        .isEqualTo("Hashing.hmacSha512(Key[algorithm=HmacSHA512, format=RAW])");
+    assertThat(hmacSha512(keyData).toString())
+        .isEqualTo("Hashing.hmacSha512(Key[algorithm=HmacSHA512, format=RAW])");
   }
 
   private static void assertMacHashing(
@@ -389,7 +389,7 @@ public class MacHashFunctionTest extends TestCase {
   }
 
   private static void checkSha1(String expected, byte[] key, byte[] data) {
-    checkHmac(expected, Hashing.hmacSha1(key), data);
+    checkHmac(expected, hmacSha1(key), data);
   }
 
   private static void checkMd5(String expected, byte[] key, String data) {
@@ -397,7 +397,7 @@ public class MacHashFunctionTest extends TestCase {
   }
 
   private static void checkMd5(String expected, byte[] key, byte[] data) {
-    checkHmac(expected, Hashing.hmacMd5(key), data);
+    checkHmac(expected, hmacMd5(key), data);
   }
 
   private static void checkHmac(String expected, HashFunction hashFunc, byte[] data) {

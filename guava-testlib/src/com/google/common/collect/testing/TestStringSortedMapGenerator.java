@@ -16,12 +16,14 @@
 
 package com.google.common.collect.testing;
 
+import static com.google.common.collect.testing.Helpers.mapEntry;
 import static com.google.common.collect.testing.Helpers.orderEntriesByKey;
 
 import com.google.common.annotations.GwtCompatible;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
+import org.jspecify.annotations.NullMarked;
 
 /**
  * Implementation helper for {@link TestMapGenerator} for use with sorted maps of strings.
@@ -29,26 +31,27 @@ import java.util.SortedMap;
  * @author Chris Povirk
  */
 @GwtCompatible
+@NullMarked
 public abstract class TestStringSortedMapGenerator extends TestStringMapGenerator
     implements TestSortedMapGenerator<String, String> {
   @Override
   public Entry<String, String> belowSamplesLesser() {
-    return Helpers.mapEntry("!! a", "below view");
+    return mapEntry("!! a", "below view");
   }
 
   @Override
   public Entry<String, String> belowSamplesGreater() {
-    return Helpers.mapEntry("!! b", "below view");
+    return mapEntry("!! b", "below view");
   }
 
   @Override
   public Entry<String, String> aboveSamplesLesser() {
-    return Helpers.mapEntry("~~ a", "above view");
+    return mapEntry("~~ a", "above view");
   }
 
   @Override
   public Entry<String, String> aboveSamplesGreater() {
-    return Helpers.mapEntry("~~ b", "above view");
+    return mapEntry("~~ b", "above view");
   }
 
   @Override

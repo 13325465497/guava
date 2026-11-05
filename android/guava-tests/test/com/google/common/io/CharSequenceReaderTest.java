@@ -16,15 +16,20 @@
 
 package com.google.common.io;
 
+import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.assertThrows;
+
 import java.io.IOException;
 import java.nio.CharBuffer;
 import junit.framework.TestCase;
+import org.jspecify.annotations.NullUnmarked;
 
 /**
  * Tests for {@link CharSequenceReader}.
  *
  * @author Colin Decker
  */
+@NullUnmarked
 public class CharSequenceReaderTest extends TestCase {
 
   public void testReadEmptyString() throws IOException {
@@ -48,131 +53,67 @@ public class CharSequenceReaderTest extends TestCase {
     CharSequenceReader reader = new CharSequenceReader(string);
     assertTrue(reader.markSupported());
 
-    assertEquals(string, readFully(reader));
+    assertThat(readFully(reader)).isEqualTo(string);
     assertFullyRead(reader);
 
     // reset and read again
     reader.reset();
-    assertEquals(string, readFully(reader));
+    assertThat(readFully(reader)).isEqualTo(string);
     assertFullyRead(reader);
 
     // reset, skip, mark, then read the rest
     reader.reset();
     assertEquals(5, reader.skip(5));
     reader.mark(Integer.MAX_VALUE);
-    assertEquals(string.substring(5), readFully(reader));
+    assertThat(readFully(reader)).isEqualTo(string.substring(5));
     assertFullyRead(reader);
 
     // reset to the mark and then read the rest
     reader.reset();
-    assertEquals(string.substring(5), readFully(reader));
+    assertThat(readFully(reader)).isEqualTo(string.substring(5));
     assertFullyRead(reader);
   }
 
-  public void testIllegalArguments() throws IOException {
+  public void testIllegalArguments() {
     CharSequenceReader reader = new CharSequenceReader("12345");
 
     char[] buf = new char[10];
-    try {
-      reader.read(buf, 0, 11);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, 0, 11));
 
-    try {
-      reader.read(buf, 10, 1);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, 10, 1));
 
-    try {
-      reader.read(buf, 11, 0);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, 11, 0));
 
-    try {
-      reader.read(buf, -1, 5);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, -1, 5));
 
-    try {
-      reader.read(buf, 5, -1);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, 5, -1));
 
-    try {
-      reader.read(buf, 0, 11);
-      fail();
-    } catch (IndexOutOfBoundsException expected) {
-    }
+    assertThrows(IndexOutOfBoundsException.class, () -> reader.read(buf, 0, 11));
 
-    try {
-      reader.skip(-1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> reader.skip(-1));
 
-    try {
-      reader.mark(-1);
-      fail();
-    } catch (IllegalArgumentException expected) {
-    }
+    assertThrows(IllegalArgumentException.class, () -> reader.mark(-1));
   }
 
-  public void testMethodsThrowWhenClosed() throws IOException {
+  public void testMethodsThrowWhenClosed() {
     CharSequenceReader reader = new CharSequenceReader("");
     reader.close();
 
-    try {
-      reader.read();
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, reader::read);
 
-    try {
-      reader.read(new char[10]);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> reader.read(new char[10]));
 
-    try {
-      reader.read(new char[10], 0, 10);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> reader.read(new char[10], 0, 10));
 
-    try {
-      reader.read(CharBuffer.allocate(10));
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> reader.read(CharBuffer.allocate(10)));
 
-    try {
-      reader.skip(10);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> reader.skip(10));
 
-    try {
-      reader.ready();
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, reader::ready);
 
-    try {
-      reader.mark(10);
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, () -> reader.mark(10));
 
-    try {
-      reader.reset();
-      fail();
-    } catch (IOException expected) {
-    }
+    assertThrows(IOException.class, reader::reset);
   }
 
   /**
@@ -192,8 +133,8 @@ public class CharSequenceReaderTest extends TestCase {
     // read all to one array
     reader = new CharSequenceReader(charSequence);
     char[] buf = new char[expected.length()];
-    assertEquals(expected.length() == 0 ? -1 : expected.length(), reader.read(buf));
-    assertEquals(expected, new String(buf));
+    assertEquals(expected.isEmpty() ? -1 : expected.length(), reader.read(buf));
+    assertThat(new String(buf)).isEqualTo(expected);
     assertFullyRead(reader);
 
     // read in chunks to fixed array
@@ -204,15 +145,15 @@ public class CharSequenceReaderTest extends TestCase {
     while ((read = reader.read(buf, 0, buf.length)) != -1) {
       builder.append(buf, 0, read);
     }
-    assertEquals(expected, builder.toString());
+    assertThat(builder.toString()).isEqualTo(expected);
     assertFullyRead(reader);
 
     // read all to one CharBuffer
     reader = new CharSequenceReader(charSequence);
     CharBuffer buf2 = CharBuffer.allocate(expected.length());
-    assertEquals(expected.length() == 0 ? -1 : expected.length(), reader.read(buf2));
-    buf2.flip();
-    assertEquals(expected, buf2.toString());
+    assertEquals(expected.isEmpty() ? -1 : expected.length(), reader.read(buf2));
+    Java8Compatibility.flip(buf2);
+    assertThat(buf2.toString()).isEqualTo(expected);
     assertFullyRead(reader);
 
     // read in chunks to fixed CharBuffer
@@ -220,11 +161,11 @@ public class CharSequenceReaderTest extends TestCase {
     buf2 = CharBuffer.allocate(5);
     builder = new StringBuilder();
     while (reader.read(buf2) != -1) {
-      buf2.flip();
+      Java8Compatibility.flip(buf2);
       builder.append(buf2);
-      buf2.clear();
+      Java8Compatibility.clear(buf2);
     }
-    assertEquals(expected, builder.toString());
+    assertThat(builder.toString()).isEqualTo(expected);
     assertFullyRead(reader);
 
     // skip fully
@@ -239,7 +180,7 @@ public class CharSequenceReaderTest extends TestCase {
 
       buf = new char[expected.length() - 5];
       assertEquals(buf.length, reader.read(buf, 0, buf.length));
-      assertEquals(expected.substring(5), new String(buf));
+      assertThat(new String(buf)).isEqualTo(expected.substring(5));
       assertFullyRead(reader);
     }
   }

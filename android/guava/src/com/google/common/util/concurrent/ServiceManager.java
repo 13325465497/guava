@@ -21,6 +21,11 @@ import static com.google.common.base.Predicates.equalTo;
 import static com.google.common.base.Predicates.in;
 import static com.google.common.base.Predicates.instanceOf;
 import static com.google.common.base.Predicates.not;
+import static com.google.common.collect.Collections2.filter;
+import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import static com.google.common.collect.Maps.immutableEntry;
+import static com.google.common.collect.Multimaps.filterKeys;
+import static com.google.common.util.concurrent.Internal.toNanosSaturated;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.google.common.util.concurrent.Service.State.FAILED;
 import static com.google.common.util.concurrent.Service.State.NEW;
@@ -28,42 +33,40 @@ import static com.google.common.util.concurrent.Service.State.RUNNING;
 import static com.google.common.util.concurrent.Service.State.STARTING;
 import static com.google.common.util.concurrent.Service.State.STOPPING;
 import static com.google.common.util.concurrent.Service.State.TERMINATED;
+import static java.util.Collections.sort;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
-import com.google.common.base.Function;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.MultimapBuilder;
-import com.google.common.collect.Multimaps;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.Service.State;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
+import com.google.j2objc.annotations.J2ObjCIncompatible;
 import com.google.j2objc.annotations.WeakOuter;
 import java.lang.ref.WeakReference;
-import java.util.Collections;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * A manager for monitoring and controlling a set of {@linkplain Service services}. This class
@@ -79,7 +82,7 @@ import java.util.logging.Logger;
  *
  * <p>Here is a simple example of how to use a {@code ServiceManager} to start a server.
  *
- * <pre>{@code
+ * {@snippet :
  * class Server {
  *   public static void main(String[] args) {
  *     Set<Service> services = ...;
@@ -108,10 +111,10 @@ import java.util.logging.Logger;
  *         }
  *       }
  *     });
- *     manager.startAsync();  // start all the services asynchronously
+ *     manager.startAsync(); // start all the services asynchronously
  *   }
  * }
- * }</pre>
+ * }
  *
  * <p>This class uses the ServiceManager's methods to start all of its services, to respond to
  * service failure and to ensure that when the JVM is shutting down all the services are stopped.
@@ -119,10 +122,10 @@ import java.util.logging.Logger;
  * @author Luke Sandberg
  * @since 14.0
  */
-@Beta
+@J2ktIncompatible
 @GwtIncompatible
-public final class ServiceManager {
-  private static final Logger logger = Logger.getLogger(ServiceManager.class.getName());
+public final class ServiceManager implements ServiceManagerBridge {
+  private static final LazyLogger logger = new LazyLogger(ServiceManager.class);
   private static final ListenerCallQueue.Event<Listener> HEALTHY_EVENT =
       new ListenerCallQueue.Event<Listener>() {
         @Override
@@ -157,8 +160,10 @@ public final class ServiceManager {
    * @author Luke Sandberg
    * @since 15.0 (present as an interface in 14.0)
    */
-  @Beta // Should come out of Beta when ServiceManager does
   public abstract static class Listener {
+    /** Constructor for use by subclasses. */
+    protected Listener() {}
+
     /**
      * Called when the service initially becomes healthy.
      *
@@ -206,11 +211,14 @@ public final class ServiceManager {
     if (copy.isEmpty()) {
       // Having no services causes the manager to behave strangely. Notably, listeners are never
       // fired. To avoid this we substitute a placeholder service.
-      logger.log(
-          Level.WARNING,
-          "ServiceManager configured with no services.  Is your application configured properly?",
-          new EmptyServiceManagerWarning());
-      copy = ImmutableList.<Service>of(new NoOpService());
+      logger
+          .get()
+          .log(
+              Level.WARNING,
+              "ServiceManager configured with no services.  Is your application configured"
+                  + " properly?",
+              new EmptyServiceManagerWarning());
+      copy = ImmutableList.of(new NoOpService());
     }
     this.state = new ServiceManagerState(copy);
     this.services = copy;
@@ -243,34 +251,15 @@ public final class ServiceManager {
    * during {@code Executor.execute} (e.g., a {@code RejectedExecutionException}) will be caught and
    * logged.
    *
-   * <p>For fast, lightweight listeners that would be safe to execute in any thread, consider
-   * calling {@link #addListener(Listener)}.
+   * <p>When selecting an executor, note that {@code directExecutor} is dangerous in some cases. See
+   * the discussion in the {@link ListenableFuture#addListener ListenableFuture.addListener}
+   * documentation.
    *
    * @param listener the listener to run when the manager changes state
    * @param executor the executor in which the listeners callback methods will be run.
    */
   public void addListener(Listener listener, Executor executor) {
     state.addListener(listener, executor);
-  }
-
-  /**
-   * Registers a {@link Listener} to be run when this {@link ServiceManager} changes state. The
-   * listener will not have previous state changes replayed, so it is suggested that listeners are
-   * added before any of the managed services are {@linkplain Service#startAsync started}.
-   *
-   * <p>{@code addListener} guarantees execution ordering across calls to a given listener but not
-   * across calls to multiple listeners. Specifically, a given listener will have its callbacks
-   * invoked in the same order as the underlying service enters those states. Additionally, at most
-   * one of the listener's callbacks will execute at once. However, multiple listeners' callbacks
-   * may execute concurrently, and listeners may execute in an order different from the one in which
-   * they were registered.
-   *
-   * <p>RuntimeExceptions thrown by a listener will be caught and logged.
-   *
-   * @param listener the listener to run when the manager changes state
-   */
-  public void addListener(Listener listener) {
-    state.addListener(listener, directExecutor());
   }
 
   /**
@@ -284,8 +273,7 @@ public final class ServiceManager {
   @CanIgnoreReturnValue
   public ServiceManager startAsync() {
     for (Service service : services) {
-      State state = service.state();
-      checkState(state == NEW, "Service %s is %s, cannot start it.", service, state);
+      checkState(service.state() == NEW, "Not all services are NEW, cannot start %s", this);
     }
     for (Service service : services) {
       try {
@@ -296,7 +284,7 @@ public final class ServiceManager {
         // service or listener). Our contract says it is safe to call this method if
         // all services were NEW when it was called, and this has already been verified above, so we
         // don't propagate the exception.
-        logger.log(Level.WARNING, "Unable to start Service " + service, e);
+        logger.get().log(Level.WARNING, "Unable to start Service " + service, e);
       }
     }
     return this;
@@ -312,6 +300,22 @@ public final class ServiceManager {
    */
   public void awaitHealthy() {
     state.awaitHealthy();
+  }
+
+  /**
+   * Waits for the {@link ServiceManager} to become {@linkplain #isHealthy() healthy} for no more
+   * than the given time. The manager will become healthy after all the component services have
+   * reached the {@linkplain State#RUNNING running} state.
+   *
+   * @param timeout the maximum time to wait
+   * @throws TimeoutException if not all of the services have finished starting within the deadline
+   * @throws IllegalStateException if the service manager reaches a state from which it cannot
+   *     become {@linkplain #isHealthy() healthy}.
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  public void awaitHealthy(Duration timeout) throws TimeoutException {
+    awaitHealthy(toNanosSaturated(timeout), NANOSECONDS);
   }
 
   /**
@@ -359,6 +363,20 @@ public final class ServiceManager {
    * terminated} or {@linkplain Service.State#FAILED failed}.
    *
    * @param timeout the maximum time to wait
+   * @throws TimeoutException if not all of the services have stopped within the deadline
+   * @since 33.4.0 (but since 28.0 in the JRE flavor)
+   */
+  @IgnoreJRERequirement // Users will use this only if they're already using Duration.
+  public void awaitStopped(Duration timeout) throws TimeoutException {
+    awaitStopped(toNanosSaturated(timeout), NANOSECONDS);
+  }
+
+  /**
+   * Waits for the all the services to reach a terminal state for no more than the given time. After
+   * this method returns all services will either be {@linkplain Service.State#TERMINATED
+   * terminated} or {@linkplain Service.State#FAILED failed}.
+   *
+   * @param timeout the maximum time to wait
    * @param unit the time unit of the timeout argument
    * @throws TimeoutException if not all of the services have stopped within the deadline
    */
@@ -387,8 +405,11 @@ public final class ServiceManager {
    *
    * <p>N.B. This snapshot is guaranteed to be consistent, i.e. the set of states returned will
    * correspond to a point in time view of the services.
+   *
+   * @since 29.0 (present with return type {@code ImmutableMultimap} since 14.0)
    */
-  public ImmutableMultimap<State, Service> servicesByState() {
+  @Override
+  public ImmutableSetMultimap<State, Service> servicesByState() {
     return state.servicesByState();
   }
 
@@ -403,10 +424,26 @@ public final class ServiceManager {
     return state.startupTimes();
   }
 
+  /**
+   * Returns the service load times. This value will only return startup times for services that
+   * have finished starting.
+   *
+   * @return Map of services and their corresponding startup time, the map entries will be ordered
+   *     by startup time.
+   * @since 33.4.0 (but since 31.0 in the JRE flavor)
+   */
+  @J2ObjCIncompatible
+  // If users use this when they shouldn't, we hope that NewApi will catch subsequent Duration calls
+  @IgnoreJRERequirement
+  public ImmutableMap<Service, Duration> startupDurations() {
+    return ImmutableMap.copyOf(
+        Maps.<Service, Long, Duration>transformValues(startupTimes(), Duration::ofMillis));
+  }
+
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(ServiceManager.class)
-        .add("services", Collections2.filter(services, not(instanceOf(NoOpService.class))))
+        .add("services", filter(services, not(instanceOf(NoOpService.class))))
         .toString();
   }
 
@@ -425,7 +462,7 @@ public final class ServiceManager {
     final Multiset<State> states = servicesByState.keys();
 
     @GuardedBy("monitor")
-    final Map<Service, Stopwatch> startupTimers = Maps.newIdentityHashMap();
+    final IdentityHashMap<Service, Stopwatch> startupTimers = new IdentityHashMap<>();
 
     /**
      * These two booleans are used to mark the state as ready to start.
@@ -529,7 +566,7 @@ public final class ServiceManager {
           ready = true;
         } else {
           // This should be an extremely rare race condition.
-          List<Service> servicesInBadStates = Lists.newArrayList();
+          List<Service> servicesInBadStates = new ArrayList<>();
           for (Service service : servicesByState().values()) {
             if (service.state() != NEW) {
               servicesInBadStates.add(service);
@@ -565,7 +602,7 @@ public final class ServiceManager {
           throw new TimeoutException(
               "Timeout waiting for the services to become healthy. The "
                   + "following services have not started: "
-                  + Multimaps.filterKeys(servicesByState, in(ImmutableSet.of(NEW, STARTING))));
+                  + filterKeys(servicesByState, in(ImmutableSet.of(NEW, STARTING))));
         }
         checkHealthy();
       } finally {
@@ -585,14 +622,14 @@ public final class ServiceManager {
           throw new TimeoutException(
               "Timeout waiting for the services to stop. The following "
                   + "services have not stopped: "
-                  + Multimaps.filterKeys(servicesByState, not(in(EnumSet.of(TERMINATED, FAILED)))));
+                  + filterKeys(servicesByState, not(in(EnumSet.of(TERMINATED, FAILED)))));
         }
       } finally {
         monitor.leave();
       }
     }
 
-    ImmutableMultimap<State, Service> servicesByState() {
+    ImmutableSetMultimap<State, Service> servicesByState() {
       ImmutableSetMultimap.Builder<State, Service> builder = ImmutableSetMultimap.builder();
       monitor.enter();
       try {
@@ -611,28 +648,19 @@ public final class ServiceManager {
       List<Entry<Service, Long>> loadTimes;
       monitor.enter();
       try {
-        loadTimes = Lists.newArrayListWithCapacity(startupTimers.size());
+        loadTimes = newArrayListWithCapacity(startupTimers.size());
         // N.B. There will only be an entry in the map if the service has started
         for (Entry<Service, Stopwatch> entry : startupTimers.entrySet()) {
           Service service = entry.getKey();
-          Stopwatch stopWatch = entry.getValue();
-          if (!stopWatch.isRunning() && !(service instanceof NoOpService)) {
-            loadTimes.add(Maps.immutableEntry(service, stopWatch.elapsed(MILLISECONDS)));
+          Stopwatch stopwatch = entry.getValue();
+          if (!stopwatch.isRunning() && !(service instanceof NoOpService)) {
+            loadTimes.add(immutableEntry(service, stopwatch.elapsed(MILLISECONDS)));
           }
         }
       } finally {
         monitor.leave();
       }
-      Collections.sort(
-          loadTimes,
-          Ordering.natural()
-              .onResultOf(
-                  new Function<Entry<Service, Long>, Long>() {
-                    @Override
-                    public Long apply(Entry<Service, Long> input) {
-                      return input.getValue();
-                    }
-                  }));
+      sort(loadTimes, Ordering.natural().onResultOf(Entry::getValue));
       return ImmutableMap.copyOf(loadTimes);
     }
 
@@ -648,7 +676,7 @@ public final class ServiceManager {
      *   <li>Run the listeners (outside of the lock)
      * </ol>
      */
-    void transitionService(final Service service, State from, State to) {
+    void transitionService(Service service, State from, State to) {
       checkNotNull(service);
       checkArgument(from != to);
       monitor.enter();
@@ -679,7 +707,7 @@ public final class ServiceManager {
           // N.B. if we miss the STARTING event then we may never record a startup time.
           stopwatch.stop();
           if (!(service instanceof NoOpService)) {
-            logger.log(Level.FINE, "Started {0} in {1}.", new Object[] {service, stopwatch});
+            logger.get().log(Level.FINE, "Started {0} in {1}.", new Object[] {service, stopwatch});
           }
         }
         // Queue our listeners
@@ -711,7 +739,7 @@ public final class ServiceManager {
       listeners.enqueue(HEALTHY_EVENT);
     }
 
-    void enqueueFailedEvent(final Service service) {
+    void enqueueFailedEvent(Service service) {
       listeners.enqueue(
           new ListenerCallQueue.Event<Listener>() {
             @Override
@@ -740,7 +768,10 @@ public final class ServiceManager {
         IllegalStateException exception =
             new IllegalStateException(
                 "Expected to be healthy after starting. The following services are not running: "
-                    + Multimaps.filterKeys(servicesByState, not(equalTo(RUNNING))));
+                    + filterKeys(servicesByState, not(equalTo(RUNNING))));
+        for (Service service : servicesByState.get(State.FAILED)) {
+          exception.addSuppressed(new FailedService(service));
+        }
         throw exception;
       }
     }
@@ -768,7 +799,7 @@ public final class ServiceManager {
       if (state != null) {
         state.transitionService(service, NEW, STARTING);
         if (!(service instanceof NoOpService)) {
-          logger.log(Level.FINE, "Starting {0}.", service);
+          logger.get().log(Level.FINE, "Starting {0}.", service);
         }
       }
     }
@@ -794,10 +825,12 @@ public final class ServiceManager {
       ServiceManagerState state = this.state.get();
       if (state != null) {
         if (!(service instanceof NoOpService)) {
-          logger.log(
-              Level.FINE,
-              "Service {0} has terminated. Previous state was: {1}",
-              new Object[] {service, from});
+          logger
+              .get()
+              .log(
+                  Level.FINE,
+                  "Service {0} has terminated. Previous state was: {1}",
+                  new Object[] {service, from});
         }
         state.transitionService(service, from, TERMINATED);
       }
@@ -810,11 +843,18 @@ public final class ServiceManager {
         // Log before the transition, so that if the process exits in response to server failure,
         // there is a higher likelihood that the cause will be in the logs.
         boolean log = !(service instanceof NoOpService);
+        /*
+         * We have already exposed startup exceptions to the user in the form of suppressed
+         * exceptions. We don't need to log those exceptions again.
+         */
+        log &= from != State.STARTING;
         if (log) {
-          logger.log(
-              Level.SEVERE,
-              "Service " + service + " has failed in the " + from + " state.",
-              failure);
+          logger
+              .get()
+              .log(
+                  Level.SEVERE,
+                  "Service " + service + " has failed in the " + from + " state.",
+                  failure);
         }
         state.transitionService(service, from, FAILED);
       }
@@ -843,4 +883,14 @@ public final class ServiceManager {
 
   /** This is never thrown but only used for logging. */
   private static final class EmptyServiceManagerWarning extends Throwable {}
+
+  private static final class FailedService extends Throwable {
+    FailedService(Service service) {
+      super(
+          service.toString(),
+          service.failureCause(),
+          false /* don't enable suppression */,
+          false /* don't calculate a stack trace. */);
+    }
+  }
 }
